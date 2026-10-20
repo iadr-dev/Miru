@@ -134,7 +134,8 @@ async def test_yahoo_is_only_called_for_etfs_missing_an_input(tmp_path: object) 
     assert run.status is RunStatus.SUCCESS
     assert yahoo.calls == ["00980A"]
     assert _aum_by_symbol(ctx) == {"0050": 100_000.0, "00980A": 777.0}
-    assert "1 derived" in run.detail and "1 from Yahoo" in run.detail
+    assert "1 derived" in run.detail
+    assert "1 from Yahoo" in run.detail
 
 
 @pytest.mark.parametrize(("units", "nav"), [(0, 10.0), (1_000, 0.0), (-5, 10.0), (None, None)])
@@ -196,7 +197,8 @@ async def test_a_past_run_date_derives_from_that_days_nav_not_a_later_one(
     past = await job_etf_aum(date(2026, 10, 2), ctx)  # weekday after 10-01, before 10-05
     live = await job_etf_aum(date(2026, 10, 5), ctx)
 
-    assert past.status is RunStatus.SUCCESS and live.status is RunStatus.SUCCESS
+    assert past.status is RunStatus.SUCCESS
+    assert live.status is RunStatus.SUCCESS
     past_rows = ctx.store.read_partition(ETF_AUM_DATASET, Market.TW.value, date(2026, 10, 2))
     live_rows = ctx.store.read_partition(ETF_AUM_DATASET, Market.TW.value, date(2026, 10, 5))
     assert [row["aum"] for row in past_rows] == [100_000.0]  # 10-01's units x NAV

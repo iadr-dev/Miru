@@ -58,7 +58,8 @@ def test_boundaries_keep_it_descriptive_and_signed_in_only(name: str) -> None:
     assert "清單為空" in text  # says plainly when a list is empty
     assert "捏造" in text  # no invented numbers
     if name == "watchlist-review":
-        assert "買進" in text and "目標價" in text  # the non-trading line is explicit
+        assert "買進" in text
+        assert "目標價" in text
 
 
 @pytest.mark.parametrize(

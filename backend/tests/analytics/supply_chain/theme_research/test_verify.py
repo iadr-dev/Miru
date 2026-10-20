@@ -88,7 +88,8 @@ def reasons_logged(root: Path) -> dict[str, str]:
 async def rejected_reason(root: Path, tmp_path: Path, c: ThemeClaim) -> str:
     seed_claims(root, [c])
     summary = await verify(root, tmp_path)
-    assert summary.verified == 0 and summary.rejected == 1
+    assert summary.verified == 0
+    assert summary.rejected == 1
     return reasons_logged(root)[f"{c.theme}:{c.symbol}"]
 
 
@@ -111,7 +112,8 @@ async def test_quote_guard_ignores_case_and_width_and_accepts_aliases(tmp_path: 
     summary = await verify(root, tmp_path)
     assert summary.verified == 1
     [row] = members_rows(root)
-    assert row["theme_key"] == THEME_KEY and row["symbol"] == "9101"
+    assert row["theme_key"] == THEME_KEY
+    assert row["symbol"] == "9101"
 
 
 async def test_quote_guard_rejects_long_excerpts_http_urls_and_rejected_hosts(
@@ -144,7 +146,8 @@ async def test_a_single_tertiary_source_stays_a_candidate_and_is_not_written(
     seed_claims(root, [claim("9101", url=TERTIARY_A)])
     summary = await verify(root, tmp_path)
     assert (summary.verified, summary.candidates, summary.member_rows) == (0, 1, 0)
-    assert members_rows(root) == [] and reasons_logged(root) == {}
+    assert members_rows(root) == []
+    assert reasons_logged(root) == {}
 
 
 async def test_two_independent_tertiary_domains_verify_with_medium_confidence(
@@ -153,7 +156,8 @@ async def test_two_independent_tertiary_domains_verify_with_medium_confidence(
     root = make_root(tmp_path)
     seed_claims(root, [claim("9101", url=TERTIARY_A), claim("9101", url=TERTIARY_B)])
     summary = await verify(root, tmp_path)
-    assert summary.verified == 1 and summary.member_rows == 1
+    assert summary.verified == 1
+    assert summary.member_rows == 1
     [row] = members_rows(root)
     assert row["confidence"] == "medium"
 
@@ -216,7 +220,8 @@ async def test_second_opinion_can_demote_a_single_weak_source(tmp_path: Path) ->
     assert (no.verified, no.candidates, no.llm_calls) == (0, 1, 1)
     assert no.reasons == {"second_opinion_disagreed": 1}
     yes = await verify(root, tmp_path, cfg=cfg, second=llm('{"supports": true}'))
-    assert yes.verified == 1 and yes.llm_calls == 1
+    assert yes.verified == 1
+    assert yes.llm_calls == 1
 
 
 async def test_a_primary_source_needs_no_second_opinion(tmp_path: Path) -> None:
@@ -224,7 +229,8 @@ async def test_a_primary_source_needs_no_second_opinion(tmp_path: Path) -> None:
     seed_claims(root, [claim("9101", url=f"https://{PRIMARY_HOST}/f")])
     cfg = settings(supply_chain_second_opinion=True)
     summary = await verify(root, tmp_path, cfg=cfg, second=llm())
-    assert summary.verified == 1 and summary.llm_calls == 0
+    assert summary.verified == 1
+    assert summary.llm_calls == 0
 
 
 async def test_new_theme_needs_six_verified_members(tmp_path: Path) -> None:
@@ -236,11 +242,15 @@ async def test_new_theme_needs_six_verified_members(tmp_path: Path) -> None:
     assert not proposal_paths(root, TODAY).new_themes.exists()
     seed_claims(root, [candidate_claim("9106")])
     six = await verify(root, tmp_path)
-    assert six.new_themes == 1 and six.member_rows == 6
+    assert six.new_themes == 1
+    assert six.member_rows == 6
     [theme] = yaml.safe_load(proposal_paths(root, TODAY).new_themes.read_text(encoding="utf-8"))
-    assert theme["key"] == "quantum-widget" and theme["name_zh"] == CANDIDATE_LABEL
-    assert theme["name_en"] == CANDIDATE_LABEL and theme["thin"] is False
-    assert theme["related"] == [] and theme["description"]
+    assert theme["key"] == "quantum-widget"
+    assert theme["name_zh"] == CANDIDATE_LABEL
+    assert theme["name_en"] == CANDIDATE_LABEL
+    assert theme["thin"] is False
+    assert theme["related"] == []
+    assert theme["description"]
     assert {m["symbol"] for m in theme["members"]} == set(symbols)
     assert {m["confidence"] for m in theme["members"]} == {"high"}
 
@@ -274,7 +284,8 @@ async def test_proposal_files_are_accepted_by_promote_dry_run(tmp_path: Path) ->
         industry=IndustryRoster(),
     )
     assert report.new_themes == ["quantum-widget"]
-    assert report.added["quantum-widget"] == 6 and report.added[THEME_KEY] == 2
+    assert report.added["quantum-widget"] == 6
+    assert report.added[THEME_KEY] == 2
     assert dict(report.rejects) == {}
     assert not report.written
     live = yaml.safe_load(
@@ -295,7 +306,8 @@ async def test_rerun_is_idempotent_and_leaves_no_temp_files(tmp_path: Path) -> N
     before = paths.members.read_text(encoding="utf-8")
     logged = rejected_path(root).read_text(encoding="utf-8")
     second = await verify(root, tmp_path)
-    assert first.member_rows == 1 and second.member_rows == 0
+    assert first.member_rows == 1
+    assert second.member_rows == 0
     assert paths.members.read_text(encoding="utf-8") == before
     assert len(yaml.safe_load(before)) == 1
     assert rejected_path(root).read_text(encoding="utf-8") == logged
@@ -322,7 +334,8 @@ async def test_a_pair_in_an_earlier_proposal_file_is_not_proposed_again(tmp_path
     assert scan_proposed(root).pairs == {(THEME_KEY, "9101")}
     seed_claims(root, [claim("9101")])
     summary = await verify(root, tmp_path)
-    assert summary.groups == 0 and summary.reasons == {"already_proposed": 1}
+    assert summary.groups == 0
+    assert summary.reasons == {"already_proposed": 1}
     assert members_rows(root) == []
 
 
@@ -330,7 +343,9 @@ async def test_dry_run_evaluates_but_writes_nothing(tmp_path: Path) -> None:
     root = make_root(tmp_path)
     seed_claims(root, [claim("9101"), claim("9102", published_on="2019-01-01")])
     summary = await verify(root, tmp_path, dry_run=True)
-    assert summary.verified == 1 and summary.rejected == 1 and summary.dry_run
+    assert summary.verified == 1
+    assert summary.rejected == 1
+    assert summary.dry_run
     assert "would_write=1" in summary.line()
     assert not proposal_paths(root, TODAY).members.exists()
     assert not rejected_path(root).exists()
@@ -342,7 +357,8 @@ async def test_group_cap_stops_the_run(tmp_path: Path) -> None:
     seed_claims(root, [claim("9101"), claim("9102"), claim("9103")])
     cfg = settings(supply_chain_research_max_claims=1)
     summary = await verify(root, tmp_path, cfg=cfg, limit=5)
-    assert summary.groups == 1 and summary.stopped_by == "claims"
+    assert summary.groups == 1
+    assert summary.stopped_by == "claims"
     limited = await verify(root, tmp_path, limit=1, dry_run=True)
     assert limited.groups == 1
 
@@ -352,7 +368,8 @@ async def test_second_opinion_budget_exhaustion_skips_rather_than_writes(tmp_pat
     seed_claims(root, [claim("9101")])
     cfg = settings(supply_chain_second_opinion=True, supply_chain_research_max_llm_calls=0)
     summary = await verify(root, tmp_path, cfg=cfg, second=llm())
-    assert summary.skipped == 1 and summary.stopped_by == "llm_calls"
+    assert summary.skipped == 1
+    assert summary.stopped_by == "llm_calls"
     assert members_rows(root) == []
 
 
@@ -360,7 +377,8 @@ async def test_console_output_has_ids_and_counts_only(tmp_path: Path) -> None:
     root = make_root(tmp_path)
     seed_claims(root, [claim("9101"), candidate_claim("9102")])
     out = format_verify(await verify(root, tmp_path))
-    assert f"{THEME_KEY}:9101 verified" in out and f"{CANDIDATE_ID}:9102 verified" in out
+    assert f"{THEME_KEY}:9101 verified" in out
+    assert f"{CANDIDATE_ID}:9102 verified" in out
     for name in (ZETA_ZH, ZETA_EN, COMPANIES["9102"][0], THEME_ZH, THEME_EN, CANDIDATE_LABEL):
         assert name not in out
     assert "http" not in out

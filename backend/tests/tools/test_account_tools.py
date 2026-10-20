@@ -247,7 +247,8 @@ async def test_watchlists_empty() -> None:
     assert out.total_items == 0
     # An empty list is stated as a normal state (starter lists are made when the page is first
     # opened), never left for the model to read as a failure.
-    assert out.note is not None and "No watchlists yet" in out.note
+    assert out.note is not None
+    assert "No watchlists yet" in out.note
     assert "not an error" in out.note
 
 
@@ -278,7 +279,8 @@ async def test_include_quotes_joins_the_existing_quote_tool() -> None:
         GetMyWatchlistsInput(include_quotes=True), ALICE
     )
     assert isinstance(out, GetMyWatchlistsOutput)
-    assert out.quotes_included and not out.quotes_truncated
+    assert out.quotes_included
+    assert not out.quotes_truncated
     by_symbol = {e.symbol: e for g in out.groups for e in g.items}
     assert by_symbol["2330"].close == 100.0
     assert by_symbol["2330"].change_pct == 1.5
@@ -337,11 +339,13 @@ async def test_automations_happy_path_and_empty() -> None:
     )["get_my_automations"].run(GetMyAutomationsInput(), ALICE)
     assert isinstance(full, GetMyAutomationsOutput)
     assert full.alerts[0].condition == "收盤價高於 1000"
-    assert full.strategy_watch is not None and full.strategy_watch.enabled
+    assert full.strategy_watch is not None
+    assert full.strategy_watch.enabled
 
     empty = await _tools(FakeReader())["get_my_automations"].run(GetMyAutomationsInput(), ALICE)
     assert isinstance(empty, GetMyAutomationsOutput)
-    assert empty.alerts == () and empty.schedules == ()
+    assert empty.alerts == ()
+    assert empty.schedules == ()
     assert empty.strategy_watch is None
     assert empty.alert_count == 0
 
@@ -360,7 +364,8 @@ async def test_usage_reports_quota_for_the_context_tier_and_optional_llm_summary
     assert isinstance(out, GetMyUsageOutput)
     assert out.tier is Tier.FREE
     assert out.chat.remaining_today == 1
-    assert out.llm_today is not None and out.llm_today.calls == 4
+    assert out.llm_today is not None
+    assert out.llm_today.calls == 4
     assert reader.calls == [{"tier": Tier.FREE, "include_llm": True}]
 
 
@@ -395,4 +400,5 @@ async def test_notifications_empty() -> None:
         GetMyNotificationsInput(unread_only=True), ALICE
     )
     assert isinstance(out, GetMyNotificationsOutput)
-    assert out.notifications == () and out.count == 0
+    assert out.notifications == ()
+    assert out.count == 0

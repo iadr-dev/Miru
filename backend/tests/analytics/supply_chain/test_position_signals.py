@@ -91,7 +91,8 @@ def test_propagation_converges_well_inside_the_cap_on_a_small_chain() -> None:
 
 def test_propagation_leaves_unreachable_nodes_unknown() -> None:
     scores, _ = propagate([("a", "b"), ("x", "y")], {"a": 0.0})
-    assert "x" not in scores and "y" not in scores
+    assert "x" not in scores
+    assert "y" not in scores
     assert scores["b"] == 0.25
 
 

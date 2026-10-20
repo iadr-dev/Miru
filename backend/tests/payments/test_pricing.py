@@ -61,10 +61,13 @@ async def test_base_price_is_shown_without_a_country() -> None:
 async def test_a_country_override_wins_where_one_exists() -> None:
     out = await priced_plans(_PLANS, _Lookup(), country="tw")
     monthly, annual = out
-    assert monthly.price and (monthly.price.amount, monthly.price.currency_code) == ("29900", "TWD")
-    assert annual.price and annual.price.currency_code == "USD"  # no TW override on this one
+    assert monthly.price
+    assert (monthly.price.amount, monthly.price.currency_code) == ("29900", "TWD")
+    assert annual.price
+    assert annual.price.currency_code == "USD"
     other = await priced_plans(_PLANS, _Lookup(), country="JP")
-    assert other[0].price and other[0].price.currency_code == "USD"
+    assert other[0].price
+    assert other[0].price.currency_code == "USD"
 
 
 async def test_prices_are_cached_across_requests_and_countries() -> None:

@@ -57,7 +57,8 @@ async def test_replace_writes_and_reads_back_primary_first(
         rows = await store.get_positions_for_symbol("9001")
     assert [(r.chain_key, r.is_primary) for r in rows] == [("a", True), ("b", False)]
     first = rows[0]
-    assert first.computed_at is not None and first.computed_at.replace(tzinfo=UTC) == NOW
+    assert first.computed_at is not None
+    assert first.computed_at.replace(tzinfo=UTC) == NOW
     assert first.reasons == (Reason(code=ReasonCode.GRAPH_LAYERING, detail="d"),)
     assert (first.method, first.confidence, first.inputs_hash) == (Method.EVIDENCE, 0.7, "abc")
 

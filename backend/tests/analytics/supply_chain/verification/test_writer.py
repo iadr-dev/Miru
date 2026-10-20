@@ -69,7 +69,8 @@ def test_creates_a_supplier_file_the_loader_accepts(tmp_path: Path) -> None:
     assert relation.grade is Grade.MEDIUM or relation.grade is Grade.LOW
     assert relation.evidence[0].checker.value == "llm"
     assert relation.last_verified_at is not None
-    assert not list(tmp_path.glob(".*tmp*")) and not (tmp_path / LOCK_NAME).exists()
+    assert not list(tmp_path.glob(".*tmp*"))
+    assert not (tmp_path / LOCK_NAME).exists()
 
 
 def test_upsert_merges_evidence_by_url_and_moves_dates_forward(tmp_path: Path) -> None:
@@ -95,7 +96,8 @@ def test_an_identical_result_changes_nothing(tmp_path: Path) -> None:
     writer(tmp_path).apply([result()])
     before = (tmp_path / "TW-9001.yaml").read_bytes()
     report = writer(tmp_path).apply([result()])
-    assert report.unchanged == 1 and report.rows_written == 0
+    assert report.unchanged == 1
+    assert report.rows_written == 0
     assert (tmp_path / "TW-9001.yaml").read_bytes() == before
 
 
@@ -110,7 +112,8 @@ def test_manual_and_seeded_rows_are_never_touched(tmp_path: Path, origin: str) -
     path = tmp_path / "TW-9001.yaml"
     path.write_text(existing, encoding="utf-8")
     report = writer(tmp_path).apply([result()])
-    assert report.protected == 1 and report.rows_written == 0
+    assert report.protected == 1
+    assert report.rows_written == 0
     assert path.read_text(encoding="utf-8") == existing
 
 
@@ -140,7 +143,8 @@ def test_a_row_found_in_another_file_is_updated_there(tmp_path: Path) -> None:
 
 def test_dry_run_writes_nothing_but_reports(tmp_path: Path) -> None:
     report = writer(tmp_path, dry_run=True).apply([result()])
-    assert report.dry_run and report.created == 1
+    assert report.dry_run
+    assert report.created == 1
     assert list(tmp_path.iterdir()) == []
 
 
@@ -158,7 +162,8 @@ def test_an_invalid_row_rolls_back_every_file(tmp_path: Path) -> None:
     with pytest.raises(WriterError):
         writer(tmp_path).apply([good_new, bad])
     assert {p.name: p.read_bytes() for p in tmp_path.glob("*.yaml")} == before
-    assert not list(tmp_path.glob(".*tmp*")) and not (tmp_path / LOCK_NAME).exists()
+    assert not list(tmp_path.glob(".*tmp*"))
+    assert not (tmp_path / LOCK_NAME).exists()
 
 
 def test_a_failure_while_swapping_restores_files_already_swapped(

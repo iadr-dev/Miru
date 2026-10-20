@@ -111,8 +111,11 @@ async def test_get_cached_trend_score_scoped_as_of(session_factory: async_sessio
     async with session_factory() as session:
         latest = await get_cached_trend_score(session, symbol="2330", market=Market.TW)
         scoped = await get_cached_trend_score(session, symbol="2330", market=Market.TW, as_of=day1)
-    assert latest is not None and latest.as_of == day2
-    assert scoped is not None and scoped.as_of == day1 and scoped.composite == pytest.approx(40.0)
+    assert latest is not None
+    assert latest.as_of == day2
+    assert scoped is not None
+    assert scoped.as_of == day1
+    assert scoped.composite == pytest.approx(40.0)
 
 
 async def test_get_cached_trend_score_returns_none_when_absent(

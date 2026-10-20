@@ -65,7 +65,8 @@ async def test_two_independent_secondary_sources_grade_high() -> None:
     outcome = await p.verify_target(target())
     assert outcome.kind is OutcomeKind.VERIFIED
     [result] = outcome.results
-    assert result.grade is Grade.HIGH and result.status is Status.VERIFIED
+    assert result.grade is Grade.HIGH
+    assert result.status is Status.VERIFIED
     assert {e.publisher for e in result.evidence} == {"wire-a.test", "wire-b.test"}
     assert str(result.as_of) == "2026-09-01"
 
@@ -94,13 +95,15 @@ async def test_pages_that_fail_the_guards_make_a_rejected_claim() -> None:
     outcome = await p.verify_target(target())
     assert outcome.kind is OutcomeKind.REJECTED
     assert outcome.reason in {"not_current", "excerpt_not_in_page"}
-    assert p.reasons["not_current"] == 1 and p.reasons["excerpt_not_in_page"] == 1
+    assert p.reasons["not_current"] == 1
+    assert p.reasons["excerpt_not_in_page"] == 1
 
 
 async def test_no_hits_is_rejected_and_a_down_provider_is_skipped() -> None:
     assert (await pipeline(StubSearch([]), llm()).verify_target(target())).reason == "no_sources"
     outcome = await pipeline(StubSearch(None), llm()).verify_target(target())
-    assert outcome.kind is OutcomeKind.SKIPPED and outcome.reason == "search_unavailable"
+    assert outcome.kind is OutcomeKind.SKIPPED
+    assert outcome.reason == "search_unavailable"
 
 
 async def test_rejected_publishers_are_never_fetched_and_tiers_are_preferred() -> None:
@@ -129,8 +132,10 @@ async def test_pages_per_claim_is_a_cap() -> None:
 
 async def test_queries_use_both_languages() -> None:
     queries = queries_for(target())
-    assert "阿爾法零件" in queries[0] and "貝塔裝置" in queries[0]
-    assert "Alpha Parts Co., Ltd." in queries[1] and "Beta Devices Inc." in queries[1]
+    assert "阿爾法零件" in queries[0]
+    assert "貝塔裝置" in queries[0]
+    assert "Alpha Parts Co., Ltd." in queries[1]
+    assert "Beta Devices Inc." in queries[1]
     gap = target().model_copy(update={"customer": None})
     assert "主要客戶" in queries_for(gap)[0]
 
@@ -139,14 +144,16 @@ async def test_search_budget_stops_the_search() -> None:
     search = StubSearch([hit("https://a.example.net/p")], {})
     budget = Budget(Limits(max_searches=1))
     hits = await find_hits(search, target(), budget, pages_per_claim=3)
-    assert hits is not None and len(search.queries) == 1
+    assert hits is not None
+    assert len(search.queries) == 1
     assert budget.stopped_by == "searches"
 
 
 async def test_page_budget_ends_the_claim_as_skipped() -> None:
     p = pipeline(pages("a.example.net"), llm(judgement_json()), limits=Limits(max_pages=0))
     outcome = await p.verify_target(target())
-    assert outcome.kind is OutcomeKind.SKIPPED and p.budget.stopped_by == "pages"
+    assert outcome.kind is OutcomeKind.SKIPPED
+    assert p.budget.stopped_by == "pages"
 
 
 async def test_second_opinion_disagreement_downgrades_to_candidate() -> None:
@@ -193,10 +200,12 @@ async def test_run_writes_verified_claims_and_logs_rejections(tmp_path: Path) ->
         dry_run=False,
     )
     assert (summary.claims_tried, summary.verified, summary.rejected) == (2, 1, 1)
-    assert summary.rows_written == 1 and summary.stopped_by is None
+    assert summary.rows_written == 1
+    assert summary.stopped_by is None
     assert summary.outcomes == {ok.claim_id: "verified", bad.claim_id: "rejected"}
     [row] = yaml.safe_load((relations / "TW-9001.yaml").read_text(encoding="utf-8"))
-    assert row["origin"] == "research" and row["evidence"][0]["checker"] == "llm"
+    assert row["origin"] == "research"
+    assert row["evidence"][0]["checker"] == "llm"
     logged = [
         json.loads(x) for x in rejected_path(tmp_path).read_text(encoding="utf-8").splitlines()
     ]
@@ -218,7 +227,9 @@ async def test_dry_run_writes_and_logs_nothing(tmp_path: Path) -> None:
         today=TODAY,
         dry_run=True,
     )
-    assert summary.verified == 1 and summary.rows_written == 1 and summary.dry_run
+    assert summary.verified == 1
+    assert summary.rows_written == 1
+    assert summary.dry_run
     assert not (tmp_path / "supply_chain").exists()
 
 
@@ -233,7 +244,8 @@ async def test_claim_cap_stops_the_run_gracefully() -> None:
     summary = await run_pipeline(
         targets, p, writer=None, rejected_file=None, today=TODAY, dry_run=True
     )
-    assert summary.claims_tried == 2 and summary.stopped_by == "claims"
+    assert summary.claims_tried == 2
+    assert summary.stopped_by == "claims"
 
 
 async def test_spend_cap_stops_the_run_and_is_reported() -> None:
@@ -255,7 +267,8 @@ async def test_llm_cap_stops_the_run() -> None:
     summary = await run_pipeline(
         targets, p, writer=None, rejected_file=None, today=TODAY, dry_run=True
     )
-    assert summary.stopped_by == "llm_calls" and summary.llm_calls == 1
+    assert summary.stopped_by == "llm_calls"
+    assert summary.llm_calls == 1
 
 
 async def test_budget_skipped_claims_are_not_logged_as_rejected(tmp_path: Path) -> None:
@@ -269,7 +282,8 @@ async def test_budget_skipped_claims_are_not_logged_as_rejected(tmp_path: Path) 
         today=TODAY,
         dry_run=False,
     )
-    assert summary.skipped == 1 and summary.rejected == 0
+    assert summary.skipped == 1
+    assert summary.rejected == 0
     assert not rejected_path(tmp_path).exists()
 
 

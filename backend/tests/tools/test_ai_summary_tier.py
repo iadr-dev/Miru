@@ -28,4 +28,5 @@ async def test_free_gets_the_locked_teaser_not_an_error() -> None:
         _tool(), GetStockSummaryInput(id="2330", market="TW"), ToolContext(tier=Tier.FREE)
     )
     assert isinstance(result, MaskedTeaser)
-    assert result.locked is True and result.required_tier is Tier.PREMIUM
+    assert result.locked is True
+    assert result.required_tier is Tier.PREMIUM

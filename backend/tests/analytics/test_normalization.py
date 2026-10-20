@@ -47,7 +47,8 @@ def test_zscore_penalty_direction_flips_sign() -> None:
     universe = [1.0, 2.0, 3.0, 4.0, 5.0]
     high = zscore(5.0, universe, higher_is_better=True)
     penalty = zscore(5.0, universe, higher_is_better=False)
-    assert high is not None and penalty is not None
+    assert high is not None
+    assert penalty is not None
     assert penalty == pytest.approx(-high)
 
 

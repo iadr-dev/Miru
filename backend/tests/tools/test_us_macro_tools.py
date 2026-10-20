@@ -409,7 +409,8 @@ def test_a_release_lists_every_catalog_series_it_covers_with_latest_and_previous
     assert covered == {"PAYEMS", "UNRATE"}
     payems = next(s for s in employment[0].series if s.series_id == "PAYEMS")
     assert payems.units is MacroUnits.CHANGE  # the default transform
-    assert payems.latest is not None and payems.previous is not None
+    assert payems.latest is not None
+    assert payems.previous is not None
     assert payems.change == pytest.approx(payems.latest.value - payems.previous.value)
     assert payems.last_observation_date == date(2026, 10, 1)
 

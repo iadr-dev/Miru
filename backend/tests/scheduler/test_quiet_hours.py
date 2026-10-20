@@ -240,7 +240,8 @@ async def test_a_suppressed_email_address_is_never_a_recipient(session_factory) 
         store = SqlAlchemySchedulerStore(session)
         worker = _worker(session_factory)
         loaded = await worker._load_user(session, user)
-        assert loaded is not None and loaded.email
+        assert loaded is not None
+        assert loaded.email
         before = await worker._recipient_for(store, loaded)
         assert before.email_address == loaded.email
         await store.suppress_email(address=loaded.email.upper(), reason="bounced")

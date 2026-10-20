@@ -291,11 +291,13 @@ def test_monthly_seasonality_removes_growth_and_finds_peak_and_trough() -> None:
 
     periods, summary, reason = monthly_seasonality(rows, years=5)
 
-    assert reason is None and summary is not None
+    assert reason is None
+    assert summary is not None
     assert summary.years_covered == 3
     assert summary.peak_periods[0] == "12月"
     assert set(summary.trough_periods) >= {"1月", "2月"}
-    assert summary.peak_quarter == 4 and summary.trough_quarter == 1
+    assert summary.peak_quarter == 4
+    assert summary.trough_quarter == 1
     assert len(periods) == 12
     assert sum(p.deviation_pct for p in periods) == pytest.approx(0.0, abs=0.1)
     assert summary.spread_pct == pytest.approx((180 - 80) / 80 * 100, rel=0.02)
@@ -306,8 +308,10 @@ def test_seasonality_needs_two_complete_years_and_says_why() -> None:
 
     periods, summary, reason = monthly_seasonality(rows, years=5)
 
-    assert periods == [] and summary is None
-    assert reason is not None and "1 年" in reason
+    assert periods == []
+    assert summary is None
+    assert reason is not None
+    assert "1 年" in reason
 
 
 def test_quarterly_seasonality_reports_too_little_history_instead_of_guessing() -> None:
@@ -321,8 +325,10 @@ def test_quarterly_seasonality_reports_too_little_history_instead_of_guessing() 
 
     periods, summary, reason = quarterly_seasonality(income, years=5)
 
-    assert summary is None and periods == []
-    assert reason is not None and "完整年度" in reason
+    assert summary is None
+    assert periods == []
+    assert reason is not None
+    assert "完整年度" in reason
 
 
 def test_quarterly_seasonality_with_two_complete_years() -> None:
@@ -333,8 +339,10 @@ def test_quarterly_seasonality_with_two_complete_years() -> None:
 
     periods, summary, reason = quarterly_seasonality(income, years=5)
 
-    assert reason is None and summary is not None
-    assert summary.peak_quarter == 4 and summary.trough_quarter == 2
+    assert reason is None
+    assert summary is not None
+    assert summary.peak_quarter == 4
+    assert summary.trough_quarter == 2
     assert [p.label for p in periods] == ["Q1", "Q2", "Q3", "Q4"]
 
 

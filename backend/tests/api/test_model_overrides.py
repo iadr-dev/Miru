@@ -115,7 +115,8 @@ def test_a_non_byok_pick_is_ignored_not_refused_or_stored(
     for pick in (OPUS, "not-a-model", "nope/nothing"):
         assert _chat(client, headers, pick).status_code == 200  # no 403, no 422
     threads = client.get("/api/v1/threads", headers=headers).json()["threads"]
-    assert threads and all(t["model_override"] is None for t in threads)
+    assert threads
+    assert all(t["model_override"] is None for t in threads)
 
 
 def test_a_byok_pick_must_be_provider_slash_model(

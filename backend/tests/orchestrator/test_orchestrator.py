@@ -500,7 +500,8 @@ async def test_subagent_lane_isolation_on_one_lane_exception(
     assert result.provenance.contributing_skills == ("chip-flow-review",)
     assert "company-profile" in result.provenance.missing_skills
     errored = [lane for lane in result.lanes if lane.skill == "company-profile"]
-    assert errored and errored[0].status == "error"
+    assert errored
+    assert errored[0].status == "error"
     # the raised exception's own message ("lane provider exploded") must never reach
     # `LaneResult.reason` — that field flows straight into the synthesis prompt
     # (`Synthesizer._render_missing`) and from there into what the user reads; only the
@@ -536,7 +537,8 @@ async def test_subagent_corrective_retry_then_drop_on_empty_lane(
     result = await orch.run("analyze 2330", tool_context=ToolContext())
 
     dropped = [lane for lane in result.lanes if lane.skill == "company-profile"]
-    assert dropped and dropped[0].status == "dropped"
+    assert dropped
+    assert dropped[0].status == "dropped"
     assert "retry" in (dropped[0].reason or "")
 
 
@@ -601,7 +603,8 @@ async def test_subagent_quota_degrades_lane_before_spawn(
     result = await orch.run("analyze 2330", tool_context=ToolContext())
 
     degraded = [lane for lane in result.lanes if lane.skill == "company-profile"]
-    assert degraded and degraded[0].status == "unavailable_tier"
+    assert degraded
+    assert degraded[0].status == "unavailable_tier"
 
 
 async def test_real_finmind_reserver_degrades_via_run(

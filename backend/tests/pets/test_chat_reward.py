@@ -45,7 +45,8 @@ async def test_a_chat_without_a_pet_earns_nothing_for_a_pet(db_session) -> None:
     user_id = await make_user(db_session)
     store = SqlAlchemyPetStore(db_session)
     reward = await store.grant_chat_xp(user_id=user_id)
-    assert reward.pet_id is None and reward.leveled_to is None
+    assert reward.pet_id is None
+    assert reward.leveled_to is None
 
 
 async def test_the_tone_hint_is_off_until_the_user_opts_in(db_session) -> None:
@@ -64,7 +65,9 @@ async def test_a_new_login_day_feeds_the_equipped_pet_once(db_session) -> None:
     await store.pull(user_id=user_id)
     await store.register_login(user_id=user_id, today=date(2026, 10, 1))
     pet = await store.active_pet(user_id=user_id)
-    assert pet is not None and pet.xp == config.XP_PER_STREAK_DAY
+    assert pet is not None
+    assert pet.xp == config.XP_PER_STREAK_DAY
     await store.register_login(user_id=user_id, today=date(2026, 10, 1))  # same day: nothing more
     pet = await store.active_pet(user_id=user_id)
-    assert pet is not None and pet.xp == config.XP_PER_STREAK_DAY
+    assert pet is not None
+    assert pet.xp == config.XP_PER_STREAK_DAY

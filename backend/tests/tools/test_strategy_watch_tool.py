@@ -83,12 +83,14 @@ async def test_items_carry_the_latest_check_the_first_alert_and_the_close(tmp_pa
     )
     assert out.data_available is True
     assert out.last_slot == "10:00"
-    assert out.counts["volatility_squeeze"] == 1 and out.counts["momentum_flag"] == 0
+    assert out.counts["volatility_squeeze"] == 1
+    assert out.counts["momentum_flag"] == 0
     tsmc = next(i for i in out.items if i.symbol == "2330")
     assert (tsmc.latest_slot, tsmc.alerted_at, tsmc.close_confirmed) == ("10:00", "09:50", True)
     assert tsmc.conditions[0].observed == 872.0
     auo = next(i for i in out.items if i.symbol == "2409")
-    assert auo.latest_slot is None and auo.large_holder_pct == 51.7
+    assert auo.latest_slot is None
+    assert auo.large_holder_pct == 51.7
     assert [(e.slot, e.kind) for e in out.events] == [("09:50", "intraday"), ("close", "close")]
     # One entry per intraday check that ran; the close confirmation is not a slot.
     assert [(x.slot, x.checked, x.all_met, x.alertable) for x in out.slots] == [
@@ -105,7 +107,8 @@ async def test_an_unentitled_caller_gets_sponsor_values_masked(tmp_path: Path) -
     assert out.masked is True
     tsmc = next(i for i in out.items if i.symbol == "2330")
     assert tsmc.conditions[0].met is True
-    assert tsmc.conditions[0].observed is None and tsmc.price is None
+    assert tsmc.conditions[0].observed is None
+    assert tsmc.price is None
     # A threshold can be an intraday value too (the open, the day's average price).
     assert tsmc.conditions[0].required is None
     assert next(i for i in out.items if i.symbol == "2409").large_holder_pct is None

@@ -111,9 +111,11 @@ async def test_watchlists_return_only_the_acting_users_groups(session_factory) -
 
     assert [g.name for g in snapshot.groups] == ["半導體"]
     assert [i.symbol for i in snapshot.groups[0].items] == ["2330", "2454"]
-    assert snapshot.total_items == 2 and not snapshot.truncated
+    assert snapshot.total_items == 2
+    assert not snapshot.truncated
     flat = snapshot.model_dump_json()
-    assert "Bob private" not in flat and "9999" not in flat
+    assert "Bob private" not in flat
+    assert "9999" not in flat
 
 
 async def test_watchlists_are_capped_and_filtered_by_market(session_factory) -> None:
@@ -129,7 +131,8 @@ async def test_watchlists_are_capped_and_filtered_by_market(session_factory) -> 
     reader = _reader(session_factory)
 
     capped = await reader.watchlists(user_id=alice, market=None, max_items=10)
-    assert capped.truncated and capped.total_items == 31
+    assert capped.truncated
+    assert capped.total_items == 31
     assert sum(len(g.items) for g in capped.groups) == 10
     assert {g.name: g.item_count for g in capped.groups} == {"big": 30, "us": 1}
 
@@ -145,8 +148,10 @@ async def test_a_user_with_nothing_gets_empty_results_not_someone_elses(session_
 
     assert (await reader.watchlists(user_id=alice, market=None, max_items=200)).groups == ()
     automations = await reader.automations(user_id=alice, max_alerts=100, max_schedules=50)
-    assert automations.alerts == () and automations.schedules == ()
-    assert automations.strategy_watch is None and automations.alert_count == 0
+    assert automations.alerts == ()
+    assert automations.schedules == ()
+    assert automations.strategy_watch is None
+    assert automations.alert_count == 0
     assert await reader.notifications(user_id=alice, limit=20, unread_only=False) == []
 
 
@@ -216,17 +221,21 @@ async def test_automations_describe_alerts_schedules_and_strategy_watch(session_
     assert by_target["2330 TW"].status == "active"
     assert by_target["2330 TW"].last_triggered is not None
     assert by_target["2317 TW"].status == "expired"
-    assert out.schedule_count == 1 and out.schedules[0].briefing == "daily-context-brief"
+    assert out.schedule_count == 1
+    assert out.schedules[0].briefing == "daily-context-brief"
     assert out.schedules[0].status == "active"
     assert out.strategy_watch is not None
     assert out.strategy_watch.strategies == ("波動率擠壓",)
     assert out.strategy_watch.scope == "watchlist group '我的群組'"
     assert out.strategy_watch.daily_limit == 5
     dumped = out.model_dump_json()
-    assert "BOBSTOCK" not in dumped and "77777" not in dumped and "bob-only-skill" not in dumped
+    assert "BOBSTOCK" not in dumped
+    assert "77777" not in dumped
+    assert "bob-only-skill" not in dumped
 
     capped = await reader.automations(user_id=alice, max_alerts=1, max_schedules=50)
-    assert len(capped.alerts) == 1 and capped.alert_count == 2
+    assert len(capped.alerts) == 1
+    assert capped.alert_count == 2
 
 
 async def test_a_paused_alert_reports_why(session_factory) -> None:
@@ -269,11 +278,14 @@ async def test_usage_reports_the_tier_limit_and_todays_count(session_factory) ->
     assert chat.unlimited_because is None
 
     unlimited = (await reader.usage(user_id=pro, tier=Tier.PRO, include_llm=False)).chat
-    assert unlimited.limit_per_day is None and unlimited.remaining_today is None
-    assert unlimited.unlimited_because == "tier" and unlimited.used_today == 0
+    assert unlimited.limit_per_day is None
+    assert unlimited.remaining_today is None
+    assert unlimited.unlimited_because == "tier"
+    assert unlimited.used_today == 0
 
     snapshot = await reader.usage(user_id=free, tier=Tier.FREE, include_llm=True)
-    assert snapshot.llm_today is not None and snapshot.llm_today.calls == 0
+    assert snapshot.llm_today is not None
+    assert snapshot.llm_today.calls == 0
     assert (await reader.usage(user_id=free, tier=Tier.FREE, include_llm=False)).llm_today is None
 
 
@@ -315,7 +327,8 @@ async def test_notifications_are_the_users_own_newest_first_and_only_display_fie
     assert all(len(r.body) <= MAX_NOTIFICATION_BODY for r in rows)
     assert all(not r.read for r in rows)
     dumped = " ".join(r.model_dump_json() for r in rows)
-    assert "bob" not in dumped and "/secret/path" not in dumped
+    assert "bob" not in dumped
+    assert "/secret/path" not in dumped
     assert rows[0].delivered_at >= rows[1].delivered_at
 
 
@@ -379,7 +392,8 @@ async def test_through_the_tools_a_forged_user_argument_never_reaches_another_ac
         ("get_my_notifications", GetMyNotificationsInput()),
     ):
         out = await dispatch_tool(tools[name], args, ctx)
-        assert isinstance(out, BaseModel) and "bob" not in out.model_dump_json()
+        assert isinstance(out, BaseModel)
+        assert "bob" not in out.model_dump_json()
 
 
 async def test_reading_watchlists_never_seeds_the_starter_presets(session_factory) -> None:
@@ -389,6 +403,7 @@ async def test_reading_watchlists_never_seeds_the_starter_presets(session_factor
 
     snapshot = await reader.watchlists(user_id=alice, market=None, max_items=200)
 
-    assert snapshot.groups == () and snapshot.total_items == 0
+    assert snapshot.groups == ()
+    assert snapshot.total_items == 0
     async with session_factory() as session:
         assert await WatchlistStore(session).list_groups(alice) == []

@@ -297,7 +297,8 @@ async def test_the_poll_loop_renews_demand_and_survives_a_failed_renewal() -> No
             await asyncio.sleep(0.01)
 
         assert registry.refreshes >= 3  # renewed on the loop's own cadence, failing or not
-        assert poller._loop_task is not None and not poller._loop_task.done()
+        assert poller._loop_task is not None
+        assert not poller._loop_task.done()
         await poller.aclose()
 
 

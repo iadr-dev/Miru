@@ -218,8 +218,10 @@ async def test_two_distinct_presets_render_distinguishable_prompts(
     steady_prompt = _system_prompt(steady_client)
     coach_prompt = _system_prompt(coach_client)
     assert steady_prompt != coach_prompt
-    assert _STEADY_MARKER in steady_prompt and _STEADY_MARKER not in coach_prompt
-    assert _COACH_MARKER in coach_prompt and _COACH_MARKER not in steady_prompt
+    assert _STEADY_MARKER in steady_prompt
+    assert _STEADY_MARKER not in coach_prompt
+    assert _COACH_MARKER in coach_prompt
+    assert _COACH_MARKER not in steady_prompt
 
 
 async def test_pet_hint_reaches_the_prompt_after_the_personality_and_only_when_given(

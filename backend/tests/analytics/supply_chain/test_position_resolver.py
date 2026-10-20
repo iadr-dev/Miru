@@ -147,7 +147,8 @@ def test_exactly_one_primary_per_symbol_highest_confidence_first() -> None:
     weak = _chain("aa", {"2": "mid"}, {"mid": (MID, CURATED)})
     rows = _by(resolve_positions([weak, strong], [("1", "2"), ("2", "3")]))
     # prior and graph agree in zz (higher confidence), so zz is the primary chain of symbol 2
-    assert rows[("2", "zz")].is_primary and not rows[("2", "aa")].is_primary
+    assert rows[("2", "zz")].is_primary
+    assert not rows[("2", "aa")].is_primary
 
 
 def test_primary_tie_goes_to_the_larger_chain_then_alphabetical() -> None:
@@ -155,12 +156,14 @@ def test_primary_tie_goes_to_the_larger_chain_then_alphabetical() -> None:
     small = _chain("aa", {"1": "s"}, tiers)
     big = _chain("bb", {"1": "s", "2": "s", "3": "s"}, tiers)
     rows = _by(resolve_positions([small, big], []))
-    assert rows[("1", "bb")].is_primary and not rows[("1", "aa")].is_primary
+    assert rows[("1", "bb")].is_primary
+    assert not rows[("1", "aa")].is_primary
 
     same_a = _chain("aa", {"1": "s"}, tiers)
     same_b = _chain("bb", {"1": "s"}, tiers)
     rows = _by(resolve_positions([same_b, same_a], []))
-    assert rows[("1", "aa")].is_primary and not rows[("1", "bb")].is_primary
+    assert rows[("1", "aa")].is_primary
+    assert not rows[("1", "bb")].is_primary
 
 
 def test_every_symbol_has_exactly_one_primary() -> None:

@@ -99,7 +99,8 @@ async def test_only_one_scheduler_process_holds_the_lease() -> None:
     try:
         assert await first.acquire() is True
         assert await second.acquire() is False  # a second scheduler stands by
-        assert first.is_leader() and not second.is_leader()
+        assert first.is_leader()
+        assert not second.is_leader()
         await first.release()
         assert await second.refresh() is True  # and takes over once the first is gone
     finally:

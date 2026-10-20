@@ -100,7 +100,8 @@ async def test_disabled_is_skipped_without_any_work(tmp_path: Path, reference: P
         judge_client=client,  # type: ignore[arg-type]
         root=reference,
     )
-    assert run.status is RunStatus.SKIPPED and "ENABLED" in run.detail
+    assert run.status is RunStatus.SKIPPED
+    assert "ENABLED" in run.detail
     assert search.queries == []
 
 
@@ -114,8 +115,10 @@ async def test_not_the_leader_is_skipped(tmp_path: Path, reference: Path) -> Non
         judge_client=client,  # type: ignore[arg-type]
         root=reference,
     )
-    assert run.status is RunStatus.SKIPPED and "leader" in run.detail
-    assert search.queries == [] and not (reference / "supply_chain" / "relations").exists()
+    assert run.status is RunStatus.SKIPPED
+    assert "leader" in run.detail
+    assert search.queries == []
+    assert not (reference / "supply_chain" / "relations").exists()
 
 
 async def test_missing_search_key_is_skipped(tmp_path: Path, reference: Path) -> None:
@@ -125,7 +128,8 @@ async def test_missing_search_key_is_skipped(tmp_path: Path, reference: Path) ->
         settings=settings(brave_search_api_key=None),
         root=reference,
     )
-    assert run.status is RunStatus.SKIPPED and "search key" in run.detail
+    assert run.status is RunStatus.SKIPPED
+    assert "search key" in run.detail
 
 
 async def test_missing_llm_role_is_skipped(
@@ -138,7 +142,8 @@ async def test_missing_llm_role_is_skipped(
     run = await run_research_job(
         TODAY, make_ctx(tmp_path, AlwaysLeader()), settings=settings(), root=reference
     )
-    assert run.status is RunStatus.SKIPPED and "LLM" in run.detail
+    assert run.status is RunStatus.SKIPPED
+    assert "LLM" in run.detail
 
 
 async def test_the_scheduled_entry_point_is_gated_by_the_setting(
@@ -148,7 +153,8 @@ async def test_the_scheduled_entry_point_is_gated_by_the_setting(
         job_module, "get_settings", lambda: settings(supply_chain_research_enabled=False)
     )
     run = await job_sc_research(TODAY, make_ctx(tmp_path, AlwaysLeader()))
-    assert run.dataset == SC_RESEARCH_DATASET and run.status is RunStatus.SKIPPED
+    assert run.dataset == SC_RESEARCH_DATASET
+    assert run.status is RunStatus.SKIPPED
 
 
 async def test_a_run_writes_the_file_and_reindexes_the_database(
@@ -164,13 +170,17 @@ async def test_a_run_writes_the_file_and_reindexes_the_database(
         root=reference,
         source="candidates",
     )
-    assert run.status is RunStatus.SUCCESS and run.rows_written == 1
-    assert "verified=1" in run.detail and "reindex=success" in run.detail
-    assert PAGE_TEXT not in run.detail and "阿爾法" not in run.detail
+    assert run.status is RunStatus.SUCCESS
+    assert run.rows_written == 1
+    assert "verified=1" in run.detail
+    assert "reindex=success" in run.detail
+    assert PAGE_TEXT not in run.detail
+    assert "阿爾法" not in run.detail
     [row] = yaml.safe_load(
         (reference / "supply_chain" / "relations" / "TW-9001.yaml").read_text(encoding="utf-8")
     )
-    assert row["origin"] == "research" and row["status"] == "verified"
+    assert row["origin"] == "research"
+    assert row["status"] == "verified"
     async with session_factory() as session:
         assert (await SqlAlchemySupplyChainStore(session).counts()).relations == 1
 
@@ -188,7 +198,8 @@ async def test_dry_run_writes_nothing_and_does_not_reindex(
         root=reference,
         dry_run=True,
     )
-    assert run.status is RunStatus.SUCCESS and "would_write=1" in run.detail
+    assert run.status is RunStatus.SUCCESS
+    assert "would_write=1" in run.detail
     assert not (reference / "supply_chain" / "relations").exists()
     assert not (reference / "supply_chain" / "rejected.jsonl").exists()
     async with session_factory() as session:
@@ -226,13 +237,15 @@ async def test_caps_from_settings_end_the_run_and_are_journaled(
         judge_client=client,  # type: ignore[arg-type]
         root=reference,
     )
-    assert run.status is RunStatus.SUCCESS and "stopped_by=searches" in run.detail
+    assert run.status is RunStatus.SUCCESS
+    assert "stopped_by=searches" in run.detail
     assert run.rows_written == 0
 
 
 def test_the_job_is_registered_weekly_and_off_by_default() -> None:
     [entry] = [j for j in SCHEDULED_JOBS if j.name == "sc_research"]
-    assert entry.cadence is Cadence.WEEKLY and entry.run is job_sc_research
+    assert entry.cadence is Cadence.WEEKLY
+    assert entry.run is job_sc_research
     assert Settings(finmind_api_key="t").supply_chain_research_enabled is False
 
 

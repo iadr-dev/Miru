@@ -85,31 +85,37 @@ async def test_the_job_writes_claims_and_proposals_but_never_touches_live_themes
     root = make_root(tmp_path)
     before = concept_snapshot(root)
     run = await run_job(tmp_path, root)
-    assert run.status is RunStatus.SUCCESS and run.dataset == SC_THEME_RESEARCH_DATASET  # type: ignore[attr-defined]
+    assert run.status is RunStatus.SUCCESS
+    assert run.dataset == SC_THEME_RESEARCH_DATASET
     assert "research: targets=2 claims=2" in run.detail  # type: ignore[attr-defined]
     assert "verify: groups=2 verified=2" in run.detail  # type: ignore[attr-defined]
     assert run.rows_written == 3  # type: ignore[attr-defined]
     assert len(read_claims(claims_path(root))) == 2
     [row] = yaml.safe_load(proposal_paths(root, TODAY).members.read_text(encoding="utf-8"))
-    assert row["theme_key"] == THEME_KEY and row["position"] == "upstream"
+    assert row["theme_key"] == THEME_KEY
+    assert row["position"] == "upstream"
     assert not proposal_paths(root, TODAY).new_themes.exists()
     assert concept_snapshot(root) == before
     assert not (root / "themes" / "promote_log.jsonl").exists()
     assert not (root / "themes" / "_backups").exists()
-    assert ZETA not in run.detail and PAGE not in run.detail  # type: ignore[attr-defined]
+    assert ZETA not in run.detail
+    assert PAGE not in run.detail
 
 
 async def test_flag_off_is_skipped_without_any_work(tmp_path: Path) -> None:
     root = make_root(tmp_path)
     run = await run_job(tmp_path, root, cfg=settings(supply_chain_research_enabled=False))
-    assert run.status is RunStatus.SKIPPED and "ENABLED" in run.detail  # type: ignore[attr-defined]
-    assert not claims_path(root).exists() and not state_path(root).exists()
+    assert run.status is RunStatus.SKIPPED
+    assert "ENABLED" in run.detail
+    assert not claims_path(root).exists()
+    assert not state_path(root).exists()
 
 
 async def test_not_the_leader_is_skipped_without_any_work(tmp_path: Path) -> None:
     root = make_root(tmp_path)
     run = await run_job(tmp_path, root, leader=NeverLeader())
-    assert run.status is RunStatus.SKIPPED and "leader" in run.detail  # type: ignore[attr-defined]
+    assert run.status is RunStatus.SKIPPED
+    assert "leader" in run.detail
     assert not claims_path(root).exists()
 
 
@@ -121,14 +127,16 @@ async def test_missing_search_key_or_llm_role_is_skipped(
     run = await run_theme_research_job(
         TODAY, ctx, settings=settings(brave_search_api_key=None), root=root
     )
-    assert run.status is RunStatus.SKIPPED and "search key" in run.detail
+    assert run.status is RunStatus.SKIPPED
+    assert "search key" in run.detail
 
     def no_provider(*_a: object, **_k: object) -> object:
         raise ProviderNotConfiguredError("nope")
 
     monkeypatch.setattr(verification_job, "resolve_role_with_override", no_provider)
     run = await run_theme_research_job(TODAY, ctx, settings=settings(), root=root)
-    assert run.status is RunStatus.SKIPPED and "LLM" in run.detail
+    assert run.status is RunStatus.SKIPPED
+    assert "LLM" in run.detail
 
 
 async def test_the_scheduled_entry_point_is_gated_by_the_setting(
@@ -138,7 +146,8 @@ async def test_the_scheduled_entry_point_is_gated_by_the_setting(
         job_module, "get_settings", lambda: settings(supply_chain_research_enabled=False)
     )
     run = await job_sc_theme_research(TODAY, make_ctx(tmp_path, AlwaysLeader()))
-    assert run.dataset == SC_THEME_RESEARCH_DATASET and run.status is RunStatus.SKIPPED
+    assert run.dataset == SC_THEME_RESEARCH_DATASET
+    assert run.status is RunStatus.SKIPPED
 
 
 async def test_an_invalid_theme_file_fails_the_run_without_writing(tmp_path: Path) -> None:
@@ -165,7 +174,8 @@ async def test_commands_refuse_without_a_search_key(
     monkeypatch.setattr(job_module, "get_settings", lambda: settings(brave_search_api_key=None))
     code = await run_theme_command(command, limit=None, dry_run=False, source="all")
     captured = capsys.readouterr()
-    assert code == 1 and captured.out == ""
+    assert code == 1
+    assert captured.out == ""
     assert captured.err == f"cannot run {command}: no search key configured\n"
 
 
@@ -180,7 +190,9 @@ async def test_commands_refuse_without_an_llm_role(
     monkeypatch.setattr(verification_job, "resolve_role_with_override", no_provider)
     code = await run_theme_command(command, limit=None, dry_run=True, source="all")
     captured = capsys.readouterr()
-    assert code == 1 and "no LLM role configured" in captured.err and captured.out == ""
+    assert code == 1
+    assert "no LLM role configured" in captured.err
+    assert captured.out == ""
 
 
 async def test_verify_themes_needs_the_second_model_only_when_the_opinion_is_on(

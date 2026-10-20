@@ -60,7 +60,8 @@ def test_a_private_tool_is_not_listed_searched_or_executed() -> None:
         ok = await server.call_tool(
             "execute_tool", {"id": "fake_public_deferred", "args": {"value": 2}}
         )
-        assert not ok.is_error and ok.structured_content["doubled"] == 4
+        assert not ok.is_error
+        assert ok.structured_content["doubled"] == 4
 
     asyncio.run(run())
 
