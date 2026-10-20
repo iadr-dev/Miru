@@ -17,6 +17,9 @@ it also counts industry-chain overlap; otherwise it says so in one line and uses
 themes only. `promote FILE... [--dry-run] [--min-confidence medium|high]` turns reviewed
 proposal files into live concept-theme files (see `themes_io/promote.py`); an explicit
 operator step, never scheduled.
+`research-themes [--limit N] [--source candidates|existing|all] [--dry-run]` (Step B) and
+`verify-themes [--limit N] [--dry-run]` (Step C) turn web research into proposal files for
+`promote` to read after a person has reviewed them (see `theme_research/`); counts and ids only.
 """
 
 from __future__ import annotations
@@ -46,6 +49,7 @@ from analytics.supply_chain.theme_discovery.industry import (
     load_industry_roster,
 )
 from analytics.supply_chain.theme_discovery.job import run_themes_command
+from analytics.supply_chain.theme_research.job import run_theme_command
 from analytics.supply_chain.themes_io.loader import ConceptFileError, load_concept_themes
 from analytics.supply_chain.themes_io.promote import (
     IndustryRoster,
@@ -212,7 +216,18 @@ def _promote(files: list[Path], *, dry_run: bool, min_confidence: str) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m analytics.supply_chain")
     parser.add_argument(
-        "command", choices=["load", "stats", "positions", "eval", "discover", "verify", "promote"]
+        "command",
+        choices=[
+            "load",
+            "stats",
+            "positions",
+            "eval",
+            "discover",
+            "verify",
+            "promote",
+            "research-themes",
+            "verify-themes",
+        ],
     )
     parser.add_argument("files", nargs="*", type=Path, help="promote: proposal YAML files")
     parser.add_argument(
@@ -257,20 +272,32 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--source",
-        choices=["candidates", "gaps", "stale", "all"],
+        choices=["candidates", "gaps", "stale", "existing", "all"],
         default="all",
-        help="discover/verify: which claims to take",
+        help="discover/verify: which claims to take (candidates|gaps|stale|all); "
+        "research-themes: candidates|existing|all",
     )
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="verify: search and judge, write nothing; discover --themes: print, write nothing",
+        help="verify/research-themes/verify-themes: search and judge, write nothing; "
+        "discover --themes: print, write nothing",
     )
     args = parser.parse_args(argv)
     if args.files and args.command != "promote":
         parser.error("proposal files apply to the promote command only")
     if args.command == "promote":
         return _promote(args.files, dry_run=args.dry_run, min_confidence=args.min_confidence)
+    if args.command in ("research-themes", "verify-themes"):
+        if args.command == "research-themes" and args.source in ("gaps", "stale"):
+            parser.error("research-themes --source is one of candidates|existing|all")
+        return asyncio.run(
+            run_theme_command(
+                args.command, limit=args.limit, dry_run=args.dry_run, source=args.source
+            )
+        )
+    if args.source == "existing":
+        parser.error("--source existing applies to research-themes only")
     if args.themes:
         if args.command != "discover":
             parser.error("--themes applies to the discover command only")

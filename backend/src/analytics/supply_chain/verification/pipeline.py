@@ -200,7 +200,7 @@ class Pipeline:
     async def _finish(self, collected: _Collected) -> ClaimResult:
         """Grade the evidence; a weak single-source claim may get a second opinion."""
         grade = grade_from_evidence(collected.evidence) or Grade.LOW
-        status = _status_for(collected.evidence)
+        status = status_for(collected.evidence)
         if (
             status is Status.VERIFIED
             and self._cfg.second_opinion
@@ -272,14 +272,14 @@ class Pipeline:
             supplier=collected.supplier,
             customer=collected.customer,
             kind=collected.target.kind,
-            status=_status_for(collected.evidence),
+            status=status_for(collected.evidence),
             grade=grade,
             as_of=_as_of(collected.evidence, collected.years),
             evidence=tuple(collected.evidence),
         )
 
 
-def _status_for(evidence: Sequence[Evidence]) -> Status:
+def status_for(evidence: Sequence[Evidence]) -> Status:
     """Unattended research publishes only what a reliable source backs: a primary or secondary
     publisher, or two independent tertiary ones. Anything resting on a single tertiary source
     (including any unlisted host) is written as a candidate for a person or a second source."""
@@ -360,4 +360,5 @@ __all__ = [
     "Pipeline",
     "PipelineConfig",
     "run_pipeline",
+    "status_for",
 ]
