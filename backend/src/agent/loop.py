@@ -344,7 +344,7 @@ class AgentLoop:
             )
 
             if not response.tool_calls:
-                final_text = await self._finalize_output(
+                final_text = self._finalize_output(
                     response.text or "", journal=journal, step_index=step_index
                 )
                 steps.append(StepResult(step_index=step_index, response=response))
@@ -721,7 +721,7 @@ class AgentLoop:
             return None
         return _build_card(card_type, result)
 
-    async def _finalize_output(self, text: str, *, journal: Journal, step_index: int) -> str:
+    def _finalize_output(self, text: str, *, journal: Journal, step_index: int) -> str:
         """The mandatory `pre_output` hook — runs on every final answer with no
         config path to skip it."""
         text = strip_tldr(text)

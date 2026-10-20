@@ -586,12 +586,8 @@ class _Collector:
             return None
         return result.model_dump(mode="json")
 
-    def maybe(self, cond: bool, label: str, tool_name: str, args: Row) -> Awaitable[Row | None]:
-        return self.call(label, tool_name, args) if cond else _nothing()
-
-
-async def _nothing() -> Row | None:
-    return None
+    async def maybe(self, cond: bool, label: str, tool_name: str, args: Row) -> Row | None:
+        return await self.call(label, tool_name, args) if cond else None
 
 
 class GetMorningBriefTool(BaseTool):
