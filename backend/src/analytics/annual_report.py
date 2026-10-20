@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import date as date_
 from statistics import fmean
 
@@ -153,73 +154,93 @@ def build_tw_annual_rows(
     balance_q = _by_period(balance)
     cash_q = _by_period(cash_flow)
     by_year = _tw_year_income(income_q)
-
-    def prior_same_quarters(year: int, count: int, key: str) -> float | None:
-        if year - 1 not in by_year:
-            return None
-        total = 0.0
-        found = 0
-        for period_end in sorted(income_q):
-            if period_end.year != year - 1 or not _is_quarter_end(period_end):
-                continue
-            if found >= count:
-                break
-            if key in income_q[period_end]:
-                total += income_q[period_end][key]
-                found += 1
-        return total if found == count else None
-
-    rows: list[AnnualFundamentalsRow] = []
-    for year in sorted(by_year):
-        bucket = by_year[year]
-        quarters = int(bucket["quarters"])
-        complete = quarters == len(_QUARTER_END_MONTHS)
-        revenue = _f(bucket.get(_TW_REVENUE))
-        gross = _f(bucket.get(_TW_GROSS))
-        operating = _f(bucket.get(_TW_OPERATING))
-        net_income = _f(bucket.get(_TW_NET_INCOME_PARENT))
-
-        end_balance = _tw_year_end(balance_q, year)
-        prior_balance = _tw_year_end(balance_q, year - 1)
-        end_cash = _tw_year_end(cash_q, year)
-
-        equity_end = _f(end_balance.get(_TW_EQUITY_PARENT)) if end_balance else None
-        equity_prior = _f(prior_balance.get(_TW_EQUITY_PARENT)) if prior_balance else None
-        average_equity = (
-            (equity_end + equity_prior) / 2
-            if equity_end is not None and equity_prior is not None
-            else equity_end
-        )
-        ocf = _first(end_cash, _TW_OCF) if end_cash else None
-        capex = _f(end_cash.get(_TW_CAPEX)) if end_cash else None
-
-        rows.append(
-            AnnualFundamentalsRow(
-                year=year,
-                label=str(year) if complete else f"{year} 前{quarters}季",
-                complete=complete,
-                quarters=quarters,
-                revenue=revenue,
-                revenue_yoy_pct=_growth_pct(
-                    revenue, prior_same_quarters(year, quarters, _TW_REVENUE)
-                ),
-                gross_margin_pct=_pct(gross, revenue),
-                operating_margin_pct=_pct(operating, revenue),
-                net_income=net_income,
-                eps=_f(bucket.get(_TW_EPS)),
-                roe_pct=_pct(net_income, average_equity) if complete else None,
-                debt_ratio_pct=_pct(
-                    _f(end_balance.get(_TW_LIABILITIES)) if end_balance else None,
-                    _f(end_balance.get(_TW_ASSETS)) if end_balance else None,
-                ),
-                current_ratio=_ratio(
-                    _f(end_balance.get(_TW_CURRENT_ASSETS)) if end_balance else None,
-                    _f(end_balance.get(_TW_CURRENT_LIABILITIES)) if end_balance else None,
-                ),
-                free_cash_flow=(ocf + capex) if ocf is not None and capex is not None else None,
-            )
-        )
+    rows = [
+        _tw_row(year, by_year, income_q=income_q, balance_q=balance_q, cash_q=cash_q)
+        for year in sorted(by_year)
+    ]
     return rows[-years:]
+
+
+def _tw_prior_same_quarters(
+    income_q: Mapping[date_, Mapping[str, float]],
+    by_year: Mapping[int, object],
+    year: int,
+    count: int,
+    key: str,
+) -> float | None:
+    """`key` summed over the first `count` reported quarters of `year - 1`, or None when that year
+    is absent or has fewer than `count` quarters carrying the item."""
+    if year - 1 not in by_year:
+        return None
+    total = 0.0
+    found = 0
+    for period_end in sorted(income_q):
+        if period_end.year != year - 1 or not _is_quarter_end(period_end):
+            continue
+        if found >= count:
+            break
+        if key in income_q[period_end]:
+            total += income_q[period_end][key]
+            found += 1
+    return total if found == count else None
+
+
+def _item(items: Mapping[str, float] | None, key: str) -> float | None:
+    return _f(items.get(key)) if items else None
+
+
+def _average_equity(equity_end: float | None, equity_prior: float | None) -> float | None:
+    if equity_end is not None and equity_prior is not None:
+        return (equity_end + equity_prior) / 2
+    return equity_end
+
+
+def _tw_free_cash_flow(end_cash: Mapping[str, float] | None) -> float | None:
+    ocf = _first(end_cash, _TW_OCF) if end_cash else None
+    capex = _item(end_cash, _TW_CAPEX)
+    return (ocf + capex) if ocf is not None and capex is not None else None
+
+
+def _tw_row(
+    year: int,
+    by_year: Mapping[int, Mapping[str, float | int]],
+    *,
+    income_q: Mapping[date_, Mapping[str, float]],
+    balance_q: Mapping[date_, Mapping[str, float]],
+    cash_q: Mapping[date_, Mapping[str, float]],
+) -> AnnualFundamentalsRow:
+    bucket = by_year[year]
+    quarters = int(bucket["quarters"])
+    complete = quarters == len(_QUARTER_END_MONTHS)
+    revenue = _f(bucket.get(_TW_REVENUE))
+    net_income = _f(bucket.get(_TW_NET_INCOME_PARENT))
+
+    end_balance = _tw_year_end(balance_q, year)
+    prior_balance = _tw_year_end(balance_q, year - 1)
+    average_equity = _average_equity(
+        _item(end_balance, _TW_EQUITY_PARENT), _item(prior_balance, _TW_EQUITY_PARENT)
+    )
+
+    return AnnualFundamentalsRow(
+        year=year,
+        label=str(year) if complete else f"{year} 前{quarters}季",
+        complete=complete,
+        quarters=quarters,
+        revenue=revenue,
+        revenue_yoy_pct=_growth_pct(
+            revenue, _tw_prior_same_quarters(income_q, by_year, year, quarters, _TW_REVENUE)
+        ),
+        gross_margin_pct=_pct(_f(bucket.get(_TW_GROSS)), revenue),
+        operating_margin_pct=_pct(_f(bucket.get(_TW_OPERATING)), revenue),
+        net_income=net_income,
+        eps=_f(bucket.get(_TW_EPS)),
+        roe_pct=_pct(net_income, average_equity) if complete else None,
+        debt_ratio_pct=_pct(_item(end_balance, _TW_LIABILITIES), _item(end_balance, _TW_ASSETS)),
+        current_ratio=_ratio(
+            _item(end_balance, _TW_CURRENT_ASSETS), _item(end_balance, _TW_CURRENT_LIABILITIES)
+        ),
+        free_cash_flow=_tw_free_cash_flow(_tw_year_end(cash_q, year)),
+    )
 
 
 # ---- US --------------------------------------------------------------------------------------
@@ -378,56 +399,95 @@ def build_etf_annual_rows(
     for day in days:
         year_end[day.year] = adjusted[day]
 
-    def factor_on(day: date_) -> float:
-        eligible = [d for d in days if d <= day]
-        if not eligible or raw.get(eligible[-1], 0) <= 0:
-            return 1.0
-        return adjusted[eligible[-1]] / raw[eligible[-1]]
+    dividend_per_share, dividend_adjusted = _etf_dividends(events, days, raw, adjusted)
+    prices = _EtfPrices(days, adjusted, year_end)
+    rows = [
+        _etf_row(
+            year,
+            prices,
+            today=today,
+            per_share=dividend_per_share.get(year),
+            paid=dividend_adjusted.get(year),
+        )
+        for year in sorted(year_end)
+    ]
+    return rows[-years:]
 
-    dividend_per_share: dict[int, float] = defaultdict(float)
-    dividend_adjusted: dict[int, float] = defaultdict(float)
+
+def _etf_adjustment_factor(
+    day: date_, days: Sequence[date_], raw: Mapping[date_, float], adjusted: Mapping[date_, float]
+) -> float:
+    """Adjusted/raw price ratio on the last priced day on or before `day` (1.0 when there is none
+    or its raw price is not positive)."""
+    eligible = [d for d in days if d <= day]
+    if not eligible or raw.get(eligible[-1], 0) <= 0:
+        return 1.0
+    return adjusted[eligible[-1]] / raw[eligible[-1]]
+
+
+def _etf_dividends(
+    events: Sequence[DividendEvent],
+    days: Sequence[date_],
+    raw: Mapping[date_, float],
+    adjusted: Mapping[date_, float],
+) -> tuple[dict[int, float], dict[int, float]]:
+    """Cash dividends per ex-dividend year, as paid and on the adjusted share basis."""
+    per_share: dict[int, float] = defaultdict(float)
+    on_adjusted: dict[int, float] = defaultdict(float)
     for event in events:
         amount = event.cash_dividend or 0.0
         if amount <= 0:
             continue
         ex_date = event.cash_ex_dividend_date or event.announced_date
-        dividend_per_share[ex_date.year] += amount
-        dividend_adjusted[ex_date.year] += amount * factor_on(ex_date)
+        per_share[ex_date.year] += amount
+        on_adjusted[ex_date.year] += amount * _etf_adjustment_factor(ex_date, days, raw, adjusted)
+    return per_share, on_adjusted
 
-    first_year = days[0].year
-    rows: list[EtfAnnualRow] = []
-    for year in sorted(year_end):
-        prior_end = year_end.get(year - 1)
-        start = prior_end if prior_end is not None else adjusted[days[0]]
-        end = year_end[year]
-        has_full_window = prior_end is not None or (year == first_year and days[0].month == 1)
-        complete = year < today.year and has_full_window
-        price_return = _pct(end - start, start)
-        paid = dividend_adjusted.get(year)
-        suffix = "" if complete else ("（年初至今）" if year == today.year else "（部分年度）")
-        rows.append(
-            EtfAnnualRow(
-                year=year,
-                label=f"{year}{suffix}",
-                complete=complete,
-                start_close=round(start, 2),
-                year_end_close=round(end, 2),
-                price_return_pct=round(price_return, 2) if price_return is not None else None,
-                cash_dividend_per_share=(
-                    round(dividend_per_share[year], 4) if year in dividend_per_share else None
-                ),
-                cash_dividend_adjusted=(
-                    round(dividend_adjusted[year], 4) if year in dividend_adjusted else None
-                ),
-                dividend_yield_pct=(
-                    round(_pct(paid, end) or 0.0, 2) if complete and paid is not None else None
-                ),
-                total_return_simple_pct=(
-                    round(_pct(end + (paid or 0.0) - start, start) or 0.0, 2) if complete else None
-                ),
-            )
-        )
-    return rows[-years:]
+
+def _etf_label_suffix(*, complete: bool, year: int, today: date_) -> str:
+    if complete:
+        return ""
+    return "（年初至今）" if year == today.year else "（部分年度）"
+
+
+def _round_or_none(value: float | None, digits: int) -> float | None:
+    return round(value, digits) if value is not None else None
+
+
+@dataclass(frozen=True)
+class _EtfPrices:
+    """The adjusted close series: its trading days (sorted), values, and each year's last close."""
+
+    days: Sequence[date_]
+    adjusted: Mapping[date_, float]
+    year_end: Mapping[int, float]
+
+
+def _etf_row(
+    year: int, prices: _EtfPrices, *, today: date_, per_share: float | None, paid: float | None
+) -> EtfAnnualRow:
+    days = prices.days
+    prior_end = prices.year_end.get(year - 1)
+    start = prior_end if prior_end is not None else prices.adjusted[days[0]]
+    end = prices.year_end[year]
+    has_full_window = prior_end is not None or (year == days[0].year and days[0].month == 1)
+    complete = year < today.year and has_full_window
+    return EtfAnnualRow(
+        year=year,
+        label=f"{year}{_etf_label_suffix(complete=complete, year=year, today=today)}",
+        complete=complete,
+        start_close=round(start, 2),
+        year_end_close=round(end, 2),
+        price_return_pct=_round_or_none(_pct(end - start, start), 2),
+        cash_dividend_per_share=_round_or_none(per_share, 4),
+        cash_dividend_adjusted=_round_or_none(paid, 4),
+        dividend_yield_pct=(
+            round(_pct(paid, end) or 0.0, 2) if complete and paid is not None else None
+        ),
+        total_return_simple_pct=(
+            round(_pct(end + (paid or 0.0) - start, start) or 0.0, 2) if complete else None
+        ),
+    )
 
 
 # ---- seasonality -----------------------------------------------------------------------------
