@@ -228,6 +228,7 @@ def test_page_date_prefers_the_hit_then_the_head_of_the_text() -> None:
         # the shape of the live miss: /article/category/<n>/post/<YYYYMMDD><n>
         ("https://biz.example.com/article/category/80402/post/201408140", date(2014, 8, 14)),
         ("https://biz.example.com/post/2014081402", date(2014, 8, 14)),
+        ("https://biz.example.com/article/category/80402/post/201408140029/", date(2014, 8, 14)),
     ],
 )
 def test_url_date_accepts_the_unambiguous_forms(url: str, expected: date) -> None:
