@@ -523,7 +523,7 @@ technology / material / application / product entity mentioned by at least N dis
 companies (default 5) that no concept theme already covers (theme key, zh/en name or related name,
 or an entity alias, compared ignoring case, width, spaces and punctuation). Entities sharing a name or
 alias are merged first; labels under 2 characters or purely numeric are dropped; the list is capped
-(default 50) and ordered by company count, total mentions, then label. Each candidate carries a stable
+(default 50) and ordered by specificity (below), total mentions, then label. Each candidate carries a stable
 `candidate_id`, symbols only (top 15 by mention count), the sections it appears in, `first_seen` and a
 `trend` against the previous run (new / rising / steady / falling).
 
@@ -531,9 +531,36 @@ Output is a private file, `reference-data/themes/theme_candidates.jsonl` (one JS
 written atomically (temp file then rename); the previous file is kept as
 `theme_candidates.prev.jsonl`. Nothing is published or indexed. No search, no model, no network.
 
-- CLI: `python -m analytics.supply_chain discover --themes [--min-companies N] [--limit N] [--dry-run]`
-  runs only this mining (no key and no research flag needed) and prints rank, label, type, company
-  count, trend and up to five stock symbols, never a company name.
+**Precision filters.** Raw company count ranks very broad business words first and re-proposes
+entities whose companies an existing theme already holds under another name, so every entity that
+reaches the company threshold is also tested, in this order, and dropped when:
+
+1. `covered_by_name`: a concept theme already answers to its name or alias (as above).
+2. `stoplist`: it matches an entry of the optional private file
+   `reference-data/themes/candidate_stoplist.yaml`, a plain YAML list of entity labels or aliases
+   (`- some label`), compared with the same normalisation as name coverage. A missing file means no
+   stoplist; a file that is not a list of strings fails the run without writing anything.
+3. `generic`: more than `--max-share` (default 0.04) of all `tw_company` entities in the catalog
+   mention it. With no company entities in the catalog the universe is unknown and the cap is off.
+4. `overlap:<key>`: at least `overlap_threshold` (default 0.6) of its companies already belong to
+   ONE group: a single concept theme's member list (key = theme key), or one industry-chain theme
+   (`industry:<theme key>`) or sub-industry (`sub:<theme key>/<sub-industry>`). One group, never a
+   union, and the best-covering group is the one reported.
+
+Survivors are ranked by `specificity = company_count * ln(N_tw / company_count)` (tf-idf style, `N_tw`
+the catalog's `tw_company` count; plain `company_count` when `N_tw` is unknown), then total mentions,
+then label. Each candidate record carries `specificity`. Industry-chain membership has no file source,
+so it is injected: the weekly job reads it from the themes table (`theme_discovery/industry.py`); the
+file-only CLI uses concept-theme overlap only.
+
+Dropped entities are written to `theme_candidates_skipped.jsonl` beside the candidates file (one
+object per line: `candidate_id`, `label`, `type`, `company_count`, `specificity`, `reason`), so the
+operator can audit a drop. Entities below the company threshold are not listed. Keys and counts only.
+
+- CLI: `python -m analytics.supply_chain discover --themes [--min-companies N] [--max-share F]
+  [--overlap F] [--limit N] [--dry-run]` runs only this mining (no key and no research flag needed)
+  and prints rank, label, type, company count, specificity, trend and up to five stock symbols, then
+  `skipped=<n>`, never a company name.
 - Job: `sc_theme_candidates` (weekly 22:05, leader-only, journaled). It spends nothing, so it is not
   gated by `SUPPLY_CHAIN_RESEARCH_ENABLED`; it journals SKIPPED with a reason when not the leader or
   when the entity files are absent.

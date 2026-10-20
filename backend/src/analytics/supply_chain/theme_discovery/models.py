@@ -25,6 +25,7 @@ class ThemeCandidate(BaseModel):
     type: str
     company_count: int = Field(ge=0)
     total_mentions: int = Field(ge=0)
+    specificity: float = Field(default=0.0, ge=0.0)
     top_companies: tuple[str, ...] = ()
     sections: tuple[str, ...] = ()
     first_seen: str
@@ -48,4 +49,21 @@ class PreviousCandidate(BaseModel):
     first_seen: str = ""
 
 
-__all__ = ["PreviousCandidate", "ThemeCandidate", "Trend"]
+class SkippedCandidate(BaseModel):
+    """A candidate that met the company threshold but was dropped, with the reason (audit only).
+
+    `reason` is `generic`, `overlap:<group key>`, `stoplist` or `covered_by_name`. Keys and
+    symbol counts only: no company name.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    candidate_id: str = Field(min_length=1)
+    label: str = Field(min_length=1)
+    type: str
+    company_count: int = Field(ge=0)
+    specificity: float = Field(default=0.0, ge=0.0)
+    reason: str = Field(min_length=1)
+
+
+__all__ = ["PreviousCandidate", "SkippedCandidate", "ThemeCandidate", "Trend"]

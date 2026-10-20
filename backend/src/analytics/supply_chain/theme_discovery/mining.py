@@ -4,14 +4,30 @@ A candidate is a technology / material / application / product entity that many 
 companies mention and that no existing concept theme already covers. No LLM, no network, no clock
 (the caller passes `today`). Near-duplicate entities that share a name or alias are merged first,
 so one idea is counted once. Output order is a pure function of the input.
+
+Precision filters, applied in this order to every entity that reaches `min_companies`:
+  1. `covered_by_name`: a concept theme already answers to the entity's name or alias.
+  2. `stoplist`: the optional private file `<reference dir>/themes/candidate_stoplist.yaml`, a YAML
+     list of entity labels or aliases (`- some label`), matched with the same normalisation as the
+     name coverage above. A missing file means no stoplist.
+  3. `generic`: more than `max_company_share` (default 0.04) of all `tw_company` entities in the
+     catalog mention it. Without a company catalog the universe is unknown and this cap is off.
+  4. `overlap:<key>`: at least `overlap_threshold` (default 0.6) of its companies already belong to
+     ONE group: a concept theme (key = theme key) or an injected industry group (`industry:` theme
+     or `sub:` sub-industry key). The same companies under a different name.
+Survivors are ranked by specificity = company_count * ln(N_tw / company_count) (tf-idf style, so a
+broad term loses to a focused one), then total mentions, then label. Dropped entities are returned
+separately so the operator can audit why.
 """
 
 from __future__ import annotations
 
 import hashlib
+import math
 import unicodedata
 from collections import defaultdict
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import date
 
 from analytics.supply_chain.domain.concepts import (
@@ -21,10 +37,17 @@ from analytics.supply_chain.domain.concepts import (
     EntityType,
     market_of_symbol,
 )
-from analytics.supply_chain.theme_discovery.models import PreviousCandidate, ThemeCandidate, Trend
+from analytics.supply_chain.theme_discovery.models import (
+    PreviousCandidate,
+    SkippedCandidate,
+    ThemeCandidate,
+    Trend,
+)
 
 DEFAULT_MIN_COMPANIES = 5
 DEFAULT_LIMIT = 50
+DEFAULT_MAX_COMPANY_SHARE = 0.04
+DEFAULT_OVERLAP_THRESHOLD = 0.6
 MAX_TOP_COMPANIES = 15
 MIN_LABEL_LENGTH = 2
 CANDIDATE_TYPES = frozenset(
@@ -109,7 +132,41 @@ def _trend(count: int, previous: PreviousCandidate | None, today: str) -> tuple[
     return first_seen, Trend.STEADY, 0
 
 
-def mine_candidates(  # noqa: PLR0913 - keyword-only knobs of one pure function
+@dataclass(frozen=True)
+class MiningOutcome:
+    candidates: list[ThemeCandidate]
+    skipped: list[SkippedCandidate]
+
+
+def specificity_score(company_count: int, n_tw: int) -> float:
+    """company_count * ln(N / company_count); plain company_count when N is unknown (0)."""
+    if n_tw <= 0 or company_count <= 0:
+        return float(max(company_count, 0))
+    return round(company_count * max(math.log(n_tw / company_count), 0.0), 4)
+
+
+def concept_groups(themes: Iterable[ConceptTheme]) -> dict[str, frozenset[str]]:
+    """TW member symbols of each concept theme, keyed by theme key."""
+    out: dict[str, frozenset[str]] = {}
+    for theme in themes:
+        symbols = frozenset(m.symbol for m in theme.members if m.market == "TW")
+        if symbols:
+            out[theme.key] = symbols
+    return out
+
+
+def _best_overlap(
+    companies: frozenset[str], groups: Mapping[str, frozenset[str]], threshold: float
+) -> str | None:
+    best: tuple[float, str] | None = None
+    for key in sorted(groups):
+        share = len(companies & groups[key]) / len(companies)
+        if share >= threshold and (best is None or share > best[0]):
+            best = (share, key)
+    return best[1] if best else None
+
+
+def mine(  # noqa: PLR0913 - keyword-only knobs of one pure function
     catalog: Sequence[Entity],
     mentions: Sequence[EntityMention],
     existing_themes: Sequence[ConceptTheme],
@@ -118,8 +175,16 @@ def mine_candidates(  # noqa: PLR0913 - keyword-only knobs of one pure function
     limit: int = DEFAULT_LIMIT,
     previous: Mapping[str, PreviousCandidate] | None = None,
     today: date | None = None,
-) -> list[ThemeCandidate]:
+    max_company_share: float = DEFAULT_MAX_COMPANY_SHARE,
+    overlap_threshold: float = DEFAULT_OVERLAP_THRESHOLD,
+    stoplist: Collection[str] = (),
+    industry_groups: Mapping[str, frozenset[str]] | None = None,
+) -> MiningOutcome:
     covered = covered_names(existing_themes)
+    stop = {n for n in (normalize(s) for s in stoplist) if n}
+    n_tw = sum(1 for e in catalog if e.type is EntityType.TW_COMPANY)
+    groups: dict[str, frozenset[str]] = dict(concept_groups(existing_themes))
+    groups.update(industry_groups or {})
     pool = [e for e in catalog if e.type in CANDIDATE_TYPES and not is_noise(e.id)]
     by_entity: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     sections: dict[str, set[str]] = defaultdict(set)
@@ -131,9 +196,8 @@ def mine_candidates(  # noqa: PLR0913 - keyword-only knobs of one pure function
     stamp = (today or date.min).isoformat()
     prev = previous or {}
     found: list[ThemeCandidate] = []
+    skipped: list[SkippedCandidate] = []
     for group in _merge_groups(pool):
-        if group.names & covered:
-            continue
         per_company: dict[str, int] = defaultdict(int)
         sects: set[str] = set()
         for entity in group.entities:
@@ -150,17 +214,43 @@ def mine_candidates(  # noqa: PLR0913 - keyword-only knobs of one pure function
                 e.id,
             ),
         )
-        ranked = sorted(per_company.items(), key=lambda kv: (-kv[1], kv[0]))
         cid = _candidate_id(group)
-        first_seen, trend, delta = _trend(len(per_company), prev.get(cid), stamp)
+        n_companies = len(per_company)
+        score = specificity_score(n_companies, n_tw)
+        reason: str | None = None
+        if group.names & covered:
+            reason = "covered_by_name"
+        elif group.names & stop:
+            reason = "stoplist"
+        elif n_tw > 0 and n_companies / n_tw > max_company_share:
+            reason = "generic"
+        else:
+            hit = _best_overlap(frozenset(per_company), groups, overlap_threshold)
+            if hit is not None:
+                reason = f"overlap:{hit}"
+        if reason is not None:
+            skipped.append(
+                SkippedCandidate(
+                    candidate_id=cid,
+                    label=rep.id,
+                    type=rep.type.value,
+                    company_count=n_companies,
+                    specificity=score,
+                    reason=reason,
+                )
+            )
+            continue
+        ranked = sorted(per_company.items(), key=lambda kv: (-kv[1], kv[0]))
+        first_seen, trend, delta = _trend(n_companies, prev.get(cid), stamp)
         found.append(
             ThemeCandidate(
                 candidate_id=cid,
                 entity_id=rep.id,
                 label=rep.id,
                 type=rep.type.value,
-                company_count=len(per_company),
+                company_count=n_companies,
                 total_mentions=sum(per_company.values()),
+                specificity=score,
                 top_companies=tuple(s for s, _ in ranked[:MAX_TOP_COMPANIES]),
                 sections=tuple(sorted(sects)),
                 first_seen=first_seen,
@@ -168,18 +258,55 @@ def mine_candidates(  # noqa: PLR0913 - keyword-only knobs of one pure function
                 trend_delta=delta,
             )
         )
-    found.sort(key=lambda c: (-c.company_count, -c.total_mentions, c.label, c.candidate_id))
-    return found[: max(limit, 0)]
+    found.sort(key=lambda c: (-c.specificity, -c.total_mentions, c.label, c.candidate_id))
+    skipped.sort(key=lambda s: (s.reason, -s.company_count, s.label, s.candidate_id))
+    return MiningOutcome(found[: max(limit, 0)], skipped)
+
+
+def mine_candidates(  # noqa: PLR0913 - mirrors `mine`
+    catalog: Sequence[Entity],
+    mentions: Sequence[EntityMention],
+    existing_themes: Sequence[ConceptTheme],
+    *,
+    min_companies: int = DEFAULT_MIN_COMPANIES,
+    limit: int = DEFAULT_LIMIT,
+    previous: Mapping[str, PreviousCandidate] | None = None,
+    today: date | None = None,
+    max_company_share: float = DEFAULT_MAX_COMPANY_SHARE,
+    overlap_threshold: float = DEFAULT_OVERLAP_THRESHOLD,
+    stoplist: Collection[str] = (),
+    industry_groups: Mapping[str, frozenset[str]] | None = None,
+) -> list[ThemeCandidate]:
+    """`mine(...).candidates`, for callers that do not need the skipped list."""
+    return mine(
+        catalog,
+        mentions,
+        existing_themes,
+        min_companies=min_companies,
+        limit=limit,
+        previous=previous,
+        today=today,
+        max_company_share=max_company_share,
+        overlap_threshold=overlap_threshold,
+        stoplist=stoplist,
+        industry_groups=industry_groups,
+    ).candidates
 
 
 __all__ = [
     "CANDIDATE_TYPES",
     "DEFAULT_LIMIT",
+    "DEFAULT_MAX_COMPANY_SHARE",
     "DEFAULT_MIN_COMPANIES",
+    "DEFAULT_OVERLAP_THRESHOLD",
     "MAX_TOP_COMPANIES",
+    "MiningOutcome",
+    "concept_groups",
     "covered_names",
     "is_noise",
+    "mine",
     "mine_candidates",
     "normalize",
+    "specificity_score",
     "theme_names",
 ]

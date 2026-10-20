@@ -176,12 +176,15 @@ def test_trend_against_previous_run() -> None:
     assert got["New Tech"].first_seen == "2026-10-19"
 
 
+def _companies(n: int = 200) -> str:
+    return "".join(f"- {{id: Firm {i:03d}, type: tw_company}}\n" for i in range(n))
+
+
 def _root(tmp_path: Path, *, n_companies: int = 6) -> Path:
     root = tmp_path / "ref"
     (root / "entities").mkdir(parents=True)
     (root / "entities" / "catalog.yaml").write_text(
-        "- {id: Widget Tech, type: technology}\n- {id: Gadget Corp, type: tw_company}\n",
-        encoding="utf-8",
+        "- {id: Widget Tech, type: technology}\n" + _companies(), encoding="utf-8"
     )
     lines = [
         json.dumps({"symbol": str(9001 + i), "entity": "Widget Tech", "section": "business"})
@@ -237,13 +240,15 @@ def test_cli_prints_symbols_and_no_company_names(
     root = _root(tmp_path)
     (root / "entities" / "catalog.yaml").write_text(
         "- {id: Widget Tech, type: technology}\n"
-        "- {id: Gadget Corp, type: tw_company, symbol: '9001'}\n",
+        "- {id: Gadget Corp, type: tw_company, symbol: '9001'}\n" + _companies(),
         encoding="utf-8",
     )
     monkeypatch.setattr("analytics.supply_chain.theme_discovery.job.reference_dir", lambda: root)
     assert cli.main(["discover", "--themes", "--dry-run", "--limit", "5"]) == 0
     out = capsys.readouterr().out
-    assert "Widget Tech technology 6 new 9001,9002,9003,9004,9005" in out
+    assert "rank label type companies specificity trend symbols" in out
+    # 6 * ln(201 / 6) = 21.07: the table carries the specificity next to the company count
+    assert "Widget Tech technology 6 21.07 new 9001,9002,9003,9004,9005" in out
     assert "Gadget" not in out
     assert not (root / "themes").exists()
     assert cli.main(["discover", "--themes", "--min-companies", "7"]) == 0
