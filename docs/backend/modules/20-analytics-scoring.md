@@ -641,7 +641,7 @@ in the page is dropped and counted. A claim is `{theme, kind, label, symbol, exc
 retrieved_at, position, published_on}` (`theme` = concept theme key or candidate id), appended to
 `themes/proposals/claims.jsonl` (one `O_APPEND` write, de-duplicated on theme + symbol + url).
 
-**Step C** (`verify.py`, `proposals.py`). `verify-themes [--limit N] [--dry-run]` groups the claims
+**Step C** (`verify.py`, `proposals.py`). `verify-themes [--limit N] [--covered-threshold X] [--dry-run]` groups the claims
 by (theme, symbol) and applies the **same evidence rules as supply-chain claims**: the symbol must be a
 `tw_company` of the entity catalog (the universe) and resolve in the directory, an existing theme must
 still exist and not already hold the symbol; each claim must pass the **quote guard** (https URL,
@@ -665,6 +665,28 @@ include `unknown_theme`, `already_member`, `not_in_universe`, `url_not_https`, `
 `excerpt_too_long`, `company_not_in_quote`, `theme_not_in_quote`, `advice_language`,
 `source_too_old`. A new-theme key is the slug of the first ASCII label or alias, else the candidate id;
 review and rename before promoting.
+
+**Coverage check (new-theme candidates).** Mining compares a candidate's *mentioning* companies with the
+existing themes; Step C repeats the test on the candidate's **verified** members. For each concept theme
+(`themes/concepts`, via the `themes_io` loader) containment = verified members already in it / verified
+members; the best theme (ties to the smaller key) decides:
+
+- containment >= `--covered-threshold` (module constant `COVERED_THRESHOLD`, default 0.8): the candidate is
+  **covered**. No new-theme row; the members NOT already in the covering theme (if any) are written as
+  member-addition rows for the covering theme into the day's `theme_members_<UTC date>.yaml`; the decision
+  is appended to `themes/proposals/covered.jsonl` as `{candidate, covering, containment, verified, new,
+  symbols, covered_on}` (ids, keys and stock codes only, no names); the console prints `candidate <id>:
+  covered by <theme key> (<overlap>/<n>)` and the summary line and journal detail carry `covered=<n>`.
+- 0.5 <= containment < threshold: the new theme is still proposed (6-member rule unchanged) with the
+  covering theme key in `related`, and the console prints `candidate <id>: partly covered by <key>
+  (<overlap>/<n>)`.
+- below 0.5: proposed as before.
+
+A covered candidate is not judged again: its claims for symbols listed in `covered.jsonl` are skipped
+(`already_covered`), and the symbols count toward containment on later runs. It is proposed as a theme
+only if it later gains verified members that pull the containment under the threshold. `covered.jsonl`
+keeps the latest line per candidate; a re-run appends nothing. The generated files go through `promote`
+unchanged.
 
 **Gating and budget.** Both commands refuse (exit 1, one line on stderr) without `BRAVE_SEARCH_API_KEY`
 and an LLM role for the research model (and the second model when the second opinion is on); a dry run

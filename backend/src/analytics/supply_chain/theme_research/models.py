@@ -95,10 +95,12 @@ class VerifySummary(BaseModel):
     member_rows: int = 0
     new_themes: int = 0
     pending_themes: int = 0
+    covered: int = 0
     llm_calls: int = 0
     spend_usd: float = 0.0
     stopped_by: str | None = None
     dry_run: bool = False
+    notes: list[str] = Field(default_factory=list)
     reasons: dict[str, int] = Field(default_factory=dict)
     outcomes: dict[str, str] = Field(default_factory=dict)
 
@@ -108,6 +110,7 @@ class VerifySummary(BaseModel):
             f"groups={self.groups} verified={self.verified} candidates={self.candidates} "
             f"rejected={self.rejected} skipped={self.skipped} member_rows={self.member_rows} "
             f"new_themes={self.new_themes} pending_themes={self.pending_themes} "
+            f"covered={self.covered} "
             f"llm_calls={self.llm_calls} spend_usd={self.spend_usd:.3f} "
             f"stopped_by={self.stopped_by or 'none'} reasons=[{reasons}] "
             f"{'would_write' if self.dry_run else 'written'}={self.member_rows + self.new_themes}"
