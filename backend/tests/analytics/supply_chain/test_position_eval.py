@@ -33,6 +33,7 @@ from analytics.supply_chain.positions.models import (
     ReasonCode,
 )
 from analytics.supply_chain.positions.resolver import resolve_positions
+from config import private_data
 
 UP, MID, DOWN = Position.UPSTREAM, Position.MIDSTREAM, Position.DOWNSTREAM
 
@@ -192,7 +193,14 @@ def test_report_text_lists_disagreements_and_the_matrix() -> None:
     assert "confusion" in text
 
 
-def test_parse_golden_defaults_and_errors(tmp_path: Path) -> None:
+def _use_reference_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    root = tmp_path / "ref"
+    root.mkdir()
+    monkeypatch.setattr(private_data, "reference_dir", lambda: root)
+    return root
+
+
+def test_parse_golden_defaults_and_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     rows = parse_golden([{"symbol": "1", "chain_key": "c", "position": "upstream"}])
     assert rows[0].label_confidence is LabelConfidence.SURE
     for bad in (
@@ -203,14 +211,48 @@ def test_parse_golden_defaults_and_errors(tmp_path: Path) -> None:
     ):
         with pytest.raises(GoldenFileError):
             parse_golden(bad)
-    with pytest.raises(GoldenFileError, match="not found"):
-        load_golden(tmp_path / "missing.yaml")
-    path = tmp_path / "g.yaml"
+    root = _use_reference_dir(monkeypatch, tmp_path)
+    with pytest.raises(GoldenFileError, match="inside the reference data directory"):
+        load_golden(root / "missing.yaml")
+    path = root / "g.yaml"
     path.write_text(
         '- {symbol: "1", chain_key: c, position: midstream, label_confidence: unsure, note: n}\n',
         encoding="utf-8",
     )
     assert load_golden(path)[0].label_confidence is LabelConfidence.UNSURE
+
+
+GOLDEN_ROW = '- {symbol: "1", chain_key: c, position: upstream}\n'
+
+
+def test_load_golden_rejects_paths_outside_the_reference_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = _use_reference_dir(monkeypatch, tmp_path)
+    outside = tmp_path / "outside.yaml"
+    outside.write_text(GOLDEN_ROW, encoding="utf-8")
+    wrong_suffix = root / "g.txt"
+    wrong_suffix.write_text(GOLDEN_ROW, encoding="utf-8")
+    cases = [outside, root / ".." / "outside.yaml", wrong_suffix, root]
+    link = root / "link.yaml"
+    try:
+        link.symlink_to(outside)
+        cases.append(link)
+    except OSError:  # symlinks need privileges on Windows
+        pass
+    for bad in cases:
+        with pytest.raises(GoldenFileError, match="inside the reference data directory"):
+            load_golden(bad)
+
+
+def test_load_golden_reads_a_file_inside_the_reference_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = _use_reference_dir(monkeypatch, tmp_path)
+    inside = root / "supply_chain" / "g.yml"
+    inside.parent.mkdir()
+    inside.write_text(GOLDEN_ROW, encoding="utf-8")
+    assert [row.symbol for row in load_golden(inside)] == ["1"]
 
 
 def test_report_serialises_to_json() -> None:

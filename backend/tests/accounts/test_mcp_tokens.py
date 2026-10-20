@@ -135,7 +135,10 @@ def test_a_token_signed_with_the_raw_secret_is_refused_even_if_every_claim_is_ri
 
 
 def test_two_tokens_differ_even_for_the_same_grant(settings: Settings) -> None:
-    assert issue(settings) != issue(settings)  # the `jti` is random
+    first, second = issue(settings), issue(settings)
+    assert first != second  # the `jti` is random
+    claims = [jwt.decode(t, options={"verify_signature": False}) for t in (first, second)]
+    assert claims[0]["jti"] != claims[1]["jti"]
 
 
 def test_without_a_signing_secret_nothing_verifies() -> None:

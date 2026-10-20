@@ -29,7 +29,10 @@ jobs:
           enable-cache: true
 
       - name: Sync dependencies (frozen)
+        # Accepted exception (S8544/S8541): `--frozen` resolves strictly from the committed
+        # `uv.lock`, and `--no-build` isn't viable: the project itself is an editable install
+        # over `src/`, which requires a build step to register on every sync.
         run: uv sync --all-extras --frozen
 
       - name: Suite with coverage (fails under the floor)
-        run: uv run pytest --cov=src --cov-report=term-missing:skip-covered
+        run: uv run --frozen --no-sync --no-build pytest --cov=src --cov-report=term-missing:skip-covered

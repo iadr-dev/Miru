@@ -57,8 +57,7 @@ export function InsiderTransferDeclarationPanel({
               {data.available_dates.length > 0 ? (
                 <div className="flex flex-wrap gap-1.5">
                   {[...data.available_dates]
-                    .sort()
-                    .reverse()
+                    .sort((a, b) => b.localeCompare(a))
                     .slice(0, INSIDER_TRANSFER_DECLARATION_DATE_TAB_COUNT)
                     .map((date) => (
                       <button

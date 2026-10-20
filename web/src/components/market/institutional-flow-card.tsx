@@ -63,7 +63,7 @@ export function InstitutionalFlowCard({
     });
   };
 
-  const dates = [...new Set(rows.map((r) => r.trade_date))].sort();
+  const dates = [...new Set(rows.map((r) => r.trade_date))].sort((a, b) => a.localeCompare(b));
   const latestDate = dates.at(-1);
   const latestRows = rows.filter((r) => r.trade_date === latestDate);
   const previewDates = dates.slice(-HISTORY_PREVIEW_DAYS);

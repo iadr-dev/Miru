@@ -20,7 +20,8 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from analytics.supply_chain.positions.models import Position
-from config.private_data import reference_path
+from config import private_data
+from config.private_data import YAML_SUFFIXES, UnsafeReferencePathError, safe_reference_file
 
 GOLDEN_FILE = ("supply_chain", "golden_positions.yaml")
 
@@ -64,10 +65,17 @@ def parse_golden(raw: object, *, name: str = "golden_positions.yaml") -> list[Go
     return labels
 
 
+GOLDEN_PATH_MESSAGE = (
+    "golden file must be an existing .yaml file inside the reference data directory"
+)
+
+
 def load_golden(path: Path | None = None) -> list[GoldenLabel]:
-    target = path or reference_path(*GOLDEN_FILE)
-    if not target.is_file():
-        raise GoldenFileError(f"{target.name}: not found at {target}")
+    candidate = path or private_data.reference_path(*GOLDEN_FILE)
+    try:
+        target = safe_reference_file(private_data.reference_dir(), candidate, YAML_SUFFIXES)
+    except UnsafeReferencePathError as exc:
+        raise GoldenFileError(f"{candidate.name}: {GOLDEN_PATH_MESSAGE}") from exc
     try:
         raw: object = yaml.safe_load(target.read_text(encoding="utf-8"))
     except (OSError, yaml.YAMLError) as exc:

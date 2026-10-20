@@ -9,11 +9,11 @@ give out of the box:
   `Location` is built from the *inner* scheme (`http://`), which a client behind a TLS-terminating
   proxy then follows to a URL that does not exist. The path is normalized in place instead.
 - Sign-in (MCP authorization spec). With `require_auth` a request without a valid credential is
-  answered HTTP 401 with `WWW-Authenticate: Bearer resource_metadata="...", scope="mcp:read"`
-  (RFC 9728 section 5.1) - the signal every MCP client waits for before it starts its OAuth flow;
-  an invalid or expired token adds `error="invalid_token"`. Without `require_auth` (local
-  development) a request with no credential stays anonymous, while a presented-but-bad bearer is
-  still a 401.
+  answered HTTP 401 with a `WWW-Authenticate` challenge of the Bearer scheme that carries the
+  `resource_metadata` URL and the `mcp:read` scope parameter (RFC 9728 section 5.1) - the signal
+  every MCP client waits for before it starts its OAuth flow; an invalid or expired token
+  adds `error="invalid_token"`. Without `require_auth` (local development) a request with no
+  credential stays anonymous, while a presented-but-bad bearer is still a 401.
 - Abuse bounds: a per-principal request rate (user id once a token verifies, else client
   address), a request-body cap and a concurrent-request cap.
 - A rejected `Host` / `Origin` (FastMCP answers a bare "Misdirected Request") gets a body that

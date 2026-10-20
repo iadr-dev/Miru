@@ -78,8 +78,7 @@ export function MaterialAnnouncementFeedPanel({ market }: { readonly market: Mar
               {data.available_dates.length > 0 ? (
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {[...data.available_dates]
-                    .sort()
-                    .reverse()
+                    .sort((a, b) => b.localeCompare(a))
                     .slice(0, MATERIAL_ANNOUNCEMENT_FEED_DATE_TAB_COUNT)
                     .map((date) => (
                       <button

@@ -43,6 +43,7 @@ from analytics.supply_chain.themes_io.loader import (
     parse_concept_files,
 )
 from analytics.supply_chain.themes_io.schema import ConceptMemberFileRow, ConceptThemeFile
+from config.private_data import YAML_SUFFIXES, UnsafeReferencePathError, safe_reference_file
 
 BACKUPS_SUBDIR = ("themes", "_backups")
 LOG_FILE = ("themes", "promote_log.jsonl")
@@ -129,15 +130,10 @@ PROPOSAL_PATH_MESSAGE = "proposal must be a .yaml file inside the reference data
 def safe_proposal_path(root: Path, candidate: Path) -> Path:
     """The resolved proposal path, or `ProposalFileError`. Symlinks are resolved first, so a link
     pointing outside the reference directory is rejected. Read only from the returned value."""
-    base = root.resolve(strict=False)
-    resolved = Path(candidate).resolve(strict=False)
-    if (
-        resolved.suffix.lower() not in {".yaml", ".yml"}
-        or not resolved.is_relative_to(base)
-        or not resolved.is_file()
-    ):
-        raise ProposalFileError(f"{candidate.name}: {PROPOSAL_PATH_MESSAGE}")
-    return resolved
+    try:
+        return safe_reference_file(root, candidate, YAML_SUFFIXES)
+    except UnsafeReferencePathError as exc:
+        raise ProposalFileError(f"{candidate.name}: {PROPOSAL_PATH_MESSAGE}") from exc
 
 
 def _read_proposals(path: Path) -> list[object]:
