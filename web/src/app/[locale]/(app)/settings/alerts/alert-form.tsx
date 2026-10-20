@@ -3,14 +3,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { type FormEvent, type KeyboardEvent, type ReactNode, useEffect, useState } from "react";
-import { Select, TextInput } from "@/components/settings/form-controls";
 import { Button } from "@/components/ui/button";
 import {
+  type BuildResult,
   buildAlertPatch,
   buildCondition,
   type ConditionDraft,
-  type ConditionFieldError,
-  type ConditionFieldKey,
+  type ConditionFieldErrors,
   conditionSummary,
   DEFAULT_DRAFT,
   draftFromCondition,
@@ -18,6 +17,7 @@ import {
   fieldsFor,
   groupTemplatesFor,
   mergeStaleEdit,
+  type StaleMerge,
   templatesFor,
 } from "@/lib/alerts/condition";
 import { queryKeys } from "@/lib/api/query-keys";
@@ -30,16 +30,17 @@ import {
 } from "@/lib/api/settings";
 import { getWatchlists } from "@/lib/api/watchlist";
 import { FRESHNESS } from "@/lib/freshness";
-import { groupNameStyle } from "@/lib/watchlist-color";
+import type { AlertRule, AlertTemplateKind, AlertTriggerMode, Market } from "@/types/settings";
+import type { WatchlistGroupView } from "@/types/watchlist";
 import {
-  ALERT_TRIGGER_MODES,
-  type AlertRule,
-  type AlertTemplateKind,
-  type AlertTriggerMode,
-  INSTITUTIONAL_INVESTORS,
-  MARKETS,
-  type Market,
-} from "@/types/settings";
+  type AlertScope,
+  NumericFields,
+  ScopeField,
+  SymbolFields,
+  TemplateFields,
+  TriggerAndExpiryFields,
+  WatchlistField,
+} from "./alert-form-fields";
 import { PerStockForm } from "./per-stock-form";
 
 /** A group rule starts on a scale-free template; the price template is per stock. */
@@ -47,6 +48,14 @@ const GROUP_DEFAULT_KIND: AlertTemplateKind = "daily_change";
 const CREATE_EXPIRY_OPTIONS: readonly ExpiryChoice[] = ["30", "90", "365", "never"];
 /** Editing can also leave the expiry as it is — a rule's exact date is rarely one of the presets. */
 const EDIT_EXPIRY_OPTIONS: readonly ExpiryChoice[] = ["keep", ...CREATE_EXPIRY_OPTIONS];
+
+function expiryOptionsFor(editing: boolean): readonly ExpiryChoice[] {
+  return editing ? EDIT_EXPIRY_OPTIONS : CREATE_EXPIRY_OPTIONS;
+}
+
+function defaultExpiry(editing: boolean): ExpiryChoice {
+  return editing ? "keep" : "90";
+}
 
 type SaveAction =
   | { mode: "create"; body: Parameters<typeof createAlert>[0] }
@@ -56,36 +65,22 @@ async function save(action: SaveAction): Promise<unknown> {
   return action.mode === "create" ? createAlert(action.body) : updateAlert(action.id, action.body);
 }
 
+function isStaleVersion(error: unknown): boolean {
+  return error instanceof SettingsApiError && error.code === "stale_version";
+}
+
 /** Which message explains a failed save. `cap_reached` and `stale_version` are the two the user can
  * act on; everything else is the generic retry message for the current mode. */
 function errorMessageKey(error: unknown, editing: boolean): string {
-  if (error instanceof SettingsApiError) {
-    if (error.code === "cap_reached") {
-      return "errorCap";
-    }
-    if (error.code === "stale_version") {
-      return "errorStale";
-    }
+  if (error instanceof SettingsApiError && error.code === "cap_reached") {
+    return "errorCap";
+  }
+  if (isStaleVersion(error)) {
+    return "errorStale";
   }
   return editing ? "errorUpdate" : "errorCreate";
 }
 
-/** Matches the backend's `MAX_KEYWORD_LENGTH`. */
-const KEYWORD_MAX_LENGTH = 20;
-
-const NUMERIC_FIELD_STEP: Record<ConditionFieldKey, string> = {
-  value: "any",
-  percent: "any",
-  multiple: "any",
-  window: "1",
-  days: "1",
-};
-
-/** Alert-rule create/edit form.
- * Template-first — the user picks what to watch and fills only that template's fields — with a
- * fact-phrased preview line and inline, retryable errors. `Esc` cancels. Pass `rule` to edit: the
- * scope (symbol / market) is fixed, only changed fields are sent, and the save carries the rule's
- * `version` so an edit from a stale screen is refused instead of overwriting a newer one. */
 export type AlertFormPreset = {
   scope?: "symbol" | "watchlist" | "perStock";
   symbol?: string;
@@ -93,55 +88,174 @@ export type AlertFormPreset = {
   groupId?: string | undefined;
 };
 
-export function AlertForm({
-  onDone,
-  rule,
-  preset,
-}: Readonly<{
-  onDone: () => void;
-  rule?: AlertRule;
-  preset?: AlertFormPreset | undefined;
-}>): ReactNode {
-  const t = useTranslations("settings.alerts.form");
-  const ts = useTranslations("settings.alerts.summary");
-  const tc = useTranslations("settings.common");
-  const queryClient = useQueryClient();
+/** What the form starts with: the rule being edited, else the preset, else the defaults. */
+function initialFormValues(
+  rule: AlertRule | undefined,
+  preset: AlertFormPreset | undefined,
+): {
+  symbol: string;
+  market: Market;
+  draft: ConditionDraft;
+  triggerMode: AlertTriggerMode;
+  scope: AlertScope;
+  watchlistId: string;
+} {
+  if (rule) {
+    const market = rule.market === "US" || rule.market === "TW" ? rule.market : preset?.market;
+    return {
+      symbol: rule.symbol ?? preset?.symbol ?? "",
+      market: market ?? "TW",
+      draft: draftFromCondition(rule.condition),
+      triggerMode: rule.trigger_mode,
+      scope: rule.symbol ? "symbol" : "watchlist",
+      watchlistId: rule.watchlist_id ?? preset?.groupId ?? "",
+    };
+  }
+  return {
+    symbol: preset?.symbol ?? "",
+    market: preset?.market ?? "TW",
+    draft:
+      preset?.scope === "watchlist"
+        ? { ...DEFAULT_DRAFT, kind: GROUP_DEFAULT_KIND }
+        : DEFAULT_DRAFT,
+    triggerMode: "once_per_day",
+    scope: preset?.scope ?? "symbol",
+    watchlistId: preset?.groupId ?? "",
+  };
+}
 
-  const editing = rule !== undefined;
-  // The server copy the edit is diffed against. It moves forward after a 409 is merged.
-  const [base, setBase] = useState<AlertRule | undefined>(rule);
-  const [notice, setNotice] = useState<"merged" | "conflict" | null>(null);
-  const [symbol, setSymbol] = useState(rule?.symbol ?? preset?.symbol ?? "");
-  const [market, setMarket] = useState<Market>(
-    rule?.market === "US" || rule?.market === "TW" ? rule.market : (preset?.market ?? "TW"),
-  );
-  const presetDraft: ConditionDraft =
-    preset?.scope === "watchlist" ? { ...DEFAULT_DRAFT, kind: GROUP_DEFAULT_KIND } : DEFAULT_DRAFT;
-  const [draft, setDraft] = useState<ConditionDraft>(
-    rule ? draftFromCondition(rule.condition) : presetDraft,
-  );
-  const [triggerMode, setTriggerMode] = useState<AlertTriggerMode>(
-    rule?.trigger_mode ?? "once_per_day",
-  );
-  const [expiry, setExpiry] = useState<ExpiryChoice>(editing ? "keep" : "90");
-  // A rule follows one symbol, or every stock in one of the user's watchlist groups (the scope is
-  // fixed once created). A group can hold both markets, so a group rule offers only the templates
-  // that work for both.
-  const ruleScope = rule?.symbol ? "symbol" : "watchlist";
-  const [scope, setScope] = useState<"symbol" | "watchlist" | "perStock">(
-    rule ? ruleScope : (preset?.scope ?? "symbol"),
-  );
-  const [watchlistId, setWatchlistId] = useState(rule?.watchlist_id ?? preset?.groupId ?? "");
-  const groups = useQuery({
-    queryKey: queryKeys.settings("alert-watchlists"),
-    queryFn: () => getWatchlists(),
-    enabled: !editing,
-  });
-  const [submitted, setSubmitted] = useState(false);
-  const expiryOptions = editing ? EDIT_EXPIRY_OPTIONS : CREATE_EXPIRY_OPTIONS;
+/** The template to fall back to when `kind` is not offered for `offered`, else null (keep it). */
+function fallbackKind(
+  offered: readonly AlertTemplateKind[],
+  kind: AlertTemplateKind,
+  fallback: AlertTemplateKind,
+): AlertTemplateKind | null {
+  return offered.includes(kind) ? null : fallback;
+}
 
-  // Flag a ticker with no price data (a typo like APPLE for AAPL) once the user pauses typing —
-  // a hint only; creating the rule is never blocked, since a brand-new listing can lack a bar.
+/** Changing scope can leave the chosen template unavailable: a group rule cannot use the price
+ * template (one level, many prices), and a US symbol has no Taiwan-only ones. */
+function kindAfterScopeChange(
+  next: AlertScope,
+  market: Market,
+  kind: AlertTemplateKind,
+): AlertTemplateKind | null {
+  if (next === "watchlist") {
+    return fallbackKind(groupTemplatesFor("US"), kind, GROUP_DEFAULT_KIND);
+  }
+  if (next === "symbol") {
+    return fallbackKind(templatesFor(market), kind, DEFAULT_DRAFT.kind);
+  }
+  return null;
+}
+
+/** The templates the current scope can offer. A group lives in one market, which decides the
+ * templates it can use (a Taiwan group can use the Taiwan-only ones); until a group is chosen only
+ * the templates both markets have are offered. */
+function offeredTemplatesFor(
+  scope: AlertScope,
+  market: Market,
+  groups: readonly WatchlistGroupView[],
+  watchlistId: string,
+): readonly AlertTemplateKind[] {
+  if (scope !== "watchlist") {
+    return templatesFor(market);
+  }
+  const groupMarket = groups.find((g) => g.group.id === watchlistId)?.group.market;
+  return groupTemplatesFor(groupMarket === "TW" ? "TW" : "US");
+}
+
+/** Flag a ticker with no price data only when the lookup worked and found nothing. */
+function isSymbolUnknown(
+  editing: boolean,
+  scope: AlertScope,
+  check: { checked?: boolean; exists?: boolean } | undefined,
+): boolean {
+  return !editing && scope === "symbol" && check?.checked === true && check.exists === false;
+}
+
+function visibleFieldErrors(built: BuildResult, submitted: boolean): ConditionFieldErrors {
+  return built.ok || !submitted ? {} : built.errors;
+}
+
+type SubmitInputs = {
+  readonly editing: boolean;
+  readonly base: AlertRule | undefined;
+  readonly built: BuildResult;
+  readonly symbolMissing: boolean;
+  readonly watchlistMissing: boolean;
+  readonly scope: AlertScope;
+  readonly watchlistId: string;
+  readonly symbol: string;
+  readonly market: Market;
+  readonly triggerMode: AlertTriggerMode;
+  readonly expiry: ExpiryChoice;
+};
+
+type SubmitPlan =
+  | { readonly kind: "invalid" }
+  | { readonly kind: "unchanged" }
+  | { readonly kind: "save"; readonly action: SaveAction };
+
+/** What pressing submit should do: nothing (invalid), just close (nothing changed), or save. */
+function planSubmit(inputs: SubmitInputs): SubmitPlan {
+  const { editing, base, built, scope, watchlistId, symbol, market, triggerMode, expiry } = inputs;
+  if ((!editing && (inputs.symbolMissing || inputs.watchlistMissing)) || !built.ok) {
+    return { kind: "invalid" };
+  }
+  if (base) {
+    const patch = buildAlertPatch(base, { condition: built.condition, triggerMode, expiry });
+    // Nothing changed — don't bump the version or re-arm the rule.
+    return patch === null
+      ? { kind: "unchanged" }
+      : { kind: "save", action: { mode: "update", id: base.id, body: patch } };
+  }
+  return {
+    kind: "save",
+    action: {
+      mode: "create",
+      body: {
+        ...(scope === "watchlist"
+          ? { watchlist_id: watchlistId }
+          : { symbol: symbol.trim(), market }),
+        condition: built.condition,
+        trigger_mode: triggerMode,
+        expires_in_days: expiry === "never" ? null : Number(expiry),
+      },
+    },
+  };
+}
+
+/** Reload the rule and fold the other device's change into the form's values. Null when the rule
+ * was deleted meanwhile, the draft is invalid, or the reload failed — the plain stale message stays. */
+async function loadMergedEdit(
+  base: AlertRule,
+  draft: ConditionDraft,
+  triggerMode: AlertTriggerMode,
+): Promise<{ latest: AlertRule; merged: StaleMerge } | null> {
+  try {
+    const built = buildCondition(draft);
+    const latest = (await listAlerts()).find((candidate) => candidate.id === base.id);
+    if (!latest || !built.ok) {
+      return null;
+    }
+    const merged = mergeStaleEdit(base, latest, { condition: built.condition, triggerMode });
+    return { latest, merged };
+  } catch {
+    // Network failure — the stale message stays and the user can reopen the editor.
+    return null;
+  }
+}
+
+/** The ticker to warn about, once the user pauses typing and the lookup worked but found no price
+ * data for it (a typo like APPLE for AAPL). A hint only; creating the rule is never blocked, since
+ * a brand-new listing can lack a bar. Null when there is nothing to warn about. */
+function useUnknownSymbol(
+  editing: boolean,
+  scope: AlertScope,
+  symbol: string,
+  market: Market,
+): string | null {
   const [settledSymbol, setSettledSymbol] = useState("");
   useEffect(() => {
     const timer = window.setTimeout(() => setSettledSymbol(symbol.trim().toUpperCase()), 500);
@@ -153,11 +267,60 @@ export function AlertForm({
     enabled: !editing && scope === "symbol" && settledSymbol !== "",
     staleTime: FRESHNESS.reference,
   });
-  const symbolUnknown =
-    !editing &&
-    scope === "symbol" &&
-    symbolCheck.data?.checked === true &&
-    symbolCheck.data.exists === false;
+  return isSymbolUnknown(editing, scope, symbolCheck.data) ? settledSymbol : null;
+}
+
+type MissingFields = { readonly symbol: boolean; readonly watchlist: boolean };
+const NOTHING_MISSING: MissingFields = { symbol: false, watchlist: false };
+
+/** Which required scope field is still empty. */
+function missingFields(scope: AlertScope, symbol: string, watchlistId: string): MissingFields {
+  return {
+    symbol: scope === "symbol" && symbol.trim() === "",
+    watchlist: scope === "watchlist" && watchlistId === "",
+  };
+}
+
+/** Alert-rule create/edit form.
+ * Template-first — the user picks what to watch and fills only that template's fields — with a
+ * fact-phrased preview line and inline, retryable errors. `Esc` cancels. Pass `rule` to edit: the
+ * scope (symbol / market) is fixed, only changed fields are sent, and the save carries the rule's
+ * `version` so an edit from a stale screen is refused instead of overwriting a newer one. */
+export function AlertForm({
+  onDone,
+  rule,
+  preset,
+}: Readonly<{
+  onDone: () => void;
+  rule?: AlertRule;
+  preset?: AlertFormPreset | undefined;
+}>): ReactNode {
+  const t = useTranslations("settings.alerts.form");
+  const queryClient = useQueryClient();
+
+  const editing = rule !== undefined;
+  const initial = initialFormValues(rule, preset);
+  // The server copy the edit is diffed against. It moves forward after a 409 is merged.
+  const [base, setBase] = useState<AlertRule | undefined>(rule);
+  const [notice, setNotice] = useState<"merged" | "conflict" | null>(null);
+  const [symbol, setSymbol] = useState(initial.symbol);
+  const [market, setMarket] = useState<Market>(initial.market);
+  const [draft, setDraft] = useState<ConditionDraft>(initial.draft);
+  const [triggerMode, setTriggerMode] = useState<AlertTriggerMode>(initial.triggerMode);
+  const [expiry, setExpiry] = useState<ExpiryChoice>(defaultExpiry(editing));
+  // A rule follows one symbol, or every stock in one of the user's watchlist groups (the scope is
+  // fixed once created). A group can hold both markets, so a group rule offers only the templates
+  // that work for both.
+  const [scope, setScope] = useState<AlertScope>(initial.scope);
+  const [watchlistId, setWatchlistId] = useState(initial.watchlistId);
+  const groups = useQuery({
+    queryKey: queryKeys.settings("alert-watchlists"),
+    queryFn: () => getWatchlists(),
+    enabled: !editing,
+  });
+  const [submitted, setSubmitted] = useState(false);
+
+  const unknownSymbol = useUnknownSymbol(editing, scope, symbol, market);
 
   const mutation = useMutation({
     mutationFn: save,
@@ -168,7 +331,7 @@ export function AlertForm({
     onError: (error) => {
       // A stale edit means another device saved first: refresh the list, then fold their change
       // into the open form so the user re-saves in one click instead of losing their edit.
-      if (error instanceof SettingsApiError && error.code === "stale_version") {
+      if (isStaleVersion(error)) {
         void queryClient.invalidateQueries({ queryKey: queryKeys.settings("alerts") });
         void mergeLatest();
       }
@@ -179,20 +342,20 @@ export function AlertForm({
     if (!base) {
       return;
     }
-    try {
-      const built = buildCondition(draft);
-      const latest = (await listAlerts()).find((candidate) => candidate.id === base.id);
-      if (!latest || !built.ok) {
-        return; // deleted meanwhile, or the draft is invalid — keep the plain stale message
-      }
-      const merged = mergeStaleEdit(base, latest, { condition: built.condition, triggerMode });
-      setBase(latest);
-      setDraft(draftFromCondition(merged.condition));
-      setTriggerMode(merged.triggerMode);
-      setNotice(merged.conflict ? "conflict" : "merged");
-      mutation.reset();
-    } catch {
-      // Network failure — the stale message stays and the user can reopen the editor.
+    const result = await loadMergedEdit(base, draft, triggerMode);
+    if (!result) {
+      return;
+    }
+    setBase(result.latest);
+    setDraft(draftFromCondition(result.merged.condition));
+    setTriggerMode(result.merged.triggerMode);
+    setNotice(result.merged.conflict ? "conflict" : "merged");
+    mutation.reset();
+  };
+
+  const setKind = (kind: AlertTemplateKind | null): void => {
+    if (kind !== null) {
+      setDraft((prev) => ({ ...prev, kind }));
     }
   };
 
@@ -200,9 +363,19 @@ export function AlertForm({
   // can't serve (the API would refuse it) rather than leaving an unsubmittable selection.
   const changeMarket = (next: Market): void => {
     setMarket(next);
-    if (!templatesFor(next).includes(draft.kind)) {
-      setDraft((prev) => ({ ...prev, kind: DEFAULT_DRAFT.kind }));
-    }
+    setKind(fallbackKind(templatesFor(next), draft.kind, DEFAULT_DRAFT.kind));
+  };
+
+  const changeScope = (next: AlertScope): void => {
+    setScope(next);
+    setKind(kindAfterScopeChange(next, market, draft.kind));
+  };
+
+  const changeWatchlist = (id: string): void => {
+    setWatchlistId(id);
+    const picked = (groups.data ?? []).find((g) => g.group.id === id);
+    const nextMarket: Market = picked?.group.market ?? "US";
+    setKind(fallbackKind(groupTemplatesFor(nextMarket), draft.kind, GROUP_DEFAULT_KIND));
   };
 
   const update = (patch: Partial<ConditionDraft>): void => {
@@ -210,70 +383,34 @@ export function AlertForm({
   };
 
   const built = buildCondition(draft);
-  const symbolMissing = scope === "symbol" && symbol.trim() === "";
-  const watchlistMissing = scope === "watchlist" && watchlistId === "";
-  // A group lives in one market, which decides the templates it can use (a Taiwan group can use the
-  // Taiwan-only ones); until a group is chosen only the templates both markets have are offered.
-  const groupMarket = (groups.data ?? []).find((g) => g.group.id === watchlistId)?.group.market;
-  const groupTemplateMarket: Market = groupMarket === "TW" ? "TW" : "US";
-  const templateMarket: Market = scope === "watchlist" ? groupTemplateMarket : market;
-  const offeredTemplates =
-    scope === "watchlist" ? groupTemplatesFor(templateMarket) : templatesFor(templateMarket);
-  const fields = fieldsFor(draft.kind);
-  const fieldErrors = built.ok || !submitted ? {} : built.errors;
+  const missing = missingFields(scope, symbol, watchlistId);
 
   const onSubmit = (e: FormEvent<HTMLFormElement>): void => {
     e.preventDefault();
     setSubmitted(true);
-    if ((!editing && (symbolMissing || watchlistMissing)) || !built.ok) {
+    const plan = planSubmit({
+      editing,
+      base,
+      built,
+      symbolMissing: missing.symbol,
+      watchlistMissing: missing.watchlist,
+      scope,
+      watchlistId,
+      symbol,
+      market,
+      triggerMode,
+      expiry,
+    });
+    if (plan.kind === "invalid") {
       return;
     }
     setNotice(null);
-    if (base) {
-      const patch = buildAlertPatch(base, { condition: built.condition, triggerMode, expiry });
-      if (patch === null) {
-        onDone(); // nothing changed — don't bump the version or re-arm the rule
-        return;
-      }
-      mutation.mutate({ mode: "update", id: base.id, body: patch });
+    if (plan.kind === "unchanged") {
+      onDone();
       return;
     }
-    mutation.mutate({
-      mode: "create",
-      body: {
-        ...(scope === "watchlist"
-          ? { watchlist_id: watchlistId }
-          : { symbol: symbol.trim(), market }),
-        condition: built.condition,
-        trigger_mode: triggerMode,
-        expires_in_days: expiry === "never" ? null : Number(expiry),
-      },
-    });
+    mutation.mutate(plan.action);
   };
-
-  const scopeSelect = editing ? null : (
-    <Field label={t("scope")} htmlFor="alert-scope" className="sm:col-span-2">
-      <Select
-        id="alert-scope"
-        value={scope}
-        onChange={(e) => {
-          const next = e.target.value as "symbol" | "watchlist" | "perStock";
-          setScope(next);
-          // A group rule cannot use the price template (one level, many prices).
-          if (next === "watchlist" && !groupTemplatesFor("US").includes(draft.kind)) {
-            setDraft((prev) => ({ ...prev, kind: GROUP_DEFAULT_KIND }));
-          }
-          if (next === "symbol" && !templatesFor(market).includes(draft.kind)) {
-            setDraft((prev) => ({ ...prev, kind: DEFAULT_DRAFT.kind }));
-          }
-        }}
-      >
-        <option value="symbol">{t("scopeSymbol")}</option>
-        <option value="watchlist">{t("scopeWatchlist")}</option>
-        <option value="perStock">{t("scopePerStock")}</option>
-      </Select>
-    </Field>
-  );
 
   const onKeyDown = (e: KeyboardEvent<HTMLFormElement>): void => {
     if (e.key === "Escape") {
@@ -282,28 +419,22 @@ export function AlertForm({
     }
   };
 
-  const preview = built.ok ? conditionSummary(built.condition) : null;
-
-  const fieldMessage = (code: ConditionFieldError | undefined): string | undefined => {
-    if (code === "required") {
-      return t("errorRequired");
-    }
-    if (code === "range") {
-      return t("errorRange");
-    }
-    return undefined;
-  };
+  const scopeField = editing ? null : <ScopeField scope={scope} onChange={changeScope} />;
 
   if (scope === "perStock") {
     return (
       <div className="space-y-4">
         <div className="rounded-[var(--radius-input)] border border-[var(--border)] bg-[var(--surface-2)] p-4">
-          {scopeSelect}
+          {scopeField}
         </div>
         <PerStockForm onDone={onDone} initialGroupId={watchlistId || undefined} />
       </div>
     );
   }
+
+  const fields = fieldsFor(draft.kind);
+  // Required-field errors only show once the user has tried to submit.
+  const shownMissing = submitted ? missing : NOTHING_MISSING;
 
   return (
     <form
@@ -313,326 +444,134 @@ export function AlertForm({
       className="space-y-4 rounded-[var(--radius-input)] border border-[var(--border)] bg-[var(--surface-2)] p-4"
     >
       <fieldset className="grid gap-3 sm:grid-cols-2">
-        {scopeSelect}
+        {scopeField}
         {scope === "watchlist" ? (
-          <Field label={t("watchlist")} htmlFor="alert-watchlist" className="sm:col-span-2">
-            <Select
-              id="alert-watchlist"
-              value={watchlistId}
-              onChange={(e) => {
-                setWatchlistId(e.target.value);
-                const picked = (groups.data ?? []).find((g) => g.group.id === e.target.value);
-                const nextMarket: Market = picked?.group.market ?? "US";
-                if (!groupTemplatesFor(nextMarket).includes(draft.kind)) {
-                  setDraft((prev) => ({ ...prev, kind: GROUP_DEFAULT_KIND }));
-                }
-              }}
-              disabled={editing}
-            >
-              <option value="">{t("watchlistPlaceholder")}</option>
-              {(groups.data ?? []).map((view) => (
-                <option
-                  key={view.group.id}
-                  value={view.group.id}
-                  style={groupNameStyle(view.group)}
-                >
-                  {view.group.name}
-                </option>
-              ))}
-            </Select>
-            <FieldError
-              message={submitted && watchlistMissing ? t("errorWatchlistRequired") : undefined}
-            />
-            <p className="mt-1 text-[12px] text-[var(--text-muted)]">
-              {t("groupHint")}{" "}
-              <button
-                type="button"
-                className="text-[var(--accent-text)] underline"
-                onClick={() => setScope("perStock")}
-              >
-                {t("groupHintAction")}
-              </button>
-            </p>
-          </Field>
+          <WatchlistField
+            groups={groups.data ?? []}
+            watchlistId={watchlistId}
+            onChange={changeWatchlist}
+            disabled={editing}
+            showRequired={shownMissing.watchlist}
+            onPerStock={() => setScope("perStock")}
+          />
         ) : null}
         {scope === "symbol" ? (
-          <>
-            <Field label={t("symbol")} htmlFor="alert-symbol">
-              <TextInput
-                id="alert-symbol"
-                value={symbol}
-                onChange={(e) => setSymbol(e.target.value)}
-                placeholder="2330"
-                disabled={editing}
-              />
-              <FieldError
-                message={submitted && symbolMissing ? t("errorSymbolRequired") : undefined}
-              />
-              {symbolUnknown ? (
-                <p role="status" className="text-[12px] text-[var(--warn)]">
-                  {t("warnSymbolUnknown", { symbol: settledSymbol })}
-                </p>
-              ) : null}
-            </Field>
-            <Field label={t("market")} htmlFor="alert-market">
-              <Select
-                id="alert-market"
-                value={market}
-                onChange={(e) => changeMarket(e.target.value as Market)}
-                disabled={editing}
-              >
-                {MARKETS.map((m) => (
-                  <option key={m} value={m}>
-                    {tc(`marketOption.${m}`)}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          </>
+          <SymbolFields
+            symbol={symbol}
+            setSymbol={setSymbol}
+            market={market}
+            onMarketChange={changeMarket}
+            editing={editing}
+            showRequired={shownMissing.symbol}
+            unknownSymbol={unknownSymbol}
+          />
         ) : null}
-        <Field label={t("template")} htmlFor="alert-template" className="sm:col-span-2">
-          <Select
-            id="alert-template"
-            value={draft.kind}
-            onChange={(e) => update({ kind: e.target.value as AlertTemplateKind })}
-          >
-            {offeredTemplates.map((kind) => (
-              <option key={kind} value={kind}>
-                {t(`templateOption.${kind}`)}
-              </option>
-            ))}
-          </Select>
-        </Field>
-
-        {draft.kind === "close_price" ? (
-          <Field label={t("comparator")} htmlFor="alert-comparator">
-            <Select
-              id="alert-comparator"
-              value={draft.comparator}
-              onChange={(e) => update({ comparator: e.target.value as "above" | "below" })}
-            >
-              {(["above", "below"] as const).map((v) => (
-                <option key={v} value={v}>
-                  {t(`comparatorOption.${v}`)}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        ) : null}
-        {draft.kind === "daily_change" ? (
-          <Field label={t("moveDirection")} htmlFor="alert-move">
-            <Select
-              id="alert-move"
-              value={draft.moveDirection}
-              onChange={(e) => update({ moveDirection: e.target.value as "up" | "down" })}
-            >
-              {(["up", "down"] as const).map((v) => (
-                <option key={v} value={v}>
-                  {t(`moveDirectionOption.${v}`)}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        ) : null}
-        {draft.kind === "margin_balance_change" ? (
-          <>
-            <Field label={t("marginSide")} htmlFor="alert-margin-side">
-              <Select
-                id="alert-margin-side"
-                value={draft.marginSide}
-                onChange={(e) => update({ marginSide: e.target.value as "margin" | "short" })}
-              >
-                {(["margin", "short"] as const).map((v) => (
-                  <option key={v} value={v}>
-                    {t(`marginSideOption.${v}`)}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field label={t("marginDirection")} htmlFor="alert-margin-direction">
-              <Select
-                id="alert-margin-direction"
-                value={draft.moveDirection}
-                onChange={(e) => update({ moveDirection: e.target.value as "up" | "down" })}
-              >
-                {(["up", "down"] as const).map((v) => (
-                  <option key={v} value={v}>
-                    {t(`marginDirectionOption.${v}`)}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          </>
-        ) : null}
-        {draft.kind === "material_announcement" ? (
-          <Field label={t("keyword")} htmlFor="alert-keyword" className="sm:col-span-2">
-            <TextInput
-              id="alert-keyword"
-              maxLength={KEYWORD_MAX_LENGTH}
-              placeholder={t("keywordPlaceholder")}
-              value={draft.keyword}
-              onChange={(e) => update({ keyword: e.target.value })}
-            />
-          </Field>
-        ) : null}
-        {draft.kind === "etf_premium_discount" ? (
-          <Field label={t("navSide")} htmlFor="alert-nav-side">
-            <Select
-              id="alert-nav-side"
-              value={draft.navSide}
-              onChange={(e) => update({ navSide: e.target.value as "premium" | "discount" })}
-            >
-              {(["premium", "discount"] as const).map((v) => (
-                <option key={v} value={v}>
-                  {t(`navSideOption.${v}`)}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        ) : null}
-        {draft.kind === "institutional_streak" ? (
-          <>
-            <Field label={t("investor")} htmlFor="alert-investor">
-              <Select
-                id="alert-investor"
-                value={draft.investor}
-                onChange={(e) => update({ investor: e.target.value as ConditionDraft["investor"] })}
-              >
-                {INSTITUTIONAL_INVESTORS.map((v) => (
-                  <option key={v} value={v}>
-                    {t(`investorOption.${v}`)}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field label={t("flowDirection")} htmlFor="alert-flow">
-              <Select
-                id="alert-flow"
-                value={draft.flowDirection}
-                onChange={(e) => update({ flowDirection: e.target.value as "buy" | "sell" })}
-              >
-                {(["buy", "sell"] as const).map((v) => (
-                  <option key={v} value={v}>
-                    {t(`flowDirectionOption.${v}`)}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          </>
-        ) : null}
-
-        {fields.map((key) => (
-          <Field key={key} label={t(key)} htmlFor={`alert-${key}`}>
-            <TextInput
-              id={`alert-${key}`}
-              type="number"
-              inputMode="decimal"
-              step={NUMERIC_FIELD_STEP[key]}
-              value={draft[key]}
-              onChange={(e) => update({ [key]: e.target.value })}
-              aria-invalid={fieldErrors[key] ? true : undefined}
-            />
-            <FieldError message={fieldMessage(fieldErrors[key])} />
-          </Field>
-        ))}
-        {draft.kind === "etf_premium_discount" ? (
-          <p className="text-[13px] text-[var(--text-muted)] sm:col-span-2">{t("etfNote")}</p>
-        ) : null}
-        {fields.length === 0 ? (
-          <p className="text-[13px] text-[var(--text-muted)] sm:col-span-2">
-            {t(`hint.${draft.kind}`)}
-          </p>
-        ) : null}
-
-        <Field label={t("triggerMode")} htmlFor="alert-trigger-mode" className="sm:col-span-2">
-          <Select
-            id="alert-trigger-mode"
-            value={triggerMode}
-            onChange={(e) => setTriggerMode(e.target.value as AlertTriggerMode)}
-          >
-            {ALERT_TRIGGER_MODES.map((mode) => (
-              <option key={mode} value={mode}>
-                {t(`triggerModeOption.${mode}`)}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label={t("expiry")} htmlFor="alert-expiry">
-          <Select
-            id="alert-expiry"
-            value={expiry}
-            onChange={(e) => setExpiry(e.target.value as ExpiryChoice)}
-          >
-            {expiryOptions.map((option) => (
-              <option key={option} value={option}>
-                {t(`expiryOption.${option}`)}
-              </option>
-            ))}
-          </Select>
-        </Field>
+        <TemplateFields
+          draft={draft}
+          offered={offeredTemplatesFor(scope, market, groups.data ?? [], watchlistId)}
+          update={update}
+        />
+        <NumericFields
+          kind={draft.kind}
+          fields={fields}
+          draft={draft}
+          errors={visibleFieldErrors(built, submitted)}
+          update={update}
+        />
+        <TriggerAndExpiryFields
+          triggerMode={triggerMode}
+          setTriggerMode={setTriggerMode}
+          expiry={expiry}
+          setExpiry={setExpiry}
+          expiryOptions={expiryOptionsFor(editing)}
+        />
       </fieldset>
 
-      <p className="text-[13px] text-[var(--text-muted)]" aria-live="polite">
-        <span className="font-medium text-[var(--text)]">{t("preview")}：</span>
-        {preview ? (
-          <>
-            {scope === "symbol" && symbol.trim() ? `${symbol.trim()} · ` : ""}
-            {ts(preview.key, preview.values)}
-          </>
-        ) : (
-          t("previewPending")
-        )}
-      </p>
+      <PreviewLine built={built} symbol={scope === "symbol" ? symbol.trim() : ""} />
 
+      <FormMessages
+        notice={notice}
+        error={mutation.isError ? mutation.error : null}
+        editing={editing}
+      />
+
+      <FormActions editing={editing} pending={mutation.isPending} onCancel={onDone} />
+    </form>
+  );
+}
+
+/** The fact-phrased summary of the rule as it stands, or a placeholder while it is incomplete. */
+function PreviewLine({
+  built,
+  symbol,
+}: {
+  readonly built: BuildResult;
+  readonly symbol: string;
+}): ReactNode {
+  const t = useTranslations("settings.alerts.form");
+  const ts = useTranslations("settings.alerts.summary");
+  const preview = built.ok ? conditionSummary(built.condition) : null;
+  return (
+    <p className="text-[13px] text-[var(--text-muted)]" aria-live="polite">
+      <span className="font-medium text-[var(--text)]">{t("preview")}：</span>
+      {preview ? (
+        <>
+          {symbol ? `${symbol} · ` : ""}
+          {ts(preview.key, preview.values)}
+        </>
+      ) : (
+        t("previewPending")
+      )}
+    </p>
+  );
+}
+
+/** The merge notice after a stale save, and the inline error for a failed one. */
+function FormMessages({
+  notice,
+  error,
+  editing,
+}: {
+  readonly notice: "merged" | "conflict" | null;
+  readonly error: unknown;
+  readonly editing: boolean;
+}): ReactNode {
+  const t = useTranslations("settings.alerts.form");
+  return (
+    <>
       {notice !== null ? (
         <p role="status" className="text-[13px] text-[var(--text-muted)]">
           {t(notice === "conflict" ? "mergedConflict" : "merged")}
         </p>
       ) : null}
 
-      {mutation.isError ? (
+      {error !== null ? (
         <p role="alert" className="text-[13px] text-[var(--warn)]">
-          {t(errorMessageKey(mutation.error, editing))}
+          {t(errorMessageKey(error, editing))}
         </p>
       ) : null}
-
-      <div className="flex justify-end gap-2">
-        <Button type="button" variant="ghost" size="sm" onClick={onDone}>
-          {t("cancel")}
-        </Button>
-        <Button type="submit" variant="filled" size="sm" disabled={mutation.isPending}>
-          {editing ? t("save") : t("submit")}
-        </Button>
-      </div>
-    </form>
+    </>
   );
 }
 
-function Field({
-  label,
-  htmlFor,
-  className,
-  children,
-}: Readonly<{
-  label: string;
-  htmlFor: string;
-  className?: string;
-  children: ReactNode;
-}>): ReactNode {
+function FormActions({
+  editing,
+  pending,
+  onCancel,
+}: {
+  readonly editing: boolean;
+  readonly pending: boolean;
+  readonly onCancel: () => void;
+}): ReactNode {
+  const t = useTranslations("settings.alerts.form");
   return (
-    <div className={className}>
-      <label className="mb-1 block text-[13px] text-[var(--text-muted)]" htmlFor={htmlFor}>
-        {label}
-      </label>
-      {children}
+    <div className="flex justify-end gap-2">
+      <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
+        {t("cancel")}
+      </Button>
+      <Button type="submit" variant="filled" size="sm" disabled={pending}>
+        {editing ? t("save") : t("submit")}
+      </Button>
     </div>
   );
-}
-
-function FieldError({ message }: { message: string | undefined }): ReactNode {
-  return message ? (
-    <p role="alert" className="mt-1 text-[12px] text-[var(--warn)]">
-      {message}
-    </p>
-  ) : null;
 }
