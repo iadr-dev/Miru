@@ -545,14 +545,9 @@ class Orchestrator:
         event-bus hooks when it has a bus, and `none` turns can trigger native web search same
         as `single` — dropping them here would silently swallow the live `web_search.result`
         SSE frame for every `none`-framework turn."""
-        layers: PromptLayers = dataclasses.replace(
-            default_prompt_layers(locale),
-            personality=personality_fragment.personality,
-            pet_hint=personality_fragment.pet_hint,
-        )
         loop = self._build_loop(
             tools=[],
-            prompt_layers=layers,
+            prompt_layers=_skill_prompt_layers(None, personality_fragment, locale),
             max_steps=1,
             role=ModelRole.AGENT,
             event_bus=event_bus,
