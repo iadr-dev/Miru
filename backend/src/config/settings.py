@@ -78,7 +78,6 @@ class Settings(BaseSettings):
     # How long a stopping API/MCP process waits for open connections (a chat turn mid-answer)
     # before cancelling them. The container's stop grace period must be longer than this.
     shutdown_grace_seconds: int = 30
-    duckdb_path: str = "./data/duckdb"
     parquet_root: str = "./data/parquet"
     # Private reference data (supply-chain relations, concept themes, tier maps): never in git.
     # A directory the operator keeps locally; empty or missing = those features show nothing.

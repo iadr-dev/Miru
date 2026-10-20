@@ -42,8 +42,7 @@ x-app-env: &app-env
   # real factory on purpose: the usual `${VAR:-}` would forward an EMPTY string when unset, and an
   # empty value disables binding. Set it to an empty string explicitly to keep the no-op.
   INGEST_DATA_UPDATE_PUBLISHER_FACTORY: ${INGEST_DATA_UPDATE_PUBLISHER_FACTORY:-events.ingest_wiring:build_data_update_publisher}
-  # Derived-store dirs on the shared named volume (leader writes Parquet, readers read it).
-  DUCKDB_PATH: /app/data/duckdb
+  # Derived-store dir on the shared named volume (leader writes Parquet, readers read it).
   PARQUET_ROOT: /app/data/parquet
   # Private reference data (supply chain, concept themes) mounted read-only from ../reference-data
   # on the services that load it; kept out of git on purpose.

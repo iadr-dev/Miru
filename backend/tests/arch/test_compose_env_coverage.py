@@ -33,7 +33,6 @@ COMPOSE_INTERNAL_FIELDS = frozenset(
         "redis_url",  # pinned to the compose redis service
         "event_bus_backend",  # forced "redis" in compose — the whole point of the dev-parity stack
         "rate_limiter_backend",  # forced "redis" in compose, same reason
-        "duckdb_path",  # pinned to the shared named volume path, not a host path
         "parquet_root",  # pinned to the shared named volume path, not a host path
         "env",  # forced "development" in compose regardless of the host .env
         "ingest_on_startup",  # forced "false" in compose (governance: no startup network calls)
