@@ -46,4 +46,4 @@ jobs:
         # `--no-deps --disable-pip`: audit exactly the pins in uv.lock without resolving or
         # installing anything. A vulnerable pin fails the job; upgrade it with
         # `uv lock --upgrade-package <name>` (or document an accepted risk with `--ignore-vuln`).
-        run: uvx pip-audit==2.10.1 -r audit-requirements.txt --disable-pip --no-deps
+        run: uvx --no-build pip-audit==2.10.1 -r audit-requirements.txt --disable-pip --no-deps
