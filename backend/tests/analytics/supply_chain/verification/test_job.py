@@ -289,3 +289,9 @@ def test_the_second_opinion_model_setting_picks_its_own_model(
     )
     second = [override for role, override in seen if getattr(role, "value", "") == "synthesis"]
     assert second == ["openai/gpt-5.6-sol", None]
+
+
+def test_a_blank_research_model_counts_as_unset() -> None:
+    assert job_module.research_model(settings(supply_chain_research_model="")) is None
+    assert job_module.research_model(settings(supply_chain_research_model="  ")) is None
+    assert job_module.research_model(settings(supply_chain_research_model="x/y")) == "x/y"

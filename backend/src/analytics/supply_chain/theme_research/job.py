@@ -66,7 +66,7 @@ from analytics.supply_chain.themes_io.loader import (
 from analytics.supply_chain.themes_io.promote import ProposalFileError
 from analytics.supply_chain.verification.budget import Budget, Limits
 from analytics.supply_chain.verification.directory import CompanyDirectory, load_directory
-from analytics.supply_chain.verification.job import missing_prerequisite
+from analytics.supply_chain.verification.job import missing_prerequisite, research_model
 from analytics.supply_chain.verification.search import BraveSearchProvider, SearchProvider
 from config.private_data import reference_dir
 from config.settings import Settings, get_settings
@@ -83,9 +83,7 @@ FILE_ERRORS = (ConceptFileError, ProposalFileError, ThemeMiningError, OSError)
 
 
 def _judge_client(settings: Settings) -> LLMClient:
-    return resolve_role_with_override(
-        ModelRole.SUBAGENT, settings.supply_chain_research_model, settings
-    )
+    return resolve_role_with_override(ModelRole.SUBAGENT, research_model(settings), settings)
 
 
 def _second_client(settings: Settings) -> LLMClient | None:
