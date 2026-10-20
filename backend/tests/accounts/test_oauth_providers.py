@@ -228,16 +228,16 @@ def test_telegram_client_id_defaults_to_the_bots_id_and_never_asks_for_the_phone
 
 
 def test_telegram_needs_pkce_and_configuration() -> None:
+    unconfigured = Settings(
+        telegram_bot_token="1:x",
+        telegram_login_client_secret=None,
+        telegram_login_redirect_uri=None,
+    )
     with pytest.raises(OAuthConfigError):
-        TelegramOAuthProvider(
-            Settings(
-                telegram_bot_token="1:x",
-                telegram_login_client_secret=None,
-                telegram_login_redirect_uri=None,
-            )
-        )
+        TelegramOAuthProvider(unconfigured)
+    provider = TelegramOAuthProvider(_telegram_settings())
     with pytest.raises(OAuthConfigError):
-        TelegramOAuthProvider(_telegram_settings()).build_authorization_url(state="s")
+        provider.build_authorization_url(state="s")
 
 
 async def test_telegram_code_exchange_uses_basic_auth() -> None:
@@ -291,8 +291,9 @@ async def test_telegram_verify_rejects_bad_claims(overrides: dict[str, Any]) -> 
     provider = TelegramOAuthProvider(
         _telegram_settings(), signing_key_client=_StubSigningKeyClient(key.public_key())
     )
+    token = _telegram_token(key, **overrides)
     with pytest.raises(IdentityVerificationError):
-        await provider.verify_id_token(_telegram_token(key, **overrides))
+        await provider.verify_id_token(token)
 
 
 async def test_telegram_verify_rejects_a_wrong_nonce_and_a_foreign_signature() -> None:
@@ -300,8 +301,9 @@ async def test_telegram_verify_rejects_a_wrong_nonce_and_a_foreign_signature() -
     provider = TelegramOAuthProvider(
         _telegram_settings(), signing_key_client=_StubSigningKeyClient(key.public_key())
     )
+    token = _telegram_token(key, nonce="other")
     with pytest.raises(IdentityVerificationError):
-        await provider.verify_id_token(_telegram_token(key, nonce="other"), nonce="mine")
+        await provider.verify_id_token(token, nonce="mine")
     forged = _telegram_token(rsa.generate_private_key(public_exponent=65537, key_size=2048))
     with pytest.raises(IdentityVerificationError):
         await provider.verify_id_token(forged)

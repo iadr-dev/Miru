@@ -200,8 +200,10 @@ async def test_an_anonymous_caller_gets_a_sign_in_result_and_nothing_is_read(
 
 
 async def test_running_a_private_tool_without_a_user_directly_is_a_wiring_error() -> None:
+    tool = _tools(FakeReader())["get_my_usage"]
+    args = GetMyUsageInput()
     with pytest.raises(PrivateToolAnonymousError):
-        await _tools(FakeReader())["get_my_usage"].run(GetMyUsageInput(), ANONYMOUS)
+        await tool.run(args, ANONYMOUS)
 
 
 async def test_every_read_is_for_the_context_user_even_if_arguments_try_otherwise() -> None:

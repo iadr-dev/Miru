@@ -485,8 +485,9 @@ async def test_run_turn_raises_step_budget_exceeded_when_model_never_finalizes()
     )
     loop = AgentLoop(llm, tools=[EchoTool()], max_steps=3)
 
+    context = ToolContext()
     with pytest.raises(StepBudgetExceededError):
-        await loop.run_turn("keep going forever", tool_context=ToolContext())
+        await loop.run_turn("keep going forever", tool_context=context)
 
 
 async def test_run_turn_reports_unknown_tool_without_dispatching() -> None:
@@ -519,8 +520,9 @@ async def test_run_turn_uses_settings_defaults_when_no_explicit_budget_given() -
     )
     loop = AgentLoop(llm, tools=[EchoTool()], settings=settings)
 
+    context = ToolContext()
     with pytest.raises(StepBudgetExceededError):
-        await loop.run_turn("hi", tool_context=ToolContext())
+        await loop.run_turn("hi", tool_context=context)
 
 
 async def test_stop_reason_and_usage_are_carried_through_step_result() -> None:

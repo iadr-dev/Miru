@@ -75,9 +75,10 @@ async def test_a_pick_for_a_keyed_provider_sets_main_and_that_providers_cheap(db
 async def test_a_pick_without_a_key_for_its_provider_is_refused(db_session) -> None:
     user_id = await make_user(db_session)
     await _save(db_session, user_id, "openai")
+    settings = _settings()
     with pytest.raises(ByokKeyRequiredError) as exc:
         await resolve_byok_override(
-            db_session, _settings(), user_id=user_id, model_override="anthropic/claude-opus-5-5"
+            db_session, settings, user_id=user_id, model_override="anthropic/claude-opus-5-5"
         )
     assert exc.value.providers == ["openai"]
 

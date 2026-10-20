@@ -203,11 +203,12 @@ async def test_replace_members_on_missing_theme_raises(
 ) -> None:
     async with session_factory() as session:
         store = SqlAlchemyThemeStore(session)
+        members = [_member("2330")]
         with pytest.raises(ThemeNotFoundError):
             await store.replace_theme_members(
                 theme_key="does-not-exist",
                 source=ThemeSource.INDUSTRY_CHAIN,
-                members=[_member("2330")],
+                members=members,
             )
 
 

@@ -31,8 +31,9 @@ def _attachment(name: str, data: bytes = b"hello") -> AttachmentInput:
 async def test_process_attachments_rejects_too_many_per_request() -> None:
     attachments = tuple(_attachment(f"f{i}.txt") for i in range(11))
 
+    settings = _settings()
     with pytest.raises(ApiError) as exc_info:
-        await process_attachments(attachments, message="hi", settings=_settings())
+        await process_attachments(attachments, message="hi", settings=settings)
 
     assert exc_info.value.code == "too_many_attachments"
 

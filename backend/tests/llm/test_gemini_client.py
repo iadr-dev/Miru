@@ -268,8 +268,9 @@ async def test_chat_never_logs_api_key_on_failure(
         AsyncMock(side_effect=RuntimeError("boom")),
     )
 
+    messages = [Message(role=MessageRole.USER, content="hi")]
     with pytest.raises(RuntimeError):
-        await client.chat([Message(role=MessageRole.USER, content="hi")])
+        await client.chat(messages)
 
     assert "test-key" not in caplog.text
 

@@ -42,8 +42,9 @@ def _build(model: str, start: date, end: date) -> DateRangeInput | MarketOnlyInp
 
 @pytest.mark.parametrize("model", ["symbol", "market"])
 def test_an_inverted_range_is_rejected(model: str) -> None:
+    end = date(2026, 1, 1)
     with pytest.raises(ValidationError, match="is after end_date"):
-        _build(model, _TODAY, date(2026, 1, 1))
+        _build(model, _TODAY, end)
 
 
 @pytest.mark.parametrize("model", ["symbol", "market"])

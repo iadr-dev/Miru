@@ -28,8 +28,9 @@ def test_evidence_url_and_excerpt_limits() -> None:
 def test_relation_needs_two_companies_and_valid_revenue() -> None:
     with pytest.raises(ValidationError):
         relation(ALPHA, ALPHA)
+    payload = {**relation().model_dump(), "revenue_pct": 101}
     with pytest.raises(ValidationError):
-        Relation.model_validate({**relation().model_dump(), "revenue_pct": 101})
+        Relation.model_validate(payload)
 
 
 def test_key_uses_empty_string_for_no_product() -> None:

@@ -376,8 +376,9 @@ async def test_official_client_surfaces_a_401_instead_of_hanging(
     settings: Settings, session_factory: async_sessionmaker[AsyncSession]
 ) -> None:
     async with serve(_app(settings, session_factory)) as server:
+        session = official_session(server)
         with pytest.raises(BaseException) as excinfo:
-            async with official_session(server):
+            async with session:
                 pytest.fail("a 401 must not yield a usable session")
         assert "401" in repr(excinfo.value)
 

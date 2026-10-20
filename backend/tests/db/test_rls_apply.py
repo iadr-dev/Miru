@@ -146,8 +146,9 @@ async def test_a_table_that_stays_locked_fails_clearly_and_is_left_unchanged(
     stuck = await pg.connect()
     try:
         await stuck.execute(text('SELECT count(*) FROM "threads"'))  # holds ACCESS SHARE
+        applying = rls.apply_policies(pg)
         with pytest.raises(rls.RlsPolicyBlockedError, match="threads"):
-            await asyncio.wait_for(rls.apply_policies(pg), timeout=20)
+            await asyncio.wait_for(applying, timeout=20)
     finally:
         await stuck.rollback()
         await stuck.close()

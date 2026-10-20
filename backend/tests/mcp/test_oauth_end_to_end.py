@@ -323,8 +323,9 @@ async def test_denying_consent_gives_the_client_no_tokens(deployment: Deployment
     user_id = await deployment.new_user(Tier.PREMIUM)
     storage = MemoryTokenStorage()
     async with deployment.browser_for(user_id) as browser:
+        provider = deployment.provider(storage, browser, approve=False)
         with pytest.raises(BaseException) as excinfo:
-            await _connect(deployment, deployment.provider(storage, browser, approve=False))
+            await _connect(deployment, provider)
     assert "access_denied" in repr(excinfo.value)
     assert storage.tokens is None
 

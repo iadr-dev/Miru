@@ -82,18 +82,17 @@ async def test_database_allows_only_one_primary_per_company(
 ) -> None:
     async with session_factory() as session:
         store = SqlAlchemySupplyChainStore(session)
+        positions = [_pos("9001", "a", primary=True), _pos("9001", "b", primary=True)]
         with pytest.raises(IntegrityError):
-            await store.replace_positions(
-                [_pos("9001", "a", primary=True), _pos("9001", "b", primary=True)],
-                computed_at=NOW,
-            )
+            await store.replace_positions(positions, computed_at=NOW)
 
 
 async def test_database_rejects_a_duplicate_chain_row(session_factory: async_sessionmaker) -> None:
     async with session_factory() as session:
         store = SqlAlchemySupplyChainStore(session)
+        positions = [_pos("9001", "a"), _pos("9001", "a")]
         with pytest.raises(IntegrityError):
-            await store.replace_positions([_pos("9001", "a"), _pos("9001", "a")], computed_at=NOW)
+            await store.replace_positions(positions, computed_at=NOW)
 
 
 async def test_supply_pairs_are_verified_fresh_supplies_between_taiwan_companies(

@@ -213,29 +213,28 @@ def test_the_platform_only_jobs_refuse_to_start_inside_a_byok_scope() -> None:
 
     settings = Settings()
     with byok_scope(_override()):
+        research = job.execute_research(
+            settings,
+            None,  # type: ignore[arg-type]
+            today=dt.date(2026, 10, 19),
+            source="all",
+            limit=None,
+            dry_run=True,
+            is_leader=lambda: True,
+            root=Path(),
+        )
         with pytest.raises(RuntimeError, match="BYOK scope"):
-            asyncio.run(
-                job.execute_research(
-                    settings,
-                    None,  # type: ignore[arg-type]
-                    today=dt.date(2026, 10, 19),
-                    source="all",
-                    limit=None,
-                    dry_run=True,
-                    is_leader=lambda: True,
-                    root=Path(),
-                )
-            )
+            asyncio.run(research)
+        research_job = job.run_research_job(
+            dt.date(2026, 10, 19),
+            None,  # type: ignore[arg-type]
+            settings=settings,
+        )
         with pytest.raises(RuntimeError, match="BYOK scope"):
-            asyncio.run(
-                job.run_research_job(
-                    dt.date(2026, 10, 19),
-                    None,  # type: ignore[arg-type]
-                    settings=settings,
-                )
-            )
+            asyncio.run(research_job)
+        themes = themes_main.main()
         with pytest.raises(RuntimeError, match="BYOK scope"):
-            asyncio.run(themes_main.main())
+            asyncio.run(themes)
 
 
 def test_agent_model_spec_prefers_the_pick_then_the_role_default() -> None:

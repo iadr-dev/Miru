@@ -281,8 +281,9 @@ async def test_fallback_client_chat_raises_when_every_entry_fails() -> None:
     client = FallbackLLMClient(
         (_ScriptedClient("first", fails=True), _ScriptedClient("second", fails=True))
     )
+    messages = [Message(role=MessageRole.USER, content="hi")]
     with pytest.raises(RuntimeError, match="second is down"):
-        await client.chat([Message(role=MessageRole.USER, content="hi")])
+        await client.chat(messages)
 
 
 async def test_fallback_client_identity_matches_first_entry() -> None:

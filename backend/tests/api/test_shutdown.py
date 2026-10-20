@@ -58,8 +58,9 @@ async def test_frames_flow_until_shutdown_begins() -> None:
 
     assert [await anext(relay) for _ in range(3)] == ["f0", "f1", "f2"]
     shutdown.begin()
+    next_frame = anext(relay)
     with pytest.raises(StopAsyncIteration):
-        await asyncio.wait_for(anext(relay), timeout=2)
+        await asyncio.wait_for(next_frame, timeout=2)
 
 
 async def test_a_feed_that_ends_by_itself_ends_the_relay() -> None:

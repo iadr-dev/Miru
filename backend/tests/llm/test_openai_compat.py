@@ -253,8 +253,9 @@ async def test_chat_never_appends_openrouter_tool_for_a_different_provider(
 async def test_chat_raises_on_http_error(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_json_response(monkeypatch, {"error": "bad request"}, status_code=400)
     client = _client()
+    messages = [Message(role=MessageRole.USER, content="hi")]
     with pytest.raises(httpx.HTTPStatusError):
-        await client.chat([Message(role=MessageRole.USER, content="hi")])
+        await client.chat(messages)
 
 
 async def test_stream_assembles_text_and_tool_call_deltas(monkeypatch: pytest.MonkeyPatch) -> None:

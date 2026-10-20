@@ -123,8 +123,9 @@ def test_the_apps_session_jwt_is_not_an_mcp_token(settings: Settings) -> None:
 
 
 def test_an_mcp_token_is_not_an_app_session(settings: Settings) -> None:
+    token = issue(settings)
     with pytest.raises(InvalidAccessTokenError):
-        decode_access_token(issue(settings), settings=settings)
+        decode_access_token(token, settings=settings)
 
 
 def test_a_token_signed_with_the_raw_secret_is_refused_even_if_every_claim_is_right(
