@@ -623,7 +623,6 @@ class Orchestrator:
             steering_source=steering_source,
             model_override=model_override,
             web_search_enabled=web_search_enabled,
-            locale=locale,
             recall_provider=recall_provider,
             hide_cards_for=frozenset(skill.frontmatter.hide_cards) if skill else frozenset(),
         )
@@ -915,7 +914,6 @@ class Orchestrator:
             turn_id=turn_id,
             agent_id=agent_id,
             web_search_enabled=web_search_enabled,
-            locale=locale,
             hide_cards_for=frozenset(skill.frontmatter.hide_cards),
         )
         try:
@@ -1130,7 +1128,6 @@ class Orchestrator:
         steering_source: SteeringSource | None = None,
         model_override: str | None = None,
         web_search_enabled: bool = False,
-        locale: str = "zh-TW",
         recall_provider: RecallBlockProvider | None = None,
         hide_cards_for: frozenset[str] = frozenset(),
     ) -> AgentLoop:
