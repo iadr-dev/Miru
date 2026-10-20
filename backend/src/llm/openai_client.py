@@ -41,6 +41,7 @@ import json
 from collections.abc import AsyncIterator
 from typing import Any, Final, cast
 
+import anyio.to_thread
 import structlog
 import tiktoken
 from openai import AsyncOpenAI
@@ -404,7 +405,12 @@ class OpenAIClient:
         content; the small fixed per-item/per-message framing overhead the real API adds
         server-side is not modeled, so this is a slight undercount — acceptable for the
         context-window budgeting consumer, same tolerance this estimate already had under
-        Chat Completions (endpoint-independent, since `tiktoken` counts text, not wire framing)."""
+        Chat Completions (endpoint-independent, since `tiktoken` counts text, not wire framing).
+
+        Tokenizing a long history is CPU-bound, so it runs in a worker thread."""
+        return await anyio.to_thread.run_sync(self._count_tokens_sync, messages)
+
+    def _count_tokens_sync(self, messages: list[Message]) -> int:
         total = 0
         for message in messages:
             if message.content:

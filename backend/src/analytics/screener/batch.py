@@ -25,6 +25,7 @@ from collections.abc import Sequence
 from datetime import date as date_
 from typing import cast
 
+import anyio.to_thread
 import pandas as pd
 import structlog
 
@@ -431,7 +432,14 @@ async def job_screener_flags(run_date: date_, ctx: IngestContext) -> JobRun:
     Idempotent: re-running for the same date rewrites the same partition version rather than
     accumulating rows. Uses the extrapolating check since `run_date` is almost always "today",
     which is always beyond `ctx.calendar`'s known range until today's own whole-market pulls
-    have landed — see `TradingDayCalendar.is_trading_day_extrapolating`'s own docstring."""
+    have landed — see `TradingDayCalendar.is_trading_day_extrapolating`'s own docstring.
+
+    The Parquet reads and the pandas/pattern compute are blocking, so the whole pass runs in a
+    worker thread rather than on the event loop."""
+    return await anyio.to_thread.run_sync(_write_screener_flags, run_date, ctx)
+
+
+def _write_screener_flags(run_date: date_, ctx: IngestContext) -> JobRun:
     if not ctx.calendar.is_trading_day_extrapolating(run_date):
         return journal_run(
             SCREENER_FLAGS_DATASET,

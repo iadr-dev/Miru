@@ -4,6 +4,7 @@ and the job end to end on a real ParquetStore (no network)."""
 from __future__ import annotations
 
 import math
+import threading
 from calendar.trading_days import TradingDayCalendar
 from datetime import date as date_
 from pathlib import Path
@@ -11,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from analytics.indicators import PriceBar, accumulation_distribution
+from analytics.strategy_watch import batch as batch_module
 from analytics.strategy_watch import context
 from analytics.strategy_watch.batch import (
     PRICE_EOD_DATASET,
@@ -419,3 +421,24 @@ def test_momentum_flag_rejects_loose_pauses_heavy_volume_and_weak_runs() -> None
     assert _flag(_flag_series(pause_volume=5_000_000)) == []  # volume did not dry up
     assert _flag(_flag_series(run_to=52.0)) == []  # +8% is not a strong run
     assert _flag(_flag_series(), _chips(large_holder_pct=40.0)) == []  # 大戶 share fell
+
+
+async def test_the_job_runs_its_blocking_pass_off_the_event_loop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ctx = _ctx(tmp_path)
+    _write_history(ctx.store, ctx.calendar, _AS_OF)
+    seen: list[int] = []
+    original = batch_module.calendar_for
+
+    def spy(inner_ctx: IngestContext) -> TradingDayCalendar:
+        seen.append(threading.get_ident())
+        return original(inner_ctx)
+
+    monkeypatch.setattr(batch_module, "calendar_for", spy)
+
+    run = await job_strategy_watchlist(_RUN_DATE, ctx)
+
+    assert run.status is RunStatus.SUCCESS
+    assert seen
+    assert threading.get_ident() not in seen

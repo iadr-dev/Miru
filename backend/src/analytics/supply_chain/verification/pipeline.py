@@ -261,12 +261,12 @@ class Pipeline:
                 entry.evidence.append(finding.assessment.evidence)
                 if finding.assessment.as_of_year is not None:
                     entry.years.append(finding.assessment.as_of_year)
-        results = tuple([await self._finish_plain(c) for c in found.values()])
+        results = tuple([self._finish_plain(c) for c in found.values()])
         if not results:
             return self._unsupported(target, examined)
         return ClaimOutcome(claim_id=target.claim_id, kind=OutcomeKind.VERIFIED, results=results)
 
-    async def _finish_plain(self, collected: _Collected) -> ClaimResult:
+    def _finish_plain(self, collected: _Collected) -> ClaimResult:
         grade = grade_from_evidence(collected.evidence) or Grade.LOW
         return ClaimResult(
             supplier=collected.supplier,
