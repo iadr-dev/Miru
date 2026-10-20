@@ -168,6 +168,17 @@ async def test_a_stale_page_or_one_without_the_theme_never_reaches_the_model(
     assert summary.llm_calls == 0 and summary.claims == 0
 
 
+async def test_an_undated_page_is_judged_by_the_date_in_its_url(tmp_path: Path) -> None:
+    root = make_root(tmp_path)
+    old = "https://news.example.com/article/category/1/post/201408140"
+    new = "https://news.example.com/2026/09/01/theme"
+    body = f"{LINE_ZETA}\n{LINE_ETA}"
+    search = StubSearch([hit(old), hit(new)], {old: body, new: body})
+    summary = await go(researcher(search, reply()), root)
+    assert summary.dropped == {"source_too_old": 1}
+    assert summary.llm_calls == 1
+
+
 async def test_claim_cap_stops_the_run_after_the_first_target(tmp_path: Path) -> None:
     root = make_root(tmp_path)
     second = theme_target().model_copy(update={"target_id": "other"})
