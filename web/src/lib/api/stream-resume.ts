@@ -104,40 +104,75 @@ function decideNextStep(input: RoundInput): NextStep {
   return { kind: "retry", attempt: nextAttempt, threadId };
 }
 
+type RoundResult = {
+  /** `turn.end` was read: the turn is complete. */
+  readonly finished: boolean;
+  readonly framesThisRound: number;
+  /** What cut the stream short (null when it closed cleanly). */
+  readonly failure: unknown;
+};
+
+/**
+ * Pass one connection's frames through, noting how far the turn got. Resolves with how the
+ * round ended; an abort or a server refusal is thrown as it always was.
+ */
+async function* readRound(
+  source: AsyncGenerator<AgentStreamFrame>,
+  progress: TurnProgress,
+  signal: AbortSignal,
+): AsyncGenerator<AgentStreamFrame, RoundResult> {
+  let framesThisRound = 0;
+  try {
+    for await (const frame of source) {
+      framesThisRound += 1;
+      trackFrame(progress, frame);
+      yield frame;
+      if (frame.kind === "turn.end") {
+        return { finished: true, framesThisRound, failure: null };
+      }
+    }
+  } catch (err) {
+    if (isAbort(err) || isRefusal(err) || signal.aborted) {
+      throw err;
+    }
+    return { finished: false, framesThisRound, failure: err };
+  }
+  return { finished: false, framesThisRound, failure: null };
+}
+
+function resolveOptions(options: ResumeOptions): Required<Omit<ResumeOptions, "threadIdAtStart">> {
+  return {
+    maxAttempts: options.maxAttempts ?? MAX_RESUME_ATTEMPTS,
+    delayMs: options.delayMs ?? BASE_DELAY_MS,
+    sleep: options.sleep ?? abortableSleep,
+  };
+}
+
 export async function* streamWithResume(
   open: Open,
   resume: Resume,
   signal: AbortSignal,
   options: ResumeOptions,
 ): AsyncGenerator<AgentStreamFrame> {
-  const maxAttempts = options.maxAttempts ?? MAX_RESUME_ATTEMPTS;
-  const delayMs = options.delayMs ?? BASE_DELAY_MS;
-  const sleep = options.sleep ?? abortableSleep;
+  const { maxAttempts, delayMs, sleep } = resolveOptions(options);
 
   const progress: TurnProgress = { threadId: options.threadIdAtStart, lastSeq: -1 };
   let source: AsyncGenerator<AgentStreamFrame> = open(signal);
   let attempt = 0;
 
   while (true) {
-    let framesThisRound = 0;
-    let failure: unknown = null;
-    try {
-      for await (const frame of source) {
-        framesThisRound += 1;
-        trackFrame(progress, frame);
-        yield frame;
-        if (frame.kind === "turn.end") {
-          return;
-        }
-      }
-    } catch (err) {
-      if (isAbort(err) || isRefusal(err) || signal.aborted) {
-        throw err;
-      }
-      failure = err;
+    const round = yield* readRound(source, progress, signal);
+    if (round.finished) {
+      return;
     }
 
-    const next = decideNextStep({ progress, attempt, maxAttempts, framesThisRound, failure });
+    const next = decideNextStep({
+      progress,
+      attempt,
+      maxAttempts,
+      framesThisRound: round.framesThisRound,
+      failure: round.failure,
+    });
     if (next.kind === "stop") {
       return;
     }
