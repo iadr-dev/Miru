@@ -18,7 +18,7 @@ from calendar.trading_days import TradingDayCalendar, calendar_from_known_dates
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date as date_
-from typing import Final, NamedTuple
+from typing import Final, Literal, NamedTuple
 
 import anyio.to_thread
 from pydantic import BaseModel, ConfigDict, Field
@@ -68,6 +68,7 @@ _PROJECTION_CAVEAT = (
 _BUCKET_IN_DISPOSITION: Final = "in_disposition"
 _BUCKET_EXITING_SOON: Final = "exiting_soon"
 _BUCKET_AT_RISK: Final = "at_risk"
+type _Bucket = Literal["at_risk", "in_disposition", "exiting_soon"]
 
 
 def _ranked_cards_by_bucket(
@@ -560,14 +561,78 @@ def _recent_self_assessed_periods(report_date: date_) -> tuple[str, ...]:
 def _security_type_for(
     event: DispositionEventRow | None, attention_row: AttentionStockRow | None
 ) -> str:
-    """Same fallback `_build_card` uses for `security_type` on the card itself — duplicated here
-    (not shared via a helper) since this call site needs it BEFORE `_build_card` runs, to pick
-    which market code to POST for the self-assessed-earnings fetch."""
+    """The `security_type` fallback shared with `_build_card` for the card itself; also needed
+    BEFORE `_build_card` runs, to pick which market code to POST for the self-assessed-earnings
+    fetch."""
     if event:
         return event.security_type
     if attention_row:
         return attention_row.security_type
     return "twse"
+
+
+def _bucket_and_days_until_exiting(
+    event: DispositionEventRow | None, report_date: date_, calendar: TradingDayCalendar
+) -> tuple[_Bucket, int | None]:
+    """The card's bucket plus, for a symbol under a disposition event, the trading days left
+    after `report_date`; `(at_risk, None)` when there is no event."""
+    if event is None:
+        return _BUCKET_AT_RISK, None
+    days_remaining = (
+        calendar.business_days_between(report_date, event.period_end)
+        if event.period_end >= report_date
+        else ()
+    )
+    # `-1`: `business_days_between` counts `report_date` itself as the first element (an
+    # inclusive range), but "days until exiting" means days remaining AFTER today, so today
+    # itself must not count as one of them — a disposition ending today is 0 days out, not 1.
+    days_until_exiting = max(len(days_remaining) - 1, 0)
+    bucket: _Bucket = (
+        _BUCKET_EXITING_SOON
+        if 0 < len(days_remaining) <= _EXITING_SOON_WINDOW_DAYS
+        else _BUCKET_IN_DISPOSITION
+    )
+    return bucket, days_until_exiting
+
+
+def _active_flags(
+    flag_names: set[str],
+    event: DispositionEventRow | None,
+    margin_row: MarginShortRow | None,
+    day_trading_row: DayTradingRow | None,
+) -> set[str]:
+    active_flags: set[str] = set(flag_names)
+    if event:
+        active_flags.add("處")
+    if margin_row and margin_row.margin_purchase_today_balance > 0:
+        active_flags.add("資")
+    if margin_row and margin_row.short_sale_today_balance > 0:
+        active_flags.add("券")
+    if day_trading_row and day_trading_row.volume > 0:
+        active_flags.add("沖")
+    return active_flags
+
+
+def _company_name_for(
+    event: DispositionEventRow | None, attention_row: AttentionStockRow | None
+) -> str:
+    if event:
+        return event.company_name
+    return attention_row.company_name if attention_row else ""
+
+
+def _change_pct(close: float | None, prior_close: float | None) -> float | None:
+    return (close - prior_close) / prior_close * 100 if close is not None and prior_close else None
+
+
+def _margin_ratio(margin_row: MarginShortRow | None) -> float | None:
+    if margin_row and margin_row.margin_purchase_today_balance:
+        return margin_row.short_sale_today_balance / margin_row.margin_purchase_today_balance * 100
+    return None
+
+
+def _day_trading_ratio(day_trading_row: DayTradingRow | None, volume: int | None) -> float | None:
+    return day_trading_row.volume / volume * 100 if day_trading_row and volume else None
 
 
 def _build_card(  # noqa: PLR0913 — every kwarg is one already-resolved lookup for this symbol;
@@ -593,47 +658,13 @@ def _build_card(  # noqa: PLR0913 — every kwarg is one already-resolved lookup
     """One roster symbol's full card — the bucket classification + every joined field, factored
     out of `GetDispositionBoardTool.run` so that method stays under ruff's branch/statement caps
     (this is pure per-symbol assembly, no I/O of its own)."""
-    days_until_exiting: int | None = None
-    if event is not None:
-        days_remaining = (
-            calendar.business_days_between(report_date, event.period_end)
-            if event.period_end >= report_date
-            else ()
-        )
-        # `-1`: `business_days_between` counts `report_date` itself as the first element (an
-        # inclusive range), but "days until exiting" means days remaining AFTER today, so today
-        # itself must not count as one of them — a disposition ending today is 0 days out, not 1.
-        days_until_exiting = max(len(days_remaining) - 1, 0)
-        bucket = (
-            _BUCKET_EXITING_SOON
-            if 0 < len(days_remaining) <= _EXITING_SOON_WINDOW_DAYS
-            else _BUCKET_IN_DISPOSITION
-        )
-    else:
-        bucket = _BUCKET_AT_RISK
+    bucket, days_until_exiting = _bucket_and_days_until_exiting(event, report_date, calendar)
 
     close, volume, turnover = close_info if close_info else (None, None, None)
-    change_pct = (
-        (close - prior_close) / prior_close * 100 if close is not None and prior_close else None
-    )
-
-    active_flags: set[str] = set(flag_names)
-    if event:
-        active_flags.add("處")
-    if margin_row and margin_row.margin_purchase_today_balance > 0:
-        active_flags.add("資")
-    if margin_row and margin_row.short_sale_today_balance > 0:
-        active_flags.add("券")
-    if day_trading_row and day_trading_row.volume > 0:
-        active_flags.add("沖")
-    margin_ratio = (
-        margin_row.short_sale_today_balance / margin_row.margin_purchase_today_balance * 100
-        if margin_row and margin_row.margin_purchase_today_balance
-        else None
-    )
-    day_trading_ratio = (
-        day_trading_row.volume / volume * 100 if day_trading_row and volume else None
-    )
+    change_pct = _change_pct(close, prior_close)
+    active_flags = _active_flags(flag_names, event, margin_row, day_trading_row)
+    margin_ratio = _margin_ratio(margin_row)
+    day_trading_ratio = _day_trading_ratio(day_trading_row, volume)
     margin_caveat, margin_health = margin_caveat_and_health
     flags_remaining = None if event is not None else _project_days_until_disposition(flag_count)
     estimated_days = (
@@ -642,12 +673,8 @@ def _build_card(  # noqa: PLR0913 — every kwarg is one already-resolved lookup
         else _project_days_by_rate(flag_count, observed_days, _ATTENTION_FLAGS_TO_DISPOSITION)
     )
 
-    company_name = (
-        event.company_name if event else (attention_row.company_name if attention_row else "")
-    )
-    security_type = (
-        event.security_type if event else (attention_row.security_type if attention_row else "twse")
-    )
+    company_name = _company_name_for(event, attention_row)
+    security_type = _security_type_for(event, attention_row)
 
     return DispositionBoardCardRow(
         symbol=symbol,

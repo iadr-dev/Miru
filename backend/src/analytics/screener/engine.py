@@ -327,6 +327,45 @@ def _etf_trailing_returns_by_symbol(
     return returns_by_symbol
 
 
+def _etf_aum_by_symbol(store: ParquetStore) -> dict[str, float]:
+    """Every ETF's AUM from the latest `etf_aum` partition (rows without a numeric AUM skipped)."""
+    aum_dates = store.list_partition_dates(_ETF_AUM_DATASET, Market.TW.value)
+    aum_by_symbol: dict[str, float] = {}
+    if aum_dates:
+        for row in store.read_partition(_ETF_AUM_DATASET, Market.TW.value, max(aum_dates)):
+            symbol = row.get("symbol")
+            aum = row.get("aum")
+            if isinstance(symbol, str) and isinstance(aum, int | float):
+                aum_by_symbol[symbol] = float(aum)
+    return aum_by_symbol
+
+
+def _passes_etf_gates(
+    symbol: str, close: float | None, aum: float | None, gates: GateDefaults
+) -> bool:
+    """The price / leveraged-inverse / AUM gates; an ETF with no close is not price-gated."""
+    if close is not None and close < gates.min_price:
+        return False
+    if gates.exclude_leveraged_inverse and classify_symbol_type(symbol, Market.TW) in (
+        SymbolType.ETF_LEVERAGED,
+        SymbolType.ETF_INVERSE,
+    ):
+        return False
+    return not (gates.min_aum > 0 and (aum is None or aum < gates.min_aum))
+
+
+def _etf_distribution_fields(
+    distribution: tuple[float, int] | None, close: float | None
+) -> tuple[float | None, str | None]:
+    """(trailing-12-month yield %, observed cadence) from a (cash total, event count) pair; both
+    `None` without a distribution record or a close to divide by."""
+    if distribution is None or not close:
+        return None, None
+    dist_total, dist_count = distribution
+    yield_pct = dist_total / close * 100 if dist_count else None
+    return yield_pct, _etf_distribution_frequency(dist_count)
+
+
 def _gated_etf_universe(
     store: ParquetStore, gates: GateDefaults
 ) -> tuple[dict[str, dict[str, object]], date_ | None]:
@@ -342,15 +381,7 @@ def _gated_etf_universe(
     etf_symbols = {
         symbol for row in nav_rows if isinstance(symbol := row.get("symbol"), str) and symbol
     }
-    aum_dates = store.list_partition_dates(_ETF_AUM_DATASET, Market.TW.value)
-    aum_by_symbol: dict[str, float] = {}
-    if aum_dates:
-        for row in store.read_partition(_ETF_AUM_DATASET, Market.TW.value, max(aum_dates)):
-            symbol = row.get("symbol")
-            aum = row.get("aum")
-            if isinstance(symbol, str) and isinstance(aum, int | float):
-                aum_by_symbol[symbol] = float(aum)
-
+    aum_by_symbol = _etf_aum_by_symbol(store)
     expense_by_symbol = _etf_expense_ratios_by_symbol(store, Market.TW.value)
     distribution_by_symbol = _etf_ttm_distribution_by_symbol(store, Market.TW.value, as_of)
     returns_by_symbol = _etf_trailing_returns_by_symbol(store, Market.TW.value, as_of, etf_symbols)
@@ -362,25 +393,13 @@ def _gated_etf_universe(
         close_f = float(close) if isinstance(close, int | float) else None
         if not isinstance(symbol, str) or not symbol:
             continue
-        if close_f is not None and close_f < gates.min_price:
-            continue
-        if gates.exclude_leveraged_inverse and classify_symbol_type(symbol, Market.TW) in (
-            SymbolType.ETF_LEVERAGED,
-            SymbolType.ETF_INVERSE,
-        ):
-            continue
         aum = aum_by_symbol.get(symbol)
-        if gates.min_aum > 0 and (aum is None or aum < gates.min_aum):
+        if not _passes_etf_gates(symbol, close_f, aum, gates):
             continue
 
-        distribution = distribution_by_symbol.get(symbol)
-        distribution_yield_ttm_pct: float | None = None
-        distribution_frequency: str | None = None
-        if distribution is not None and close_f:
-            dist_total, dist_count = distribution
-            distribution_yield_ttm_pct = dist_total / close_f * 100 if dist_count else None
-            distribution_frequency = _etf_distribution_frequency(dist_count)
-
+        distribution_yield_ttm_pct, distribution_frequency = _etf_distribution_fields(
+            distribution_by_symbol.get(symbol), close_f
+        )
         merged[symbol] = {
             **row,
             **returns_by_symbol.get(symbol, {}),
