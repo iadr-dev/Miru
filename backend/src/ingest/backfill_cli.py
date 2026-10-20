@@ -456,7 +456,7 @@ async def _amain(argv: Sequence[str] | None = None) -> int:
     # One `data.updated` per dataset at the end, at its newest date, instead of one per partition
     # written (see `CoalescingDataUpdatePublisher`).
     signals = CoalescingDataUpdatePublisher(built.data_update_publisher)
-    ctx = dataclasses.replace(built, data_update_publisher=signals)
+    ctx: IngestContext = dataclasses.replace(built, data_update_publisher=signals)
     # A hand-run backfill is a second writer like any other: it takes the same lease as the daemon,
     # so it can never interleave with the scheduled jobs on the same partitions.
     try:
