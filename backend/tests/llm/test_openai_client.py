@@ -5,6 +5,7 @@ Completions) end-to-end.
 
 from __future__ import annotations
 
+import threading
 from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock
 
@@ -456,3 +457,20 @@ def test_count_tokens_falls_back_for_unknown_model() -> None:
     # gpt-5.5 isn't in tiktoken's static registry yet — construction must not raise.
     client = OpenAIClient(model_id="gpt-5.5", api_key="test-key")
     assert client.model_id == "gpt-5.5"
+
+
+async def test_count_tokens_tokenizes_off_the_event_loop(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = _client()
+    seen: list[int] = []
+    original = client._count_tokens_sync
+
+    def spy(messages: list[Message]) -> int:
+        seen.append(threading.get_ident())
+        return original(messages)
+
+    monkeypatch.setattr(client, "_count_tokens_sync", spy)
+
+    await client.count_tokens([Message(role=MessageRole.USER, content="hello world")])
+
+    assert seen
+    assert threading.get_ident() not in seen
