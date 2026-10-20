@@ -1,35 +1,18 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, screen, within } from "@testing-library/react";
-import { NextIntlClientProvider } from "next-intl";
-import type { AnchorHTMLAttributes, ReactElement, ReactNode } from "react";
+import type { ReactElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TwMarketRankingRows } from "@/components/market/tw-market-ranking-rows";
-import { messages, renderWithIntl } from "@/test/render";
+import { messages, renderWithIntl, withIntl } from "@/test/render";
 import type { TwRankingRow } from "@/types/market/rankings";
 
 vi.mock("@/hooks/use-symbol-quotes", () => ({ useSymbolQuotes: () => ({ quotes: [] }) }));
 vi.mock("@/components/stock/watchlist-star-button", () => ({ WatchlistStarButton: () => null }));
-vi.mock("@/i18n/navigation", () => ({
-  Link: ({
-    href,
-    children,
-    ...rest
-  }: AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) => (
-    <a href={href} {...rest}>
-      {children as ReactNode}
-    </a>
-  ),
+vi.mock("@/i18n/navigation", async () => ({
+  Link: (await import("@/test/link-stub")).LinkStub,
 }));
 
 afterEach(cleanup);
-
-function withIntl(ui: ReactElement): ReactElement {
-  return (
-    <NextIntlClientProvider locale="zh-TW" messages={messages} timeZone="Asia/Taipei">
-      {ui}
-    </NextIntlClientProvider>
-  );
-}
 
 function row(symbol: string, extraValue: number, extraLabel: string): TwRankingRow {
   return {
