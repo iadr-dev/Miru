@@ -28,7 +28,9 @@ import { AlertForm, type AlertFormPreset } from "./alert-form";
 /** Alert-rule list: cold-start empty
  * state with CTA, a plain-language condition line, lifecycle status, last-fired/expiry, enable
  * toggle, and delete via a focus-trapped confirm dialog. */
-export function AlertList({ preset }: { preset?: AlertFormPreset | undefined }): ReactNode {
+export function AlertList({
+  preset,
+}: Readonly<{ preset?: AlertFormPreset | undefined }>): ReactNode {
   const t = useTranslations("settings.alerts");
   const ts = useTranslations("settings.alerts.summary");
   const tc = useTranslations("settings.common");
@@ -84,7 +86,8 @@ export function AlertList({ preset }: { preset?: AlertFormPreset | undefined }):
 
   const scopeLabel = (alert: AlertRule): string => {
     if (alert.symbol && alert.market) {
-      return `${alert.symbol} · ${tc(`marketOption.${alert.market}`)}`;
+      const marketName = tc(`marketOption.${alert.market}`);
+      return `${alert.symbol} · ${marketName}`;
     }
     const view = groupOf(alert.watchlist_id);
     return view
@@ -94,6 +97,10 @@ export function AlertList({ preset }: { preset?: AlertFormPreset | undefined }):
 
   /** The group's members with whether each currently meets the rule (the engine records this per
    * symbol after every evaluation; a member it has not evaluated yet shows as pending). */
+  const memberStateLabel = (met: boolean | null): string => {
+    if (met === null) return t("memberPending");
+    return met ? t("memberMet") : t("memberNotMet");
+  };
   const memberStates = (alert: AlertRule): { symbol: string; met: boolean | null }[] => {
     const view = groupOf(alert.watchlist_id);
     const met = (alert.state.met ?? {}) as Record<string, unknown>;
@@ -202,12 +209,7 @@ export function AlertList({ preset }: { preset?: AlertFormPreset | undefined }):
                                 : "border-[var(--border)] text-[var(--text-muted)]",
                             )}
                           >
-                            {member.symbol} ·{" "}
-                            {member.met === null
-                              ? t("memberPending")
-                              : member.met
-                                ? t("memberMet")
-                                : t("memberNotMet")}
+                            {member.symbol} · {memberStateLabel(member.met)}
                           </li>
                         ))}
                       </ul>

@@ -57,10 +57,10 @@ import { useTypewriter } from "@/lib/use-typewriter";
 export function ActiveTurnView({
   turn,
   onAskUserPick,
-}: {
+}: Readonly<{
   turn: ActiveTurn;
   onAskUserPick: (prompt: string) => void;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("chat.turn");
   const tCaveat = useTranslations("chat.caveat");
   const reduceMotion = useReducedMotion();
@@ -70,6 +70,18 @@ export function ActiveTurnView({
     turn.phase === "thinking" && turn.answerText === null && turn.streamingAnswerText === null;
   const showProcess =
     turn.toolSteps.length > 0 || turn.lanes.length > 0 || turn.thinkingChunks.length > 0;
+
+  const streamingPartial =
+    turn.answerText === null && turn.streamingAnswerText !== null ? (
+      // The live partial render while the terminal `message` frame hasn't landed yet —
+      // deliberately `aria-live="off"` (matches the thinking/tool narration rule in §7):
+      // `aria-live="polite"` above fires only once, on the FINAL answer, not on every
+      // growing partial. No actions/caveat/sources here either — those are only
+      // meaningful once the complete, governance-finalized text exists.
+      <div className="mt-1" aria-live="off">
+        <AnswerMarkdown text={typedStreamingAnswer} />
+      </div>
+    ) : null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -111,16 +123,9 @@ export function ActiveTurnView({
              * persisted turn id). Copy/read-aloud need no turn id, so they're available now. */}
             <AssistantActions text={turn.answerText} />
           </div>
-        ) : turn.streamingAnswerText !== null ? (
-          // The live partial render while the terminal `message` frame hasn't landed yet —
-          // deliberately `aria-live="off"` (matches the thinking/tool narration rule in §7):
-          // `aria-live="polite"` above fires only once, on the FINAL answer, not on every
-          // growing partial. No actions/caveat/sources here either — those are only
-          // meaningful once the complete, governance-finalized text exists.
-          <div className="mt-1" aria-live="off">
-            <AnswerMarkdown text={typedStreamingAnswer} />
-          </div>
-        ) : null}
+        ) : (
+          streamingPartial
+        )}
 
         {turn.phase === "error" ? (
           <InlineError message={turn.errorMessage} fallback={t("error")} code={turn.errorCode} />
@@ -146,12 +151,12 @@ export function UserBubble({
   label,
   onEdit,
   onResend,
-}: {
+}: Readonly<{
   text: string;
   label: string;
   onEdit?: ((newText: string) => void) | undefined;
   onResend?: (() => void) | undefined;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("chat.turn.actions");
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(text);
@@ -257,13 +262,13 @@ export function AssistantActions({
   feedback,
   onFeedback,
   retrying,
-}: {
+}: Readonly<{
   text: string;
   onRetry?: (() => void) | undefined;
   feedback?: FeedbackRating | null;
   onFeedback?: (rating: FeedbackRating) => void;
   retrying?: boolean;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("chat.turn.actions");
 
   return (
@@ -304,7 +309,7 @@ export function AssistantActions({
 /** Copy-to-clipboard icon button with the same brief checkmark-swap micro-interaction as
  * `composer.tsx`'s `ScreenshotPreview`/mic-state-morph icon swaps (gated through
  * `useReducedMotion()`, same convention). */
-function CopyButton({ text }: { text: string }): ReactNode {
+function CopyButton({ text }: Readonly<{ text: string }>): ReactNode {
   const t = useTranslations("chat.turn.actions");
   const [copied, setCopied] = useState(false);
   const reduceMotion = useReducedMotion();
@@ -370,7 +375,7 @@ function CopyButton({ text }: { text: string }): ReactNode {
  * is a genuine network/provider outcome, not an entitlement wall — it still surfaces as a brief
  * inline message rather than a silent no-op, since unlike a dismissed permission prompt this is
  * something the user should understand happened. */
-function SpeakButton({ text }: { text: string }): ReactNode {
+function SpeakButton({ text }: Readonly<{ text: string }>): ReactNode {
   const t = useTranslations("chat.turn.actions");
   const locale = useLocale();
   const [state, setState] = useState<"idle" | "loading" | "playing">("idle");
@@ -442,7 +447,7 @@ function ActionIconButton({
   weight = "regular",
   active = false,
   spin = false,
-}: {
+}: Readonly<{
   icon: typeof PencilSimpleIcon;
   label: string;
   onClick: () => void;
@@ -450,7 +455,7 @@ function ActionIconButton({
   weight?: "regular" | "fill";
   active?: boolean;
   spin?: boolean | undefined;
-}): ReactNode {
+}>): ReactNode {
   return (
     <button
       type="button"
@@ -491,7 +496,7 @@ function ActionIconButton({
  * later phase transition is still tracked (so a NEW turn reusing this component starts fresh — see
  * the mount-per-turn note below) but no longer moves `open` out from under the user's own choice.
  */
-function ProcessDisclosure({ turn }: { turn: ActiveTurn }): ReactNode {
+function ProcessDisclosure({ turn }: Readonly<{ turn: ActiveTurn }>): ReactNode {
   const t = useTranslations("chat.turn");
   const [open, setOpen] = useState(turn.phase === "thinking");
   const prevPhaseRef = useRef(turn.phase);
@@ -547,22 +552,24 @@ function ProcessDisclosure({ turn }: { turn: ActiveTurn }): ReactNode {
   );
 }
 
+function laneDotClass(degraded: boolean, status: string | undefined): string {
+  if (degraded) return "bg-[var(--warn)]";
+  if (status === "running") return "bg-[var(--accent)]";
+  return "bg-[var(--text-muted)]";
+}
+
 /** One lane's header row (skipped for the root/no-lane bucket) plus its nested sub-timeline of
  * tool/thinking entries — the `|_` indentation from the flat-timeline predecessor's visual rule,
  * scoped to just this lane's own entries instead of spanning the whole turn. */
 function LaneGroupRow({
   group,
   t,
-}: {
+}: Readonly<{
   group: LaneGroup;
   t: ReturnType<typeof useTranslations>;
-}): ReactNode {
+}>): ReactNode {
   const degraded = group.lane?.status === "degraded";
-  const dotClass = degraded
-    ? "bg-[var(--warn)]"
-    : group.lane?.status === "running"
-      ? "bg-[var(--accent)]"
-      : "bg-[var(--text-muted)]";
+  const dotClass = laneDotClass(degraded, group.lane?.status);
 
   return (
     <li className="flex flex-col gap-1.5">
@@ -622,11 +629,11 @@ export function ProcessSubEntryRow({
   entry,
   isLast,
   t,
-}: {
+}: Readonly<{
   entry: ProcessSubEntry;
   isLast: boolean;
   t: ReturnType<typeof useTranslations>;
-}): ReactNode {
+}>): ReactNode {
   return (
     <li className="relative flex gap-3 pb-3 last:pb-0">
       <div className="relative flex w-3 shrink-0 justify-center">
@@ -679,11 +686,11 @@ function InlineError({
   message,
   fallback,
   code,
-}: {
+}: Readonly<{
   message: string | null;
   fallback: string;
   code?: string | null;
-}): ReactNode {
+}>): ReactNode {
   const tUpgrade = useTranslations("chat.turn");
   return (
     <div

@@ -303,6 +303,13 @@ function IntradayLineChart({
   if (query.isLoading || tradeDate === undefined) return <CardSkeletonBody height={480} />;
   if (!data) return null;
 
+  const chartBody =
+    rows.length === 0 ? (
+      <p className="text-[13px] text-[var(--text-muted)]">{t("kbarUnavailable")}</p>
+    ) : (
+      <div ref={containerRef} className="h-[440px] w-full flex-1" />
+    );
+
   return (
     <section className="surface-card flex flex-col p-4 sm:p-5">
       <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{t("lineChartTitle")}</h2>
@@ -314,10 +321,8 @@ function IntradayLineChart({
         >
           <div className="h-[440px] rounded-[var(--radius-input)] bg-[var(--surface-2)]" />
         </SponsorTeaser>
-      ) : rows.length === 0 ? (
-        <p className="text-[13px] text-[var(--text-muted)]">{t("kbarUnavailable")}</p>
       ) : (
-        <div ref={containerRef} className="h-[440px] w-full flex-1" />
+        chartBody
       )}
     </section>
   );
@@ -406,6 +411,13 @@ function IntradayKbarChart({
   if (query.isLoading || tradeDate === undefined) return <CardSkeletonBody height={360} />;
   if (!data) return null;
 
+  const chartBody =
+    rows.length === 0 ? (
+      <p className="text-[13px] text-[var(--text-muted)]">{t("kbarUnavailable")}</p>
+    ) : (
+      <div ref={containerRef} className="h-[320px] w-full" />
+    );
+
   return (
     <section className="surface-card p-4 sm:p-5">
       <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{t("kbarTitle")}</h2>
@@ -417,10 +429,8 @@ function IntradayKbarChart({
         >
           <div className="h-[320px] rounded-[var(--radius-input)] bg-[var(--surface-2)]" />
         </SponsorTeaser>
-      ) : rows.length === 0 ? (
-        <p className="text-[13px] text-[var(--text-muted)]">{t("kbarUnavailable")}</p>
       ) : (
-        <div ref={containerRef} className="h-[320px] w-full" />
+        chartBody
       )}
     </section>
   );
@@ -726,6 +736,35 @@ function PriceTickList({
   if (query.isLoading || tradeDate === undefined) return <CardSkeletonBody height={280} />;
   if (!data) return null;
 
+  const tickBody =
+    rows.length === 0 ? (
+      <p className="text-[13px] text-[var(--text-muted)]">{t("tickUnavailable")}</p>
+    ) : (
+      <>
+        <TickRows rows={rows.slice(0, TICK_COLLAPSED_ROW_COUNT)} locale={locale} />
+        {rows.length > TICK_COLLAPSED_ROW_COUNT ? (
+          <button
+            type="button"
+            onClick={() => setExpanded(true)}
+            className={cn(
+              "mt-2.5 flex min-h-11 w-full items-center justify-center gap-1.5 rounded-[var(--radius-input)]",
+              "bg-[var(--surface-2)] text-[12.5px] text-[var(--text-muted)] hover:bg-[var(--surface-3)] hover:text-[var(--text)]",
+            )}
+          >
+            <span>{t("tickExpandTo", { count: rows.length })}</span>
+          </button>
+        ) : null}
+        <ExpandModal
+          open={expanded}
+          title={t("tickTitle")}
+          closeLabel={t("tickCollapse")}
+          onClose={() => setExpanded(false)}
+        >
+          <TickRows rows={rows} locale={locale} />
+        </ExpandModal>
+      </>
+    );
+
   return (
     <section className="surface-card p-4 sm:p-5">
       <h2 className="mb-1 font-semibold text-[15px] text-[var(--text)]">{t("tickTitle")}</h2>
@@ -738,35 +777,16 @@ function PriceTickList({
         >
           <div className="h-56 rounded-[var(--radius-input)] bg-[var(--surface-2)]" />
         </SponsorTeaser>
-      ) : rows.length === 0 ? (
-        <p className="text-[13px] text-[var(--text-muted)]">{t("tickUnavailable")}</p>
       ) : (
-        <>
-          <TickRows rows={rows.slice(0, TICK_COLLAPSED_ROW_COUNT)} locale={locale} />
-          {rows.length > TICK_COLLAPSED_ROW_COUNT ? (
-            <button
-              type="button"
-              onClick={() => setExpanded(true)}
-              className={cn(
-                "mt-2.5 flex min-h-11 w-full items-center justify-center gap-1.5 rounded-[var(--radius-input)]",
-                "bg-[var(--surface-2)] text-[12.5px] text-[var(--text-muted)] hover:bg-[var(--surface-3)] hover:text-[var(--text)]",
-              )}
-            >
-              <span>{t("tickExpandTo", { count: rows.length })}</span>
-            </button>
-          ) : null}
-          <ExpandModal
-            open={expanded}
-            title={t("tickTitle")}
-            closeLabel={t("tickCollapse")}
-            onClose={() => setExpanded(false)}
-          >
-            <TickRows rows={rows} locale={locale} />
-          </ExpandModal>
-        </>
+        tickBody
       )}
     </section>
   );
+}
+
+function tickColor(tickType: string): string {
+  if (tickType === "1") return "var(--up)";
+  return tickType === "2" ? "var(--down)" : "var(--text-muted)";
 }
 
 function TickRows({
@@ -779,12 +799,7 @@ function TickRows({
   return (
     <ul className="divide-y divide-[var(--border)]">
       {rows.map((row, index) => {
-        const color =
-          row.tick_type === "1"
-            ? "var(--up)"
-            : row.tick_type === "2"
-              ? "var(--down)"
-              : "var(--text-muted)";
+        const color = tickColor(row.tick_type);
         return (
           // biome-ignore lint/suspicious/noArrayIndexKey: ticks share no unique field; index is this static, server-ordered list's own real position.
           <li key={index} className="flex items-center justify-between py-1.5 text-[13px]">

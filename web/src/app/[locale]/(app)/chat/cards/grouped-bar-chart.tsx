@@ -86,7 +86,7 @@ function putCallSeries(rows: Record<string, unknown>[]): GroupedSeries | null {
  * call volume vs put volume by strike) — grouped bars, one pair per category, both series
  * categorical (`--chart-1`/`--chart-2`), never signed (`--up`/`--down` is reserved for the
  * diverging net-flow shape, `DivergingBarChart`, not this one). */
-export function GroupedBarChart({ data }: { data: unknown }): ReactNode {
+export function GroupedBarChart({ data }: Readonly<{ data: unknown }>): ReactNode {
   const locale = useLocale();
   const t = useTranslations("chat.cards");
   const series = extractSeries(data);

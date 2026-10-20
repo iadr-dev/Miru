@@ -242,7 +242,7 @@ async def ask(client: LLMClient, messages: list[Message], budget: Budget, role: 
     return response.text or ""
 
 
-async def assess_pair(  # noqa: PLR0913 - collaborators are injected, one per seam
+async def assess_pair(  # noqa: PLR0913 - collaborators are injected; one per seam
     client: LLMClient,
     target: Target,
     customer: Company,
@@ -330,7 +330,7 @@ def _gap_item(raw: object) -> tuple[str, str, Judgement] | None:
         return None
 
 
-async def assess_gap(  # noqa: PLR0913 - collaborators are injected, one per seam
+async def assess_gap(  # noqa: PLR0913 - collaborators are injected; one per seam
     client: LLMClient,
     target: Target,
     page: Page,

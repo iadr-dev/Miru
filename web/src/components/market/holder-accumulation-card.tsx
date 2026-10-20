@@ -50,7 +50,7 @@ export function HolderAccumulationCard({
   onWindowChange,
   asOf,
   periodAgo,
-}: {
+}: Readonly<{
   rows: readonly HolderAccumulationRow[];
   threshold: HolderThreshold;
   onThresholdChange: (threshold: HolderThreshold) => void;
@@ -58,7 +58,7 @@ export function HolderAccumulationCard({
   onWindowChange: (window: HolderWindow) => void;
   asOf: string | null;
   periodAgo: string | null;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("market.cards.holderAccumulation");
   const tLeaderboard = useTranslations("market.cards.leaderboard");
   const [expanded, setExpanded] = useState(false);
@@ -164,11 +164,11 @@ export function HolderAccumulationRows({
   rows,
   t,
   tLeaderboard,
-}: {
+}: Readonly<{
   rows: readonly HolderAccumulationRow[];
   t: ReturnType<typeof useTranslations>;
   tLeaderboard: ReturnType<typeof useTranslations>;
-}): ReactNode {
+}>): ReactNode {
   return (
     <>
       <div

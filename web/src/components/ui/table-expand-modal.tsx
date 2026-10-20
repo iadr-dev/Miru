@@ -28,13 +28,13 @@ export function TableExpandModal({
   sourceTable,
   closeLabel,
   onClose,
-}: {
+}: Readonly<{
   open: boolean;
   title: string;
   sourceTable: HTMLTableElement | null;
   closeLabel: string;
   onClose: () => void;
-}): ReactNode {
+}>): ReactNode {
   const dialogRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const reduceMotion = useReducedMotion();

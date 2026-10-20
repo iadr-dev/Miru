@@ -20,7 +20,7 @@ export function ConfirmDialog({
   onCancel,
   children,
   confirmDisabled = false,
-}: {
+}: Readonly<{
   open: boolean;
   title: string;
   description?: string | undefined;
@@ -32,7 +32,7 @@ export function ConfirmDialog({
   children?: ReactNode;
   /** Blocks both the confirm button and the Enter shortcut. */
   confirmDisabled?: boolean;
-}): ReactNode {
+}>): ReactNode {
   const dialogRef = useRef<HTMLDivElement>(null);
 
   const close = useCallback(() => {

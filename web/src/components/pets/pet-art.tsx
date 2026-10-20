@@ -13,7 +13,7 @@ import type { ReactNode } from "react";
 const INK = "#241f1c";
 const WHITE = "#f7f4ee";
 
-function Eye({ x, y, r = 2.2 }: { x: number; y: number; r?: number }): ReactNode {
+function Eye({ x, y, r = 2.2 }: Readonly<{ x: number; y: number; r?: number }>): ReactNode {
   return (
     <>
       <circle cx={x} cy={y} r={r} fill={INK} />

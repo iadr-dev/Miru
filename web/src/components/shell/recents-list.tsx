@@ -186,10 +186,10 @@ export function RecentsList(): ReactNode {
 function PartialFailureToast({
   count,
   onDismiss,
-}: {
+}: Readonly<{
   count: number;
   onDismiss: () => void;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("chat.threads.select");
   useEffect(() => {
     const id = setTimeout(onDismiss, 4000);
@@ -218,12 +218,12 @@ function RecentsHeader({
   selecting,
   onEnterSelect,
   onExitSelect,
-}: {
+}: Readonly<{
   label: string;
   selecting: boolean;
   onEnterSelect: () => void;
   onExitSelect: () => void;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("chat.threads.select");
   return (
     <div className="flex items-center justify-between pt-2 pb-1">
@@ -249,11 +249,11 @@ function SelectAllRow({
   checked,
   count,
   onToggle,
-}: {
+}: Readonly<{
   checked: boolean;
   count: number;
   onToggle: () => void;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("chat.threads.select");
   return (
     <button
@@ -346,7 +346,7 @@ function ThreadSection({
   onSelect,
   onToggleSelected,
   onChanged,
-}: {
+}: Readonly<{
   label: string;
   threads: Thread[];
   activeThreadId: string | null;
@@ -356,7 +356,7 @@ function ThreadSection({
   onSelect: (threadId: string) => void;
   onToggleSelected: (threadId: string) => void;
   onChanged: () => void;
-}): ReactNode {
+}>): ReactNode {
   return (
     <div className="pt-2 pb-1">
       <p className="px-3 pb-1 font-medium text-[11px] text-[var(--text-muted)] uppercase tracking-wide">
@@ -386,7 +386,7 @@ function ThreadSection({
  * already a `<button>` (the whole row toggles selection, not just a small hit target inside it),
  * and nesting an interactive checkbox inside an interactive button is invalid HTML — this is
  * purely the visual indicator, with the actual toggle semantics living on the row's own button. */
-function RowCheckbox({ checked }: { checked: boolean }): ReactNode {
+function RowCheckbox({ checked }: Readonly<{ checked: boolean }>): ReactNode {
   return (
     <span
       aria-hidden
@@ -411,7 +411,7 @@ function ThreadRow({
   onSelect,
   onToggleSelected,
   onChanged,
-}: {
+}: Readonly<{
   thread: Thread;
   active: boolean;
   revealing: boolean;
@@ -420,7 +420,7 @@ function ThreadRow({
   onSelect: () => void;
   onToggleSelected: () => void;
   onChanged: () => void;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("chat.threads");
   const [renaming, setRenaming] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -561,11 +561,11 @@ function RenameForm({
   thread,
   onDone,
   onChanged,
-}: {
+}: Readonly<{
   thread: Thread;
   onDone: () => void;
   onChanged: () => void;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("chat.threads");
   const [value, setValue] = useState(thread.title);
 
@@ -617,12 +617,12 @@ function DeleteThreadDialog({
   open,
   onOpenChange,
   onChanged,
-}: {
+}: Readonly<{
   thread: Thread;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onChanged: () => void;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("chat.threads");
 
   const deleteMutation = useMutation({
@@ -691,12 +691,12 @@ function BulkDeleteBar({
   onChanged,
   onDone,
   onPartialFailure,
-}: {
+}: Readonly<{
   selectedIds: Set<string>;
   onChanged: () => void;
   onDone: () => void;
   onPartialFailure: (count: number) => void;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("chat.threads.select");
   const [confirmOpen, setConfirmOpen] = useState(false);
 
@@ -740,14 +740,14 @@ function BulkDeleteDialog({
   onChanged,
   onDone,
   onPartialFailure,
-}: {
+}: Readonly<{
   selectedIds: Set<string>;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onChanged: () => void;
   onDone: () => void;
   onPartialFailure: (count: number) => void;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("chat.threads.select");
 
   const deleteMutation = useMutation({

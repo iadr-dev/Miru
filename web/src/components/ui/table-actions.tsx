@@ -364,11 +364,11 @@ function DownloadMenuItem({
   icon: Icon,
   label,
   onSelect,
-}: {
+}: Readonly<{
   icon: typeof DownloadSimpleIcon;
   label: string;
   onSelect: () => void;
-}): ReactNode {
+}>): ReactNode {
   return (
     <DropdownMenu.Item
       onSelect={onSelect}

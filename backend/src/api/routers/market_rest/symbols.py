@@ -18,6 +18,8 @@ from api.tool_responses import tool_responses
 from schemas.enums import Market
 from tools.base import ToolContext
 
+_SYMBOL_IDS_DESCRIPTION = "Up to 20 comma-separated symbol ids, e.g. '2330,2454'."
+
 router = APIRouter()
 _dispatch = dispatch_validated_tool
 
@@ -97,7 +99,7 @@ def _split_symbols(symbols: str) -> list[str]:
 
 @router.get("/market/symbol-info", response_model=None, responses=tool_responses("get_symbol_info"))
 async def symbol_info(
-    symbols: str = Query(..., description="Up to 20 comma-separated symbol ids, e.g. '2330,2454'."),
+    symbols: str = Query(..., description=_SYMBOL_IDS_DESCRIPTION),
     market: Market = Query(Market.TW),
     state: AppState = Depends(get_state),
     ctx: ToolContext = Depends(_context),
@@ -113,7 +115,7 @@ async def symbol_info(
     "/market/price-history", response_model=None, responses=tool_responses("get_price_history")
 )
 async def price_history(
-    symbols: str = Query(..., description="Up to 20 comma-separated symbol ids, e.g. '2330,2454'."),
+    symbols: str = Query(..., description=_SYMBOL_IDS_DESCRIPTION),
     market: Market = Query(Market.TW),
     days: int = Query(20, ge=2, le=260, description="Trailing trading-day count, 2-260."),
     state: AppState = Depends(get_state),
@@ -133,7 +135,7 @@ async def price_history(
 
 @router.get("/market/quotes", response_model=None, responses=tool_responses("get_symbol_quotes"))
 async def symbol_quotes(
-    symbols: str = Query(..., description="Up to 20 comma-separated symbol ids, e.g. '2330,2454'."),
+    symbols: str = Query(..., description=_SYMBOL_IDS_DESCRIPTION),
     market: Market = Query(Market.TW),
     days: int = Query(20, ge=2, le=60, description="Sparkline window in trading days, 2-60."),
     state: AppState = Depends(get_state),

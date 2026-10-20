@@ -39,6 +39,10 @@ COMPANIES: dict[str, tuple[str, str]] = {
     "9106": ("拉姆達光纖", "Lambda Fibers"),
     "9107": ("繆感測", "Mu Sensors"),
     "9108": ("紐繼電器", "Nu Relays"),
+    "9109": ("克賽封裝", "Xi Packaging"),
+    "9110": ("奧米克磁材", "Omik Magnets"),
+    "9111": ("派連接器", "Pi Connectors"),
+    "9112": ("洛散熱", "Rho Coolers"),
 }
 OUTSIDE = ("9199", "洛幽靈", "Rho Ghost")
 

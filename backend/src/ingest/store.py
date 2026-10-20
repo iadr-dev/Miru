@@ -230,7 +230,7 @@ class ParquetStore:
         newest = max(dates)
         return newest, self.partition_files(dataset, market, newest)
 
-    def write_partition_from_files(  # noqa: PLR0913 - the cell, the files, and the carry-forward
+    def write_partition_from_files(  # noqa: PLR0913 - the cell and the files and the carry-forward
         self,
         dataset: str,
         market: str,

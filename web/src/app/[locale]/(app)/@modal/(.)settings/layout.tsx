@@ -8,8 +8,8 @@ import { SettingsDialog } from "@/components/settings/settings-dialog";
  */
 export default function InterceptedSettingsLayout({
   children,
-}: {
+}: Readonly<{
   children: ReactNode;
-}): ReactNode {
+}>): ReactNode {
   return <SettingsDialog>{children}</SettingsDialog>;
 }

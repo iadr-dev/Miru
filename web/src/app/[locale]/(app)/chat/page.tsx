@@ -7,9 +7,9 @@ import { ChatClient } from "@/app/[locale]/(app)/chat/chat-client";
  * group layout. */
 export default async function ChatPage({
   params,
-}: {
+}: Readonly<{
   params: Promise<{ locale: string }>;
-}): Promise<ReactNode> {
+}>): Promise<ReactNode> {
   const { locale } = await params;
   setRequestLocale(locale);
   return <ChatClient />;

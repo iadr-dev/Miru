@@ -4,9 +4,9 @@ import { ScreenerWorkbench } from "@/components/screener/screener-workbench";
 
 export default async function ScreenerPage({
   params,
-}: {
+}: Readonly<{
   params: Promise<{ locale: string }>;
-}): Promise<ReactNode> {
+}>): Promise<ReactNode> {
   const { locale } = await params;
   setRequestLocale(locale);
   return <ScreenerWorkbench />;

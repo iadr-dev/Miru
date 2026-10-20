@@ -99,7 +99,7 @@ function pivotByDate(rows: Record<string, unknown>[]): {
   return { points, categories };
 }
 
-export function InstitutionalFlowTimeseries({ data }: { data: unknown }): ReactNode {
+export function InstitutionalFlowTimeseries({ data }: Readonly<{ data: unknown }>): ReactNode {
   const locale = useLocale();
   const t = useTranslations("chat.cards");
   const rows = extractRows(data);

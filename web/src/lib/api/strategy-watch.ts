@@ -33,7 +33,8 @@ export async function getStrategyWatchToday(
   if (options.asOf) search.set("as_of", options.asOf);
   if (options.strategy) search.set("strategy", options.strategy);
   const query = search.toString();
-  const raw = await requestJson(`/strategy-watch/today${query ? `?${query}` : ""}`);
+  const queryString = query ? `?${query}` : "";
+  const raw = await requestJson(`/strategy-watch/today${queryString}`);
   return strategyWatchTodaySchema.parse(raw);
 }
 

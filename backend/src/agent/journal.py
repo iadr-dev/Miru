@@ -60,7 +60,7 @@ class Journal:
     def entries(self) -> tuple[JournalEntry, ...]:
         return tuple(self._entries)
 
-    def record_tool_call(  # noqa: PLR0913 — one typed field per journaled dimension, no
+    def record_tool_call(  # noqa: PLR0913 — one typed field per journaled dimension; no
         # free-text blob substitute is acceptable for an audit trail
         self,
         *,

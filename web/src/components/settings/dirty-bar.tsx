@@ -12,14 +12,14 @@ export function DirtyBar({
   cancelLabel,
   onSave,
   onCancel,
-}: {
+}: Readonly<{
   dirty: boolean;
   saving: boolean;
   saveLabel: string;
   cancelLabel: string;
   onSave: () => void;
   onCancel: () => void;
-}): ReactNode {
+}>): ReactNode {
   if (!dirty) {
     return null;
   }

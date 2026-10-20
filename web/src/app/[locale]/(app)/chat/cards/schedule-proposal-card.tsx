@@ -22,7 +22,9 @@ const SCHEDULES_KEY = ["settings", "schedules"] as const;
  * Nothing exists until the user taps 建立, which calls the ordinary `POST /schedules` (auth,
  * fair-use caps and trigger/skill validation enforced there). The agent has no write path.
  */
-export function ScheduleProposalCard({ data }: { data: Record<string, unknown> }): ReactNode {
+export function ScheduleProposalCard({
+  data,
+}: Readonly<{ data: Record<string, unknown> }>): ReactNode {
   const t = useTranslations("chat.cards.scheduleProposal");
   const tt = useTranslations("settings.alerts.schedules.templates");
   const queryClient = useQueryClient();

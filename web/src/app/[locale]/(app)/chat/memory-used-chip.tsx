@@ -9,7 +9,7 @@ import type { MemoryRef } from "@/types/usage";
 /** "Used N memories" under an answer: which long-term memories informed it, so the user can see
  * (and manage) what Miru knew. Renders nothing for a turn that used none, and starts collapsed so
  * it stays a quiet line, not a block. */
-export function MemoryUsedChip({ memories }: { memories: MemoryRef[] }): ReactNode {
+export function MemoryUsedChip({ memories }: Readonly<{ memories: MemoryRef[] }>): ReactNode {
   const t = useTranslations("chat.memoryUsed");
   const tm = useTranslations("settings.memory");
   const [open, setOpen] = useState(false);

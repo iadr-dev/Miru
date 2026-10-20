@@ -76,7 +76,6 @@ logger = structlog.get_logger(__name__)
 
 async def enforce_pre_turn_gate(
     state: AppState,
-    session: AsyncSession,
     user: User,
     *,
     deep_research: bool = False,

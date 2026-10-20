@@ -126,7 +126,7 @@ def missing_prerequisite(settings: Settings, *, need_second: bool = False) -> st
     return None
 
 
-async def execute_research(  # noqa: PLR0913 - collaborators are injected, one per seam
+async def execute_research(  # noqa: PLR0913 - collaborators are injected; one per seam
     settings: Settings,
     store: ParquetStore,
     *,
@@ -201,7 +201,7 @@ def _detail(summary: RunSummary) -> str:
     return f"{summary.line()} reasons=[{reasons}]"
 
 
-async def run_research_job(  # noqa: PLR0913 - collaborators are injected, one per seam
+async def run_research_job(  # noqa: PLR0913 - collaborators are injected; one per seam
     run_date: date,
     ctx: IngestContext,
     *,

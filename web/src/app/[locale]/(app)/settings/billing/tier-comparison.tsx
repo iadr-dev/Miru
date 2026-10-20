@@ -11,10 +11,10 @@ import type { TierSummary } from "@/types/settings";
 export function TierComparison({
   tiers,
   current,
-}: {
+}: Readonly<{
   tiers: TierSummary[];
   current: string;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("settings.billing.compare");
   const tUsage = useTranslations("settings.usage");
   if (tiers.length === 0) {

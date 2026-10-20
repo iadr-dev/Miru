@@ -31,19 +31,19 @@ from netclient import lease_client
 logger = structlog.get_logger(__name__)
 
 GOOGLE_AUTHORIZATION_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
-GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"  # noqa: S105 — fixed protocol URL, not a secret
+GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"  # noqa: S105 — fixed protocol URL; not a secret
 GOOGLE_CERTS_URL = "https://www.googleapis.com/oauth2/v3/certs"
 GOOGLE_ISSUERS = ("https://accounts.google.com", "accounts.google.com")
 GOOGLE_SCOPES = "openid email profile"
 
 LINE_AUTHORIZATION_ENDPOINT = "https://access.line.me/oauth2/v2.1/authorize"
-LINE_TOKEN_ENDPOINT = "https://api.line.me/oauth2/v2.1/token"  # noqa: S105 — fixed protocol URL, not a secret
+LINE_TOKEN_ENDPOINT = "https://api.line.me/oauth2/v2.1/token"  # noqa: S105 — fixed protocol URL; not a secret
 LINE_VERIFY_ENDPOINT = "https://api.line.me/oauth2/v2.1/verify"
 LINE_ISSUER = "https://access.line.me"
 LINE_SCOPES = "profile openid email"
 
 TELEGRAM_AUTHORIZATION_ENDPOINT = "https://oauth.telegram.org/auth"
-TELEGRAM_TOKEN_ENDPOINT = "https://oauth.telegram.org/token"  # noqa: S105 — fixed protocol URL, not a secret
+TELEGRAM_TOKEN_ENDPOINT = "https://oauth.telegram.org/token"  # noqa: S105 — fixed protocol URL; not a secret
 TELEGRAM_JWKS_URL = "https://oauth.telegram.org/.well-known/jwks.json"
 TELEGRAM_ISSUER = "https://oauth.telegram.org"
 TELEGRAM_SCOPES = "openid profile"  # no `phone`: Miru never asks for the number

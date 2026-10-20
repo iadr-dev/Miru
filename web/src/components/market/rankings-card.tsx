@@ -36,7 +36,7 @@ const RANKING_TABS = [
  * `daily-focus-panel.tsx` still renders that via `PriceMomentumCard` directly, unrelated to this
  * card. Only the active tab's own panel is ever mounted, so switching tabs never issues 4
  * upfront Yahoo-screener calls for tabs the user never opens. */
-export function RankingsCard({ market }: { market: Market }): ReactNode {
+export function RankingsCard({ market }: Readonly<{ market: Market }>): ReactNode {
   const t = useTranslations("market.cards.rankings");
   const [tab, setTab] = useState<RankingKind>("trending");
 

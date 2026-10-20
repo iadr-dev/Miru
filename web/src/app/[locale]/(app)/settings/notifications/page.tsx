@@ -4,9 +4,9 @@ import { NotificationsPanel } from "./notifications-panel";
 
 export default async function NotificationsPage({
   params,
-}: {
+}: Readonly<{
   params: Promise<{ locale: string }>;
-}): Promise<ReactNode> {
+}>): Promise<ReactNode> {
   const { locale } = await params;
   setRequestLocale(locale);
   return <NotificationsPanel />;

@@ -50,14 +50,14 @@ import type { RichCard } from "@/types/conversation";
 export function RichCardView({
   card,
   onAskUserPick,
-}: {
+}: Readonly<{
   card: RichCard;
   /** Only consulted for `card_type === "ask_user"` — every other card type ignores it. Optional
    * because most render sites (persisted history read-only contexts, etc.) never show an
    * `ask_user` card in the first place; when omitted, an `ask_user` card still renders its
    * question/options, just with no-op buttons. */
   onAskUserPick?: ((prompt: string) => void) | undefined;
-}): ReactNode {
+}>): ReactNode {
   if (card.card_type === "alert_proposal") {
     return <AlertProposalCard data={card.data} />;
   }
@@ -129,7 +129,7 @@ function renderShaped(
   }
 }
 
-function FlatCard({ card }: { card: RichCard }): ReactNode {
+function FlatCard({ card }: Readonly<{ card: RichCard }>): ReactNode {
   const t = useTranslations("chat.cards");
   const scalars = Object.entries(card.data).filter(
     ([key, value]) =>

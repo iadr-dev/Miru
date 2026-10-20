@@ -16,10 +16,10 @@ const VIEW_HEIGHT = 26;
 export function Sparkline({
   values,
   color,
-}: {
+}: Readonly<{
   values: readonly number[];
   color: string;
-}): ReactNode {
+}>): ReactNode {
   if (values.length < 2) {
     return null;
   }

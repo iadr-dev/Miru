@@ -105,7 +105,7 @@ class SqlAlchemyPetStore:
     def __init__(self, session: AsyncSession, *, rng: random.Random | None = None) -> None:
         self._session = session
         # Injectable RNG so gacha tests are deterministic; defaults to a fresh Random().
-        self._rng = rng or random.Random()  # noqa: S311 — cosmetic gacha, not cryptographic
+        self._rng = rng or random.Random()  # noqa: S311 — cosmetic gacha; not cryptographic
 
     async def ensure_stats(self, *, user_id: str) -> PetStats:
         if await self._insert_stats_if_absent(user_id=user_id, values={"available_pulls": 1}):

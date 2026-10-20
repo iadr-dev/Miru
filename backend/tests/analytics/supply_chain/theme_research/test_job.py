@@ -220,7 +220,9 @@ def test_cli_dispatches_the_new_commands_and_validates_the_source(
 ) -> None:
     calls: list[tuple[str, int | None, bool, str]] = []
 
-    async def fake(command: str, *, limit: int | None, dry_run: bool, source: str) -> int:
+    async def fake(
+        command: str, *, limit: int | None, dry_run: bool, source: str, covered_threshold: float
+    ) -> int:
         calls.append((command, limit, dry_run, source))
         return 0
 

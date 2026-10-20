@@ -50,10 +50,10 @@ function cellText(value: unknown, locale: string, numeric: boolean): string {
 export function ChartWithDataSheet({
   rows,
   children,
-}: {
+}: Readonly<{
   rows: Record<string, unknown>[];
   children: ReactNode;
-}): ReactNode {
+}>): ReactNode {
   const locale = useLocale();
   const t = useTranslations("chat.cards");
   const [open, setOpen] = useState(false);

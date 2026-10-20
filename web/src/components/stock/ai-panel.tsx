@@ -307,6 +307,14 @@ function TrendDimensionRow({
   // yet (e.g. 分點 not ingested), which must not read as an upgrade prompt to a Pro user.
   const locked = dimension.locked;
   const hasValue = dimension.value !== null;
+  let caption: string;
+  if (locked) {
+    caption = t("dimensionLocked");
+  } else if (hasValue) {
+    caption = t(`dimensionCaption.${dimension.name}` as const);
+  } else {
+    caption = t("dimensionUnavailable");
+  }
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -333,13 +341,7 @@ function TrendDimensionRow({
           />
         ) : null}
       </div>
-      <p className="text-[11px] text-[var(--text-muted)] leading-[1.5]">
-        {locked
-          ? t("dimensionLocked")
-          : hasValue
-            ? t(`dimensionCaption.${dimension.name}` as const)
-            : t("dimensionUnavailable")}
-      </p>
+      <p className="text-[11px] text-[var(--text-muted)] leading-[1.5]">{caption}</p>
     </div>
   );
 }

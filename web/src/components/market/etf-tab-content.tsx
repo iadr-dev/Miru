@@ -36,7 +36,7 @@ type EtfSubTab = (typeof ETF_SUB_TABS)[number]["key"];
  * Underline style with a `layoutId` shared-element indicator that glides between tabs on click —
  * same spring-transition mechanism `shell/sidebar.tsx`'s active-nav-edge indicator already uses,
  * not a new motion pattern. */
-export function EtfTabContent({ market }: { market: Market }): ReactNode {
+export function EtfTabContent({ market }: Readonly<{ market: Market }>): ReactNode {
   const t = useTranslations("market.tabs.etfSub");
   const [subTab, setSubTab] = useState<EtfSubTab>("leaderboard");
 

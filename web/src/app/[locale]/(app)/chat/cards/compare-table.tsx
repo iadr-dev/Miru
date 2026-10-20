@@ -10,7 +10,7 @@ import { asArray, asNumber, asString, formatNumber, PLUMBING_KEYS } from "@/lib/
  * column per compared field" — `fund_comparison`'s `rows` list already is that; `etf_overlap`'s
  * `pairwise_overlap` list is rendered as a pair × metric table instead, since there's no single
  * entity-per-row for a pairwise structure. */
-export function CompareTable({ data }: { data: unknown }): ReactNode {
+export function CompareTable({ data }: Readonly<{ data: unknown }>): ReactNode {
   const locale = useLocale();
   const t = useTranslations("chat.cards");
   if (!data || typeof data !== "object") {
@@ -31,11 +31,11 @@ function EntityRows({
   rows,
   locale,
   t,
-}: {
+}: Readonly<{
   rows: Record<string, unknown>[];
   locale: string;
   t: ReturnType<typeof useTranslations>;
-}): ReactNode {
+}>): ReactNode {
   if (rows.length === 0) {
     return null;
   }
@@ -75,11 +75,7 @@ function EntityRows({
                         : "border-[var(--border)] border-b px-3 py-2 text-[var(--text)]"
                     }
                   >
-                    {typeof value === "number"
-                      ? formatNumber(asNumber(value), locale)
-                      : Array.isArray(value)
-                        ? value.map((v) => asString(v) ?? String(v)).join(", ")
-                        : (asString(value) ?? "—")}
+                    {formatCompareCell(value, locale)}
                   </td>
                 );
               })}
@@ -91,15 +87,21 @@ function EntityRows({
   );
 }
 
+function formatCompareCell(value: unknown, locale: string): string {
+  if (typeof value === "number") return formatNumber(asNumber(value), locale);
+  if (Array.isArray(value)) return value.map((v) => asString(v) ?? String(v)).join(", ");
+  return asString(value) ?? "—";
+}
+
 function PairwiseRows({
   rows,
   locale,
   t,
-}: {
+}: Readonly<{
   rows: Record<string, unknown>[];
   locale: string;
   t: ReturnType<typeof useTranslations>;
-}): ReactNode {
+}>): ReactNode {
   if (rows.length === 0) {
     return null;
   }

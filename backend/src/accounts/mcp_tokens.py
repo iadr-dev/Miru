@@ -57,7 +57,7 @@ def _signing_key(settings: Settings) -> str:
     return hmac.new(secret.encode(), b"mcp-access-token", hashlib.sha256).hexdigest()
 
 
-def issue_mcp_access_token(  # noqa: PLR0913 - one claim per keyword, all required
+def issue_mcp_access_token(  # noqa: PLR0913 - one claim per keyword; all required
     *,
     user_id: str,
     client_id: str,

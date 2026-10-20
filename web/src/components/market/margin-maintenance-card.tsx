@@ -106,10 +106,10 @@ function renderMarginDelta(against: number | null, value: number, locale: string
 export function MarginMaintenanceCard({
   rows,
   shortBalanceRows,
-}: {
+}: Readonly<{
   rows: readonly MarginMaintenanceRow[];
   shortBalanceRows: readonly MarginShortTotalMarketRow[];
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("market.cards.marginMaintenance");
   const locale = useLocale();
   const [historyOpen, setHistoryOpen] = useState(false);

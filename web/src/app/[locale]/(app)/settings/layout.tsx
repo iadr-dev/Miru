@@ -10,10 +10,10 @@ import { SettingsNav } from "@/components/settings/settings-nav";
 export default async function SettingsLayout({
   children,
   params,
-}: {
+}: Readonly<{
   children: ReactNode;
   params: Promise<{ locale: string }>;
-}): Promise<ReactNode> {
+}>): Promise<ReactNode> {
   const { locale } = await params;
   setRequestLocale(locale);
   return (

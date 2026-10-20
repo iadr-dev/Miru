@@ -462,7 +462,7 @@ def _load_previous(store: ParquetStore, run_date: date_) -> _Previous:
     )
 
 
-async def _write_datasets(  # noqa: PLR0913, PLR0917 - the run's results, one argument each
+async def _write_datasets(  # noqa: PLR0913, PLR0917 - the run's results; one argument each
     ctx: IngestContext,
     run_date: date_,
     results: list[_SeriesOutcome],

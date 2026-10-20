@@ -23,6 +23,10 @@ from analytics.themes.store import SqlAlchemyThemeStore
 from ingest.context import IngestContext
 from ingest.journal import JobRun, RunStatus, journal_run
 
+_NO_SESSION_FACTORY_DETAIL = "no database session factory wired"
+
+_NOT_LEADER_DETAIL = "not the leader - write skipped"
+
 logger = structlog.get_logger(__name__)
 
 SC_REFDATA_DATASET = "sc_refdata_load"
@@ -37,7 +41,7 @@ async def job_sc_refdata_load(run_date: date_, ctx: IngestContext) -> JobRun:
             run_date,
             rows_written=0,
             status=RunStatus.SKIPPED,
-            detail="not the leader - write skipped",
+            detail=_NOT_LEADER_DETAIL,
         )
     if ctx.session_factory is None:
         return journal_run(
@@ -45,7 +49,7 @@ async def job_sc_refdata_load(run_date: date_, ctx: IngestContext) -> JobRun:
             run_date,
             rows_written=0,
             status=RunStatus.SKIPPED,
-            detail="no database session factory wired",
+            detail=_NO_SESSION_FACTORY_DETAIL,
         )
     async with ctx.session_factory() as session:
         store = SqlAlchemySupplyChainStore(session)
@@ -93,7 +97,7 @@ async def job_sc_themes_entities_load(run_date: date_, ctx: IngestContext) -> Jo
             run_date,
             rows_written=0,
             status=RunStatus.SKIPPED,
-            detail="not the leader - write skipped",
+            detail=_NOT_LEADER_DETAIL,
         )
     if ctx.session_factory is None:
         return journal_run(
@@ -101,7 +105,7 @@ async def job_sc_themes_entities_load(run_date: date_, ctx: IngestContext) -> Jo
             run_date,
             rows_written=0,
             status=RunStatus.SKIPPED,
-            detail="no database session factory wired",
+            detail=_NO_SESSION_FACTORY_DETAIL,
         )
     rows = 0
     parts: list[str] = []
@@ -173,7 +177,7 @@ async def job_sc_positions_refresh(run_date: date_, ctx: IngestContext) -> JobRu
             run_date,
             rows_written=0,
             status=RunStatus.SKIPPED,
-            detail="not the leader - write skipped",
+            detail=_NOT_LEADER_DETAIL,
         )
     if ctx.session_factory is None:
         return journal_run(
@@ -181,7 +185,7 @@ async def job_sc_positions_refresh(run_date: date_, ctx: IngestContext) -> JobRu
             run_date,
             rows_written=0,
             status=RunStatus.SKIPPED,
-            detail="no database session factory wired",
+            detail=_NO_SESSION_FACTORY_DETAIL,
         )
     try:
         overrides = load_overrides()

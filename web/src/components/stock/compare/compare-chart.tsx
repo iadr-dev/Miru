@@ -97,6 +97,7 @@ export function CompareChart({
           />
           {symbols.map((symbol, index) => {
             const dash = dashFor(index);
+            const dashProps = dash ? { strokeDasharray: dash } : {};
             return visible.has(symbol) ? (
               <Line
                 key={symbol}
@@ -105,7 +106,7 @@ export function CompareChart({
                 name={`${symbol} ${labels.get(symbol) ?? ""}`.trim()}
                 stroke={colors[symbol] ?? "var(--chart-1)"}
                 strokeWidth={2}
-                {...(dash ? { strokeDasharray: dash } : {})}
+                {...dashProps}
                 dot={false}
                 connectNulls
                 isAnimationActive={!reduceMotion}

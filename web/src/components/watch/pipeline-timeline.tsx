@@ -80,11 +80,11 @@ export function PipelineTimeline({
   data,
   steps,
   colors,
-}: {
+}: Readonly<{
   data: StrategyWatchToday;
   steps: readonly PipelineStep[];
   colors: Record<PipelineStepKey, string>;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("watch");
   const reduceMotion = useReducedMotion();
   const now = useNow();
@@ -307,12 +307,12 @@ function StepList({
   data,
   open,
   onToggle,
-}: {
+}: Readonly<{
   views: readonly StepView[];
   data: StrategyWatchToday;
   open: PipelineStepKey | null;
   onToggle: (key: PipelineStepKey) => void;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("watch");
   return (
     <ol className="m-0 flex list-none flex-col p-0 @3xl:hidden">
@@ -384,17 +384,19 @@ function StepMarker({
   onOpen,
   onToggle,
   onClose,
-}: {
+}: Readonly<{
   view: StepView;
   index: number;
   open: boolean;
   onOpen: () => void;
   onToggle: () => void;
   onClose: () => void;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("watch");
   const reduceMotion = useReducedMotion();
   const cardId = "watch-step-details";
+  const keyLabel = t(`pipeline.${view.key}`);
+  const statusLabel = t(`pipeline.${statusKey(view)}`);
   return (
     <motion.div
       className="absolute flex -translate-x-1/2 flex-col items-center"
@@ -411,7 +413,7 @@ function StepMarker({
         onFocus={onOpen}
         aria-expanded={open}
         aria-controls={cardId}
-        aria-label={`${t(`pipeline.${view.key}`)} · ${t(`pipeline.${statusKey(view)}`)}`}
+        aria-label={`${keyLabel} · ${statusLabel}`}
         className="relative flex size-[26px] items-center justify-center rounded-full border-2 bg-[var(--surface)] focus-visible:outline-2 focus-visible:outline-[var(--accent)] focus-visible:outline-offset-2"
         style={{
           borderColor: view.stale ? "var(--warn)" : view.color,
@@ -443,7 +445,7 @@ function StepMarker({
   );
 }
 
-function StepNote({ view, wrap = false }: { view: StepView; wrap?: boolean }): ReactNode {
+function StepNote({ view, wrap = false }: Readonly<{ view: StepView; wrap?: boolean }>): ReactNode {
   const t = useTranslations("watch");
   const note = view.note;
   if (note === null) return null;
@@ -477,7 +479,10 @@ function StepNote({ view, wrap = false }: { view: StepView; wrap?: boolean }): R
   );
 }
 
-function StepDetails({ view, data }: { view: StepView; data: StrategyWatchToday }): ReactNode {
+function StepDetails({
+  view,
+  data,
+}: Readonly<{ view: StepView; data: StrategyWatchToday }>): ReactNode {
   const t = useTranslations("watch");
   const lines: string[] = [];
   if (view.key === "screen" && data.run_date !== null) {

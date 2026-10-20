@@ -9,7 +9,7 @@ import { cn } from "@/lib/cn";
  * prompt-starter chips. Clicking a chip sends it as the first turn. This is the cold-start class
  * (user has no active conversation), so routing INTO chat here is correct.
  */
-export function EmptyState({ onPick }: { onPick: (prompt: string) => void }): ReactNode {
+export function EmptyState({ onPick }: Readonly<{ onPick: (prompt: string) => void }>): ReactNode {
   const t = useTranslations("chat.empty");
   const starters = [t("starters.s1"), t("starters.s2"), t("starters.s3")];
 

@@ -48,7 +48,8 @@ function claudeDisplayName(model: string): string | null {
   }
   const [, family, major, minor] = match;
   const name = `${family?.charAt(0).toUpperCase()}${family?.slice(1)}`;
-  return `Claude ${name} ${minor === undefined ? major : `${major}.${minor}`}`;
+  const version = minor === undefined ? major : `${major}.${minor}`;
+  return `Claude ${name} ${version}`;
 }
 
 /** How a model is named on screen: a Claude id as its product name, any other id without a

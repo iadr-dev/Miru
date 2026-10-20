@@ -146,10 +146,7 @@ export function SnapshotStat({
   return (
     <div>
       <p className="text-[11px] text-[var(--text-muted)]">{label}</p>
-      <p
-        className="font-num tabular-nums"
-        style={{ color: tone === "up" ? "var(--up)" : tone === "down" ? "var(--down)" : undefined }}
-      >
+      <p className="font-num tabular-nums" style={{ color: toneColor(tone) }}>
         {value}
       </p>
     </div>
@@ -158,4 +155,10 @@ export function SnapshotStat({
 
 export function formatSignedNumber(value: number, locale: string): string {
   return formatSignedChange(value, locale);
+}
+
+function toneColor(tone: "up" | "down" | undefined): string | undefined {
+  if (tone === "up") return "var(--up)";
+  if (tone === "down") return "var(--down)";
+  return undefined;
 }

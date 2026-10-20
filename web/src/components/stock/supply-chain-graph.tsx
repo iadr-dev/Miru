@@ -382,6 +382,7 @@ function PeerNode({
   const tLock = useTranslations("featureLock");
   const change = quote?.changePct ?? null;
   const roleLabel = t(`supplyChainRole.${peer.role}`);
+  const changeSuffix = change === null ? "" : ` ${formatChange(change)}`;
   const gradeLabel = t(`supplyChainGrade.${peer.grade}`);
   const key = peerKey(peer);
   const hoverProps = {
@@ -404,7 +405,7 @@ function PeerNode({
       <Link
         {...hoverProps}
         href={`/stock/${encodeURIComponent(peer.symbol)}?market=${peer.market}`}
-        aria-label={`${peer.name} ${peer.symbol} - ${roleLabel}${change === null ? "" : ` ${formatChange(change)}`}`}
+        aria-label={`${peer.name} ${peer.symbol} - ${roleLabel}${changeSuffix}`}
         className="flex min-w-0 flex-1 items-center gap-2.5 rounded-[var(--radius-input)] py-1.5 pr-2 pl-3"
       >
         <span className="min-w-0 flex-1">
@@ -627,7 +628,7 @@ function ConnectorPath({
       fill="none"
       stroke={ROLE_COLOR[peer.role]}
       strokeWidth={active ? width + 0.8 : width}
-      strokeOpacity={hovered === null ? 0.5 : active ? 0.95 : 0.15}
+      strokeOpacity={connectorOpacity(hovered, active)}
       strokeLinecap="round"
       vectorEffect="non-scaling-stroke"
       style={{ transition: "stroke-opacity var(--dur-base) var(--ease-out)" }}
@@ -643,4 +644,9 @@ function focusNameOf(edges: readonly SupplyChainEdge[], symbol: string): string 
 
 function formatChange(value: number): string {
   return `${value > 0 ? "+" : ""}${value.toFixed(2)}%`;
+}
+
+function connectorOpacity(hovered: string | null, active: boolean): number {
+  if (hovered === null) return 0.5;
+  return active ? 0.95 : 0.15;
 }

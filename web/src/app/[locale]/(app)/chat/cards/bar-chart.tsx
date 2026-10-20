@@ -60,7 +60,7 @@ const BAR_COLORS = [
  * (exactly 2 genuinely parallel tracks, e.g. margin vs short balance) and `DivergingBarChart`
  * (a signed net metric) — this is 1-6 independent unsigned magnitude series, one bar per period,
  * categorical `--chart-1..6` coloring throughout. */
-export function BarChart({ data }: { data: unknown }): ReactNode {
+export function BarChart({ data }: Readonly<{ data: unknown }>): ReactNode {
   const locale = useLocale();
   const t = useTranslations("chat.cards");
   const rows = extractRows(data);

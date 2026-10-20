@@ -35,10 +35,10 @@ import { RateLimitNotice } from "./rate-limit-notice";
 export function AppShell({
   children,
   modal,
-}: {
+}: Readonly<{
   children: ReactNode;
   modal?: ReactNode;
-}): ReactNode {
+}>): ReactNode {
   const { collapsed, toggle: toggleSidebar } = useSidebarCollapsed();
   const { open: railOpen, toggle: toggleRail, close: closeRail } = useWatchlistOpen();
   const { width: watchlistWidth, setWidth: setWatchlistWidth } = useWatchlistWidth();
@@ -104,7 +104,10 @@ export function AppShell({
 }
 
 /** The watchlist below `lg`: a right-edge sheet (full width on a phone, 24rem on a tablet). */
-function WatchlistSheet({ open, onClose }: { open: boolean; onClose: () => void }): ReactNode {
+function WatchlistSheet({
+  open,
+  onClose,
+}: Readonly<{ open: boolean; onClose: () => void }>): ReactNode {
   const t = useTranslations("shell.watchlist");
   return (
     <Dialog.Root open={open} onOpenChange={(next) => (next ? undefined : onClose())}>

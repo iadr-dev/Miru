@@ -84,10 +84,10 @@ function groupPersistedLaneEntries(messages: Turn["messages"]): Map<string, Pers
 function PersistedProcessDisclosure({
   messages,
   t,
-}: {
+}: Readonly<{
   messages: Turn["messages"];
   t: ReturnType<typeof useTranslations>;
-}): ReactNode {
+}>): ReactNode {
   const [open, setOpen] = useState(false);
   const byAgent = groupPersistedLaneEntries(messages);
   if (byAgent.size === 0) {
@@ -141,7 +141,10 @@ function PersistedProcessDisclosure({
  * persists them past the turn — see `AttachmentBlock`'s own docstring), and never the extracted
  * document text inline (the model already saw it folded into the turn's prompt; re-rendering it
  * here would duplicate potentially-long content the user never asked to see again). */
-function AttachmentChip({ filename, isImage }: { filename: string; isImage: boolean }): ReactNode {
+function AttachmentChip({
+  filename,
+  isImage,
+}: Readonly<{ filename: string; isImage: boolean }>): ReactNode {
   return (
     <span
       className={cn(
@@ -250,13 +253,13 @@ export function PersistedThreadView({
   onRegenerate,
   onEdit,
   onAskUserPick,
-}: {
+}: Readonly<{
   thread: Thread;
   streaming?: boolean;
   onRegenerate?: (assistantTurnId: string, userText: string) => Promise<unknown>;
   onEdit?: (userTurnId: string, newText: string) => void;
   onAskUserPick?: ((prompt: string) => void) | undefined;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("chat.turn");
   const tCaveat = useTranslations("chat.caveat");
 
@@ -313,11 +316,11 @@ function AssistantTurnActions({
   turn,
   sourceUserTurn,
   onRetry,
-}: {
+}: Readonly<{
   turn: Turn;
   sourceUserTurn: Turn | null;
   onRetry?: ((userText: string) => Promise<unknown>) | undefined;
-}): ReactNode {
+}>): ReactNode {
   const [feedback, setFeedback] = useState<FeedbackRating | null>(null);
   const [retrying, setRetrying] = useState(false);
 

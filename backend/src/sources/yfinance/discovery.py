@@ -39,6 +39,8 @@ from ._shared import (
     _result,
 )
 
+_MARKET_WEIGHT_COLUMN = "market weight"
+
 logger = structlog.get_logger(__name__)
 
 
@@ -256,7 +258,7 @@ def _sector_industry_rows(
         return []
     rows: list[dict[str, object]] = []
     for industry_key, row in industries.iterrows():
-        weight = _as_float(_get(row, "market weight"))
+        weight = _as_float(_get(row, _MARKET_WEIGHT_COLUMN))
         if weight is None:
             continue
         rows.append(
@@ -286,7 +288,7 @@ def _sector_rows(
                     "symbol": str(idx),
                     "name": str(_get(row, "name", "")),
                     "rating": _as_str(_get(row, "rating")),
-                    "market_weight": _as_float(_get(row, "market weight")),
+                    "market_weight": _as_float(_get(row, _MARKET_WEIGHT_COLUMN)),
                 }
             )
     for row_kind, frame_key in (("etf", "top_etfs"), ("mutual_fund", "top_mutual_funds")):
@@ -344,7 +346,7 @@ async def _industry_overview(sym: Symbol, params: dict[str, object]) -> SourceRe
                     "symbol": str(idx),
                     "name": str(_get(row, "name", "")),
                     "rating": _as_str(_get(row, "rating")),
-                    "market_weight": _as_float(_get(row, "market weight")),
+                    "market_weight": _as_float(_get(row, _MARKET_WEIGHT_COLUMN)),
                     # `ytd_return` is shared by both `top_growth_companies` and
                     # `top_performing_companies`; `last_price`/`target_price` are
                     # performing-only, `growth_estimate` is growth-only — a plain `top_companies`

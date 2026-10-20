@@ -21,10 +21,10 @@ import type { MeResponse } from "@/types/account";
 export function MobileTabBar({
   drawerOpen,
   onOpenDrawer,
-}: {
+}: Readonly<{
   drawerOpen: boolean;
   onOpenDrawer: () => void;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations();
   const pathname = usePathname();
 
@@ -76,11 +76,11 @@ export function MobileDrawer({
   open,
   onOpenChange,
   me,
-}: {
+}: Readonly<{
   open: boolean;
   onOpenChange: (open: boolean) => void;
   me: MeResponse;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations();
   const pathname = usePathname();
 

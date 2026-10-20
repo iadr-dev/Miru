@@ -142,7 +142,7 @@ const LINE_COLORS = [
  * project already scopes canvas-owning libraries per web/OVERVIEW.md's "lightweight-charts for
  * candles" call) — everything else in the timeseries bucket renders as a `recharts` multi-line
  * chart (`TimeseriesLineChart` below), since it isn't price/OHLCV data. */
-export function TimeseriesChart({ data }: { data: unknown }): ReactNode {
+export function TimeseriesChart({ data }: Readonly<{ data: unknown }>): ReactNode {
   const rows = extractRows(data);
   const candles = toCandles(rows);
 
@@ -162,11 +162,11 @@ function CandlestickChart({
   candles,
   volumes,
   rows,
-}: {
+}: Readonly<{
   candles: CandlestickData<Time>[];
   volumes: HistogramData<Time>[];
   rows: Record<string, unknown>[];
-}): ReactNode {
+}>): ReactNode {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
 
@@ -230,7 +230,7 @@ function CandlestickChart({
   );
 }
 
-function TimeseriesLineChart({ rows }: { rows: Record<string, unknown>[] }): ReactNode {
+function TimeseriesLineChart({ rows }: Readonly<{ rows: Record<string, unknown>[] }>): ReactNode {
   const locale = useLocale();
   const t = useTranslations("chat.cards");
   const metricKeys = numericKeysIn(rows).slice(0, 6);

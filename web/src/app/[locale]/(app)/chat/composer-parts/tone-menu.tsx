@@ -16,10 +16,10 @@ import {
 export function ToneMenu({
   selected,
   onSelect,
-}: {
+}: Readonly<{
   selected: string | null;
   onSelect: (presetId: string) => void;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("chat.composer.toneMenu");
   const tp = useTranslations("settings.personality.preset");
   const current = selected !== null && isPersonalityPresetId(selected) ? selected : null;

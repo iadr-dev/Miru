@@ -7,9 +7,9 @@ import { MarketPanel } from "./market-panel";
  * docstring for the 4 tools deliberately omitted rather than faked. */
 export default async function MarketPage({
   params,
-}: {
+}: Readonly<{
   params: Promise<{ locale: string }>;
-}): Promise<ReactNode> {
+}>): Promise<ReactNode> {
   const { locale } = await params;
   setRequestLocale(locale);
   return <MarketPanel />;

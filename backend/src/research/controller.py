@@ -162,7 +162,7 @@ class _Run:
 
 
 class DeepResearch:
-    def __init__(  # noqa: PLR0913 — the ports, the guard, the budget and two injectable clocks
+    def __init__(  # noqa: PLR0913 — the ports; the guard; the budget and two injectable clocks
         self,
         *,
         model: ResearchModel,
@@ -348,7 +348,7 @@ class DeepResearch:
             for hit in hits:
                 run.ledger.offer(hit)
 
-    async def _lookup(  # noqa: PLR0913, PLR0917 — the sub-question's lane, round, what it found
+    async def _lookup(  # noqa: PLR0913, PLR0917 — the sub-question's lane; round; what it found
         self,
         run: _Run,
         lane: int,

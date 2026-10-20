@@ -12,6 +12,8 @@ from db.models._common import CASCADE_DELETE_ORPHAN as _CASCADE_DELETE_ORPHAN
 from db.models._common import TURNS_ID_FK as _TURNS_ID_FK
 from db.models._common import UTC_TIMESTAMP as _UTC
 
+_SET_NULL = "SET NULL"
+
 
 class ThreadRow(Base):
     __tablename__ = "threads"
@@ -51,10 +53,10 @@ class TurnRow(Base):
     role: Mapped[str]
     status: Mapped[str] = mapped_column(default="running")
     parent_turn_id: Mapped[str | None] = mapped_column(
-        ForeignKey(_TURNS_ID_FK, ondelete="SET NULL"), default=None
+        ForeignKey(_TURNS_ID_FK, ondelete=_SET_NULL), default=None
     )
     regenerate_of: Mapped[str | None] = mapped_column(
-        ForeignKey(_TURNS_ID_FK, ondelete="SET NULL"), default=None
+        ForeignKey(_TURNS_ID_FK, ondelete=_SET_NULL), default=None
     )
     framework: Mapped[str | None] = mapped_column(default=None)
     # How the request was made when it is not a plain chat ("deep_research"); regenerate/edit read
@@ -101,7 +103,7 @@ class MessageRow(Base):
     turn_id: Mapped[str] = mapped_column(ForeignKey(_TURNS_ID_FK, ondelete="CASCADE"))
     user_id: Mapped[str] = mapped_column(index=True)  # denormalized for isolation + FTS
     parent_id: Mapped[str | None] = mapped_column(
-        ForeignKey("messages.id", ondelete="SET NULL"), default=None
+        ForeignKey("messages.id", ondelete=_SET_NULL), default=None
     )
     seq: Mapped[int]
     type: Mapped[str]
