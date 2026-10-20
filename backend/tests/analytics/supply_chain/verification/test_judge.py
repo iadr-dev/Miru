@@ -131,6 +131,17 @@ async def test_an_old_dated_page_is_skipped_without_a_model_call() -> None:
     assert client.calls == []
 
 
+async def test_an_old_url_date_skips_an_undated_page_and_a_recent_one_is_kept() -> None:
+    old = Page(url="https://news.example.com/2014/08/14/o", text=SENTENCE)
+    client = llm(judgement_json())
+    assert (await assess(client, old)).reason == Reason.SOURCE_OLD.value
+    assert client.calls == []
+    fresh = Page(url="https://news.example.com/2026/09/14/o", text=SENTENCE)
+    kept = llm(judgement_json())
+    assert (await assess(kept, fresh)).reason != Reason.SOURCE_OLD.value
+    assert kept.calls != []
+
+
 async def test_bad_json_and_provider_errors_are_rejections_not_crashes() -> None:
     assert (await assess(llm("sorry, I cannot help"))).reason == REASON_BAD_JSON
     assert (await assess(llm('{"supports": "maybe", "bogus": 1}'))).reason == REASON_BAD_JSON

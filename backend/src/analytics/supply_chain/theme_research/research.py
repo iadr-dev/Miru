@@ -110,7 +110,7 @@ class ThemeResearcher:
         if page is None:
             result.dropped[DROP_FETCH_FAILED] += 1
             return True
-        published = guards.page_date(page.text, hit.published, self._today)
+        published = guards.page_date(page.text, hit.published, self._today, page.url)
         if guards.source_too_old(published, self._today, self._cfg.max_source_age_days):
             result.dropped[DROP_SOURCE_OLD] += 1
             return True

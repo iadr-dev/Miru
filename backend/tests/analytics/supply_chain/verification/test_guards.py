@@ -216,3 +216,46 @@ def test_page_date_prefers_the_hit_then_the_head_of_the_text() -> None:
     assert guards.page_date("2020-01-01 body", "2 days ago", TODAY) == date(2026, 10, 16)
     assert guards.page_date("2020-01-01 body", None, TODAY) == date(2020, 1, 1)
     assert guards.page_date("body only", None, TODAY) is None
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        ("https://news.example.com/2014/08/14/some-story", date(2014, 8, 14)),
+        ("https://news.example.com/story/2025-03-04-title", date(2025, 3, 4)),
+        ("https://news.example.com/n/20250304", date(2025, 3, 4)),
+        ("https://news.example.com/n/20250304.html", date(2025, 3, 4)),
+        # the shape of the live miss: /article/category/<n>/post/<YYYYMMDD><n>
+        ("https://biz.example.com/article/category/80402/post/201408140", date(2014, 8, 14)),
+        ("https://biz.example.com/post/2014081402", date(2014, 8, 14)),
+    ],
+)
+def test_url_date_accepts_the_unambiguous_forms(url: str, expected: date) -> None:
+    assert guards.url_date(url, TODAY) == expected
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        None,
+        "https://shop.example.com/order/12345678",
+        "https://news.example.com/n/20141345",
+        "https://news.example.com/n/19990101",
+        "https://news.example.com/2014/13/14/x",
+        "https://news.example.com/n/99999999",
+        "https://news.example.com/item/201408140",
+        "https://news.example.com/n/2014081412345",
+        "https://news.example.com/s?date=20140814&d=2014-08-14",
+        "https://news.example.com/n/20991231",
+    ],
+)
+def test_url_date_ignores_ambiguous_or_invalid_digits(url: str | None) -> None:
+    assert guards.url_date(url, TODAY) is None
+
+
+def test_page_date_uses_the_url_only_as_a_last_resort() -> None:
+    url = "https://news.example.com/2014/08/14/x"
+    assert guards.page_date("body only", None, TODAY, url) == date(2014, 8, 14)
+    assert guards.page_date("2024-02-02 body", None, TODAY, url) == date(2024, 2, 2)
+    assert guards.page_date("body", "2 days ago", TODAY, url) == date(2026, 10, 16)
+    assert guards.page_date("body only", None, TODAY) is None

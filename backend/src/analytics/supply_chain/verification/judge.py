@@ -223,7 +223,7 @@ def _precheck(
     does not even mention every company."""
     if trust_for_url(page.url, ctx.trust_table) is Trust.REJECTED:
         return Reason.HOST_REJECTED.value, None
-    published = guards.page_date(page.text, page.hit_published, ctx.today)
+    published = guards.page_date(page.text, page.hit_published, ctx.today, page.url)
     if guards.source_too_old(published, ctx.today, ctx.max_age_days):
         return Reason.SOURCE_OLD.value, published
     if not all(guards.mentions_any(page.text, names) for names in required):

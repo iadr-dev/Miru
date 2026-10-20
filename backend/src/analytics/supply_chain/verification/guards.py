@@ -13,6 +13,7 @@ from collections.abc import Iterable, Mapping
 from datetime import date, timedelta
 from enum import StrEnum
 from typing import Final
+from urllib.parse import urlsplit
 
 from analytics.supply_chain.domain.models import EXCERPT_MAX, Kind, Trust
 from analytics.supply_chain.domain.rules import trust_for_url
@@ -192,9 +193,54 @@ def parse_loose_date(text: str | None, *, today: date | None = None) -> date | N
     return None
 
 
-def page_date(text: str, hit_published: str | None, today: date) -> date | None:
-    """The page's date: the search hit's own, else the first full date near the top of the text."""
-    return parse_loose_date(hit_published, today=today) or parse_loose_date(text[:_HEAD_CHARS])
+_URL_SLASHED = re.compile(r"(?<!\d)(\d{4})/(\d{2})/(\d{2})(?!\d)")
+_URL_DASHED = re.compile(r"(?<!\d)(\d{4})-(\d{2})-(\d{2})(?!\d)")
+_URL_COMPACT = re.compile(r"(\d{4})(\d{2})(\d{2})(?:\.html?)?")
+_URL_ID = re.compile(r"(\d{4})(\d{2})(\d{2})\d{1,2}")
+_URL_ID_PARENTS: Final = frozenset({"post", "posts", "article", "articles", "news", "story", "id"})
+_URL_MIN_YEAR = 2000
+
+
+def _url_candidate(year: str, month: str, day: str, today: date) -> date | None:
+    y = int(year)
+    if not _URL_MIN_YEAR <= y <= today.year:
+        return None
+    found = _safe_date(y, int(month), int(day))
+    return found if found is not None and found <= today else None
+
+
+def url_date(url: str | None, today: date) -> date | None:
+    """A publication date embedded in the URL path, only in unambiguous forms: /YYYY/MM/DD/,
+    YYYY-MM-DD, a bare /YYYYMMDD segment, or a 9-10 digit id after a post/article-like segment
+    whose first eight digits are a valid date. Query strings, other numeric ids and out-of-range
+    years (before 2000, after today) yield None."""
+    if not url:
+        return None
+    path = urlsplit(url).path
+    for pattern in (_URL_SLASHED, _URL_DASHED):
+        if m := pattern.search(path):
+            return _url_candidate(m.group(1), m.group(2), m.group(3), today)
+    segments = [seg for seg in path.split("/") if seg]
+    for i, seg in enumerate(segments):
+        parent = segments[i - 1].casefold() if i else ""
+        m = _URL_COMPACT.fullmatch(seg) or (
+            _URL_ID.fullmatch(seg) if parent in _URL_ID_PARENTS else None
+        )
+        if m and (found := _url_candidate(m.group(1), m.group(2), m.group(3), today)):
+            return found
+    return None
+
+
+def page_date(
+    text: str, hit_published: str | None, today: date, url: str | None = None
+) -> date | None:
+    """The page's date: the search hit's own, else the first full date near the top of the text,
+    else (last resort, never overriding those) an unambiguous date in the URL path."""
+    return (
+        parse_loose_date(hit_published, today=today)
+        or parse_loose_date(text[:_HEAD_CHARS])
+        or url_date(url, today)
+    )
 
 
 def _strip_suffixes(name: str) -> str:
@@ -351,4 +397,5 @@ __all__ = [
     "parse_loose_date",
     "source_too_old",
     "squash",
+    "url_date",
 ]

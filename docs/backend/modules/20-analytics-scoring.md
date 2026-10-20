@@ -472,7 +472,10 @@ results are written to the private relation files and the loader then refreshes 
   customer") are rejected; sector, peer and concept-stock lists are rejected; a `supplies` claim needs
   relation wording and a `competes` claim explicit rivalry wording; the direction must match and not
   be flipped; the source is rejected when older than `SUPPLY_CHAIN_MAX_SOURCE_AGE_DAYS` (1095) when a
-  date can be parsed, and so is a host whose trust is `rejected`; and the excerpt is scanned with
+  date can be parsed (page text and search metadata first; only when neither yields a date, an
+  unambiguous date in the URL path such as `/YYYY/MM/DD/`, `YYYY-MM-DD`, `/YYYYMMDD` or a
+  `post/YYYYMMDDNN` id, years 2000 to the current year; query strings and other digit runs are
+  ignored; the same rule applies to theme research), and so is a host whose trust is `rejected`; and the excerpt is scanned with
   `governance.textscan` (advice wording or a data-vendor name rejects it).
 - **Aggregate**. Each accepted page becomes `Evidence(checker=llm)`; the grade is
   `domain.rules.grade_from_evidence` (publisher = the page host, so independence is by host). A claim
