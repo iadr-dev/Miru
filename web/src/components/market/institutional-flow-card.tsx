@@ -34,6 +34,49 @@ const CATEGORY_FIELD_KEY: Record<string, string> = {
 
 const HISTORY_PREVIEW_DAYS = 10;
 
+/** Click-to-toggle legend for the bar series. A module-level component handed to `Legend` as an
+ * element: recharts mounts a function passed as `content` as a component type, so an inline
+ * closure there was a new type every render and remounted the buttons (dropping keyboard focus)
+ * on each toggle. */
+function CategoryLegend({
+  hiddenCategories,
+  toggleCategory,
+  t,
+}: {
+  readonly hiddenCategories: ReadonlySet<string>;
+  readonly toggleCategory: (category: string) => void;
+  readonly t: ReturnType<typeof useTranslations>;
+}): ReactNode {
+  return (
+    <ul className="mt-2 flex flex-wrap justify-center gap-3">
+      {CHART_CATEGORIES.map((category, index) => {
+        const isHidden = hiddenCategories.has(category);
+        return (
+          <li key={category}>
+            <button
+              type="button"
+              onClick={() => toggleCategory(category)}
+              className="inline-flex items-center gap-1.5 text-[12px]"
+              style={{ color: isHidden ? "var(--text-muted)" : "var(--text)" }}
+            >
+              <span
+                aria-hidden
+                className="inline-block size-2.5 rounded-sm"
+                style={{
+                  backgroundColor: isHidden
+                    ? "var(--text-muted)"
+                    : `var(--chart-${(index % 6) + 1})`,
+                }}
+              />
+              {fieldLabel(t, CATEGORY_FIELD_KEY[category] ?? category)}
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 /** 三大法人買賣超 — real multi-day history from `get_institutional_flow_total_market`
  * (`InstitutionalFlowTotalMarketRow`, one row per (trade_date, category)), rendered as a grouped
  * bar chart over the last `HISTORY_PREVIEW_DAYS` trading days plus a per-category summary table
@@ -109,34 +152,13 @@ export function InstitutionalFlowCard({
             ]}
           />
           <Legend
-            content={() => (
-              <ul className="mt-2 flex flex-wrap justify-center gap-3">
-                {CHART_CATEGORIES.map((category, index) => {
-                  const isHidden = hiddenCategories.has(category);
-                  return (
-                    <li key={category}>
-                      <button
-                        type="button"
-                        onClick={() => toggleCategory(category)}
-                        className="inline-flex items-center gap-1.5 text-[12px]"
-                        style={{ color: isHidden ? "var(--text-muted)" : "var(--text)" }}
-                      >
-                        <span
-                          aria-hidden
-                          className="inline-block size-2.5 rounded-sm"
-                          style={{
-                            backgroundColor: isHidden
-                              ? "var(--text-muted)"
-                              : `var(--chart-${(index % 6) + 1})`,
-                          }}
-                        />
-                        {fieldLabel(t, CATEGORY_FIELD_KEY[category] ?? category)}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
+            content={
+              <CategoryLegend
+                hiddenCategories={hiddenCategories}
+                toggleCategory={toggleCategory}
+                t={t}
+              />
+            }
           />
           {CHART_CATEGORIES.map((category, index) => (
             <Bar

@@ -40,8 +40,8 @@ import type { Market } from "@/types/settings";
 const INSTITUTIONAL_FLOW_TABLE_COLLAPSED_ROW_COUNT = 6;
 
 /** 進出 chart's click-to-toggle legend (3 buckets + price) — a named module-level component
- * rather than an inline closure passed to `Legend`'s `content` prop, so it isn't redefined on
- * every render of its parent. */
+ * passed to `Legend` as an element (recharts mounts a function `content` as a component type, so
+ * an inline closure there remounts the buttons on every toggle and drops keyboard focus). */
 function FlowLegend({
   hiddenSeries,
   toggleSeries,
@@ -198,14 +198,14 @@ export function InstitutionalFlowBody({
               labelFormatter={(label) => String(label)}
             />
             <Legend
-              content={() => (
+              content={
                 <FlowLegend
                   hiddenSeries={hiddenSeries}
                   toggleSeries={toggleSeries}
                   t={t}
                   tFields={tFields}
                 />
-              )}
+              }
             />
             {INSTITUTIONAL_BUCKETS.map((bucket) => (
               <Bar
