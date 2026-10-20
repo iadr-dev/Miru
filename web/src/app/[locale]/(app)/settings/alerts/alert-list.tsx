@@ -86,7 +86,8 @@ export function AlertList({
 
   const scopeLabel = (alert: AlertRule): string => {
     if (alert.symbol && alert.market) {
-      return `${alert.symbol} · ${tc(`marketOption.${alert.market}`)}`;
+      const marketName = tc(`marketOption.${alert.market}`);
+      return `${alert.symbol} · ${marketName}`;
     }
     const view = groupOf(alert.watchlist_id);
     return view

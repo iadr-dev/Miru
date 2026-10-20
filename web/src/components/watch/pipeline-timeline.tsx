@@ -395,6 +395,8 @@ function StepMarker({
   const t = useTranslations("watch");
   const reduceMotion = useReducedMotion();
   const cardId = "watch-step-details";
+  const keyLabel = t(`pipeline.${view.key}`);
+  const statusLabel = t(`pipeline.${statusKey(view)}`);
   return (
     <motion.div
       className="absolute flex -translate-x-1/2 flex-col items-center"
@@ -411,7 +413,7 @@ function StepMarker({
         onFocus={onOpen}
         aria-expanded={open}
         aria-controls={cardId}
-        aria-label={`${t(`pipeline.${view.key}`)} · ${t(`pipeline.${statusKey(view)}`)}`}
+        aria-label={`${keyLabel} · ${statusLabel}`}
         className="relative flex size-[26px] items-center justify-center rounded-full border-2 bg-[var(--surface)] focus-visible:outline-2 focus-visible:outline-[var(--accent)] focus-visible:outline-offset-2"
         style={{
           borderColor: view.stale ? "var(--warn)" : view.color,

@@ -241,7 +241,10 @@ export function BillingPanel(): ReactNode {
       date: formatDate(subscription?.scheduled_cancel_at, locale) ?? "",
     });
   }
-  const planLabel = `${t(`tierOption.${tier}`)} · ${t(`intervalOption.${interval}`)}${byok ? ` · ${t("byok")}` : ""}`;
+  const byokSuffix = byok ? ` · ${t("byok")}` : "";
+  const tierName = t(`tierOption.${tier}`);
+  const intervalName = t(`intervalOption.${interval}`);
+  const planLabel = `${tierName} · ${intervalName}${byokSuffix}`;
   const confirmText = t("confirmChangeText", {
     plan: selectedPlan?.price
       ? `${planLabel} (${formatMinorAmount(selectedPlan.price.amount, selectedPlan.price.currency_code, locale)})`

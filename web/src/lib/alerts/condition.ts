@@ -270,7 +270,8 @@ function canonical(value: unknown): string {
     const entries = Object.entries(value as Record<string, unknown>).sort(
       ([a], [b]) => (a < b ? -1 : 1), // object keys are unique, so equality cannot occur
     );
-    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`).join(",")}}`;
+    const members = entries.map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`);
+    return `{${members.join(",")}}`;
   }
   return JSON.stringify(value);
 }
