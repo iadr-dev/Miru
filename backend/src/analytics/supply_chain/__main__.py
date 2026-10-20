@@ -162,6 +162,20 @@ def main(argv: list[str] | None = None) -> int:
         help="discover --themes: min distinct listed companies per entity (default 5)",
     )
     parser.add_argument(
+        "--max-share",
+        type=float,
+        default=None,
+        help="discover --themes: drop entities mentioned by more than this share of all listed "
+        "companies in the catalog (default 0.04)",
+    )
+    parser.add_argument(
+        "--overlap",
+        type=float,
+        default=None,
+        help="discover --themes: drop entities whose companies are at least this share inside "
+        "one existing concept theme (default 0.6)",
+    )
+    parser.add_argument(
         "--source",
         choices=["candidates", "gaps", "stale", "all"],
         default="all",
@@ -177,7 +191,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.command != "discover":
             parser.error("--themes applies to the discover command only")
         return run_themes_command(
-            min_companies=args.min_companies, limit=args.limit, dry_run=args.dry_run
+            min_companies=args.min_companies,
+            limit=args.limit,
+            dry_run=args.dry_run,
+            max_share=args.max_share,
+            overlap_threshold=args.overlap,
         )
     if args.command in ("discover", "verify"):
         return asyncio.run(

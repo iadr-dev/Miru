@@ -12,14 +12,22 @@ from pathlib import Path
 
 import anyio.to_thread
 import structlog
+from sqlalchemy.exc import SQLAlchemyError
 
+from analytics.supply_chain.theme_discovery.industry import load_industry_groups
 from analytics.supply_chain.theme_discovery.io import (
     ThemeMiningError,
     format_table,
     missing_inputs,
     run_theme_mining,
 )
-from analytics.supply_chain.theme_discovery.mining import DEFAULT_LIMIT, DEFAULT_MIN_COMPANIES
+from analytics.supply_chain.theme_discovery.mining import (
+    DEFAULT_LIMIT,
+    DEFAULT_MAX_COMPANY_SHARE,
+    DEFAULT_MIN_COMPANIES,
+    DEFAULT_OVERLAP_THRESHOLD,
+)
+from analytics.themes.store import SqlAlchemyThemeStore
 from config.private_data import reference_dir
 from ingest.context import IngestContext
 from ingest.journal import JobRun, RunStatus, journal_run
@@ -35,6 +43,19 @@ def _journal(run_date: date, status: RunStatus, detail: str, rows: int = 0) -> J
     )
 
 
+async def _industry_groups(ctx: IngestContext) -> dict[str, frozenset[str]] | None:
+    """Industry-chain membership from the themes table, or None (overlap then uses concept
+    themes only) when no database is wired or it cannot be read."""
+    if ctx.session_factory is None:
+        return None
+    try:
+        async with ctx.session_factory() as session:
+            return await load_industry_groups(SqlAlchemyThemeStore(session))
+    except SQLAlchemyError as exc:
+        logger.warning("sc_theme_candidates_industry_groups_unavailable", error=str(exc))
+        return None
+
+
 async def run_theme_candidates_job(
     run_date: date, ctx: IngestContext, *, root: Path | None = None
 ) -> JobRun:
@@ -44,8 +65,11 @@ async def run_theme_candidates_job(
     blocker = missing_inputs(base)
     if blocker is not None:
         return _journal(run_date, RunStatus.SKIPPED, blocker)
+    groups = await _industry_groups(ctx)
     try:
-        result = await anyio.to_thread.run_sync(lambda: run_theme_mining(base, today=run_date))
+        result = await anyio.to_thread.run_sync(
+            lambda: run_theme_mining(base, today=run_date, industry_groups=groups)
+        )
     except (ThemeMiningError, OSError) as exc:
         logger.error("sc_theme_candidates_failed", error=str(exc))
         return _journal(run_date, RunStatus.FAILED, f"invalid file or write failure: {exc}")
@@ -63,11 +87,13 @@ async def job_sc_theme_candidates(run_date: date, ctx: IngestContext) -> JobRun:
     return await run_theme_candidates_job(run_date, ctx)
 
 
-def run_themes_command(
+def run_themes_command(  # noqa: PLR0913 - keyword-only CLI knobs
     *,
     min_companies: int | None,
     limit: int | None,
     dry_run: bool,
+    max_share: float | None = None,
+    overlap_threshold: float | None = None,
     root: Path | None = None,
 ) -> int:
     """`discover --themes`: prints the table (symbols only, no company names)."""
@@ -82,12 +108,17 @@ def run_themes_command(
             today=datetime.now(UTC).date(),
             min_companies=min_companies if min_companies is not None else DEFAULT_MIN_COMPANIES,
             limit=limit if limit is not None else DEFAULT_LIMIT,
+            max_company_share=max_share if max_share is not None else DEFAULT_MAX_COMPANY_SHARE,
+            overlap_threshold=(
+                overlap_threshold if overlap_threshold is not None else DEFAULT_OVERLAP_THRESHOLD
+            ),
             dry_run=dry_run,
         )
     except ThemeMiningError as exc:
         sys.stderr.write(f"invalid file: {exc}\n")
         return 1
     sys.stdout.write(format_table(result.candidates))
+    sys.stdout.write(f"skipped={len(result.skipped)}\n")
     sys.stdout.write("dry run: nothing written\n" if dry_run else "written\n")
     return 0
 
