@@ -22,7 +22,7 @@ export type PipelineStep = {
 
 /** The earliest of the dates that exist (ISO dates sort as strings). */
 function oldest(...dates: (string | null)[]): string | null {
-  return dates.filter((d): d is string => d !== null).sort()[0] ?? null;
+  return dates.filter((d): d is string => d !== null).sort((a, b) => a.localeCompare(b))[0] ?? null;
 }
 
 function refreshNote(date: string | null): PipelineStep["note"] {

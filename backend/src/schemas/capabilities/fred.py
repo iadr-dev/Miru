@@ -4,6 +4,7 @@ rather than a symbol."""
 
 from __future__ import annotations
 
+import math
 from datetime import date as date_
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -60,7 +61,7 @@ class MacroSeriesMetaRow(BaseModel):
     def _missing_int(cls, value: object) -> object:
         """A nullable integer column comes back from Parquet as a float with NaN for "none"."""
         if isinstance(value, float):
-            return None if value != value else int(value)  # noqa: PLR0124 - NaN check
+            return None if math.isnan(value) else int(value)
         return value
 
 

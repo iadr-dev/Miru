@@ -19,6 +19,7 @@
  */
 import { fetchWithRefresh } from "@/lib/api/auth";
 import { apiUrl } from "@/lib/api/config";
+import { secureId } from "@/lib/random";
 import { type SseEnvelope, sseEnvelopeSchema } from "@/types/sse";
 
 /** A non-2xx reply from a turn endpoint. `code` is the backend's stable `ApiError.code`
@@ -91,13 +92,10 @@ export async function* streamAgentQuery(
   });
 }
 
-/** A fresh key for one message. `crypto.randomUUID` needs a secure context; fall back to a random
- * string where it is missing so sending never fails over it. */
+/** A fresh key for one message. `secureId` falls back where `crypto.randomUUID` is missing (no
+ * secure context), so sending never fails over it. */
 export function newIdempotencyKey(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`;
+  return secureId();
 }
 
 /** `POST /threads/{id}/turns/{tid}/regenerate` — re-run the source user turn that produced

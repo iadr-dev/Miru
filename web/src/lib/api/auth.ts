@@ -14,6 +14,7 @@
  */
 import { apiUrl } from "@/lib/api/config";
 import { apiErrorSchema, type BeginAuthResponse, beginAuthResponseSchema } from "@/lib/api/schemas";
+import { secureRandomInt } from "@/lib/random";
 import { type MeResponse, meResponseSchema } from "@/types/account";
 
 export const OAUTH_PROVIDERS = ["google", "line", "telegram"] as const;
@@ -301,7 +302,7 @@ async function fetchHonouringRateLimit(url: string, init: RequestInit): Promise<
   ) {
     const wait = retryAfterMs(response);
     if (wait === null || wait > RATE_LIMIT_MAX_WAIT_MS || init.signal?.aborted) break;
-    await new Promise((resolve) => setTimeout(resolve, wait + Math.random() * 250));
+    await new Promise((resolve) => setTimeout(resolve, wait + secureRandomInt(250)));
     response = await fetch(url, init);
   }
   if (response.status === 429) announceRateLimited(response);

@@ -45,24 +45,24 @@ jobs:
         run: uv sync --all-extras --frozen
 
       - name: Ruff lint
-        run: uv run ruff check .
+        run: uv run --frozen --no-sync --no-build ruff check .
 
       - name: Ruff format check
-        run: uv run ruff format --check .
+        run: uv run --frozen --no-sync --no-build ruff format --check .
 
       - name: mypy (strict)
-        run: uv run mypy src
+        run: uv run --frozen --no-sync --no-build mypy src
 
       - name: pyright (strict)
-        run: uv run pyright src
+        run: uv run --frozen --no-sync --no-build pyright src
 
       - name: Governance suite
         # Runs first so a guardrail regression fails fast, and the default suite below excludes
         # it: it used to run in both, paying for the same 273 tests twice.
-        run: uv run pytest -m governance
+        run: uv run --frozen --no-sync --no-build pytest -m governance
 
       - name: Default suite (non-network, governance already ran)
-        run: uv run pytest -m "not network and not governance"
+        run: uv run --frozen --no-sync --no-build pytest -m "not network and not governance"
 
   dual-dialect-migrations:
     name: dual-dialect schema (SQLite + Postgres)
@@ -112,7 +112,7 @@ jobs:
         # in CI while a local `pytest` without a DB still passes.
         env:
           TEST_POSTGRES_URL: postgresql+asyncpg://miru:${{ env.PGPASSWORD }}@localhost:5432/miru_test
-        run: uv run pytest -m dual_dialect -v
+        run: uv run --frozen --no-sync --no-build pytest -m dual_dialect -v
 
       - name: Concurrency suite (real Postgres)
         # Shared-state race proofs that only mean something against a store allowing concurrent
@@ -120,4 +120,4 @@ jobs:
         # rather than paying for a second container.
         env:
           TEST_POSTGRES_URL: postgresql+asyncpg://miru:${{ env.PGPASSWORD }}@localhost:5432/miru_test
-        run: uv run pytest -m concurrency -v
+        run: uv run --frozen --no-sync --no-build pytest -m concurrency -v

@@ -42,7 +42,8 @@ jobs:
         run: uv export --frozen --no-hashes --all-extras --no-emit-project --output-file audit-requirements.txt
 
       - name: Audit
+        # pip-audit is pinned to an exact release (bump it deliberately, not on every run).
         # `--no-deps --disable-pip`: audit exactly the pins in uv.lock without resolving or
         # installing anything. A vulnerable pin fails the job; upgrade it with
         # `uv lock --upgrade-package <name>` (or document an accepted risk with `--ignore-vuln`).
-        run: uvx pip-audit -r audit-requirements.txt --disable-pip --no-deps
+        run: uvx --no-build pip-audit==2.10.1 -r audit-requirements.txt --disable-pip --no-deps
