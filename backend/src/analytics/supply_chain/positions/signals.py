@@ -29,6 +29,7 @@ from __future__ import annotations
 
 from collections import defaultdict, deque
 from collections.abc import Collection, Iterable, Mapping
+from dataclasses import dataclass, field
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
@@ -77,52 +78,73 @@ def clean_edges(edges: Iterable[Edge]) -> frozenset[Edge]:
     return frozenset((a, b) for a, b in edges if a != b)
 
 
-def _components(nodes: list[str], succ: Mapping[str, list[str]]) -> dict[str, int]:
-    """Strongly connected components (iterative Tarjan); node -> component id."""
-    index: dict[str, int] = {}
-    low: dict[str, int] = {}
-    on_stack: set[str] = set()
-    stack: list[str] = []
-    comp: dict[str, int] = {}
-    counter = 0
-    next_comp = 0
-    for root in nodes:
-        if root in index:
-            continue
+@dataclass
+class _Tarjan:
+    """State of one iterative Tarjan run; the methods are its steps (enter / scan / close)."""
+
+    succ: Mapping[str, list[str]]
+    index: dict[str, int] = field(default_factory=dict[str, int])
+    low: dict[str, int] = field(default_factory=dict[str, int])
+    on_stack: set[str] = field(default_factory=set[str])
+    stack: list[str] = field(default_factory=list[str])
+    comp: dict[str, int] = field(default_factory=dict[str, int])
+    counter: int = 0
+    next_comp: int = 0
+
+    def enter(self, node: str) -> None:
+        self.index[node] = self.low[node] = self.counter
+        self.counter += 1
+        self.stack.append(node)
+        self.on_stack.add(node)
+
+    def scan(self, node: str, child: int, work: list[tuple[str, int]]) -> bool:
+        """Walk `node`'s children from `child`; True when it descended into an unseen one (the
+        resume point and that child are pushed onto `work`)."""
+        children = self.succ.get(node, [])
+        while child < len(children):
+            nxt = children[child]
+            child += 1
+            if nxt not in self.index:
+                work.append((node, child))
+                work.append((nxt, 0))
+                return True
+            if nxt in self.on_stack:
+                self.low[node] = min(self.low[node], self.index[nxt])
+        return False
+
+    def close(self, node: str) -> None:
+        """Pop `node`'s component off the stack when `node` is its root."""
+        if self.low[node] != self.index[node]:
+            return
+        while True:
+            member = self.stack.pop()
+            self.on_stack.discard(member)
+            self.comp[member] = self.next_comp
+            if member == node:
+                break
+        self.next_comp += 1
+
+    def run(self, root: str) -> None:
         work: list[tuple[str, int]] = [(root, 0)]
         while work:
             node, child = work.pop()
             if child == 0:
-                index[node] = low[node] = counter
-                counter += 1
-                stack.append(node)
-                on_stack.add(node)
-            children = succ.get(node, [])
-            descended = False
-            while child < len(children):
-                nxt = children[child]
-                child += 1
-                if nxt not in index:
-                    work.append((node, child))
-                    work.append((nxt, 0))
-                    descended = True
-                    break
-                if nxt in on_stack:
-                    low[node] = min(low[node], index[nxt])
-            if descended:
+                self.enter(node)
+            if self.scan(node, child, work):
                 continue
-            if low[node] == index[node]:
-                while True:
-                    member = stack.pop()
-                    on_stack.discard(member)
-                    comp[member] = next_comp
-                    if member == node:
-                        break
-                next_comp += 1
+            self.close(node)
             if work:
                 parent = work[-1][0]
-                low[parent] = min(low[parent], low[node])
-    return comp
+                self.low[parent] = min(self.low[parent], self.low[node])
+
+
+def _components(nodes: list[str], succ: Mapping[str, list[str]]) -> dict[str, int]:
+    """Strongly connected components (iterative Tarjan); node -> component id."""
+    state = _Tarjan(succ)
+    for root in nodes:
+        if root not in state.index:
+            state.run(root)
+    return state.comp
 
 
 def _longest_paths(
@@ -202,6 +224,16 @@ def propagate(
     return scores, iterations
 
 
+def _scores_for(
+    node: str, edge_set: frozenset[Edge], seeds: Mapping[str, float], base: dict[str, float]
+) -> dict[str, float]:
+    """Propagated scores to judge `node` by: the shared run, or for an anchor a leave-one-out run
+    (and nothing at all when it is the only anchor, so a prior never confirms itself)."""
+    if node not in seeds:
+        return base
+    return propagate(edge_set, seeds, exclude=node)[0] if len(seeds) > 1 else {}
+
+
 def chain_signals(
     edges: Collection[Edge], anchors: Mapping[str, Position] | None = None
 ) -> dict[str, GraphSignal]:
@@ -220,10 +252,7 @@ def chain_signals(
     base, _ = propagate(edge_set, seeds)
     signals: dict[str, GraphSignal] = {}
     for node in eligible:
-        if node in seeds:
-            scores = propagate(edge_set, seeds, exclude=node)[0] if len(seeds) > 1 else {}
-        else:
-            scores = base
+        scores = _scores_for(node, edge_set, seeds, base)
         propagated = position_for_score(scores[node]) if node in scores else None
         if propagated is not None:
             signals[node] = GraphSignal(
