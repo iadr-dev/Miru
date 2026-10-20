@@ -24,7 +24,7 @@ export function RevisionsTable({ seriesId }: { readonly seriesId: RevisionSeries
       </h3>
       {query.isLoading ? <CardSkeletonBody height={140} /> : null}
       {query.isError ? <QueryFailure query={query} /> : null}
-      {query.data && query.data.rows.length === 0 ? (
+      {query.data?.rows.length === 0 ? (
         <p className="text-[13px] text-[var(--text-muted)]">{t("empty")}</p>
       ) : null}
       {query.data && query.data.rows.length > 0 ? (

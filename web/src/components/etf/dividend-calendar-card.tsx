@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useMemo, useState } from "react";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
-import { ExpandModal } from "@/components/ui/expand-modal";
+import { ExpandablePreview } from "@/components/ui/expandable-preview";
 import { MonthGridCalendar } from "@/components/ui/month-grid-calendar";
 import { QueryFailure } from "@/components/ui/query-state";
 import { ViewToggleButton } from "@/components/ui/view-toggle-button";
@@ -103,26 +103,16 @@ export function DividendCalendarCard({
     body = <p className="text-[13px] text-[var(--text-muted)]">{t("empty")}</p>;
   } else {
     body = (
-      <>
-        <DividendEventList events={events.slice(0, COLLAPSED_EVENT_COUNT)} />
-        {events.length > COLLAPSED_EVENT_COUNT ? (
-          <button
-            type="button"
-            onClick={() => setExpanded(true)}
-            className="mt-2.5 flex min-h-11 w-full items-center justify-center gap-1.5 rounded-[var(--radius-input)] bg-[var(--surface-2)] text-[12.5px] text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-3)] hover:text-[var(--text)]"
-          >
-            {t("expandTo", { count: events.length })}
-          </button>
-        ) : null}
-        <ExpandModal
-          open={expanded}
-          title={t("title")}
-          closeLabel={t("collapse")}
-          onClose={() => setExpanded(false)}
-        >
-          <DividendEventList events={events} />
-        </ExpandModal>
-      </>
+      <ExpandablePreview
+        preview={<DividendEventList events={events.slice(0, COLLAPSED_EVENT_COUNT)} />}
+        full={<DividendEventList events={events} />}
+        showExpand={events.length > COLLAPSED_EVENT_COUNT}
+        expandLabel={t("expandTo", { count: events.length })}
+        title={t("title")}
+        closeLabel={t("collapse")}
+        expanded={expanded}
+        onExpandedChange={setExpanded}
+      />
     );
   }
 

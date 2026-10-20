@@ -6,6 +6,7 @@ import { type ReactNode, useMemo, useState } from "react";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SponsorTeaser } from "@/components/market/sponsor-teaser";
 import { ExpandModal } from "@/components/ui/expand-modal";
+import { ExpandablePreview } from "@/components/ui/expandable-preview";
 import { MonthGridCalendar } from "@/components/ui/month-grid-calendar";
 import { QueryFailure } from "@/components/ui/query-state";
 import { ViewToggleButton } from "@/components/ui/view-toggle-button";
@@ -271,26 +272,18 @@ function InsiderShareholdingCard({
     );
   } else {
     transferBody = (
-      <>
-        <InsiderTransferList rows={transferRows.slice(0, INSIDER_TRANSFER_COLLAPSED_ROW_COUNT)} />
-        {transferRows.length > INSIDER_TRANSFER_COLLAPSED_ROW_COUNT ? (
-          <button
-            type="button"
-            onClick={() => setExpanded(true)}
-            className="mt-2.5 flex min-h-11 w-full items-center justify-center gap-1.5 rounded-[var(--radius-input)] bg-[var(--surface-2)] text-[12.5px] text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-3)] hover:text-[var(--text)]"
-          >
-            {t("expandTo", { count: transferRows.length })}
-          </button>
-        ) : null}
-        <ExpandModal
-          open={expanded}
-          title={t("insiderTransferTab")}
-          closeLabel={t("collapse")}
-          onClose={() => setExpanded(false)}
-        >
-          <InsiderTransferList rows={transferRows} />
-        </ExpandModal>
-      </>
+      <ExpandablePreview
+        preview={
+          <InsiderTransferList rows={transferRows.slice(0, INSIDER_TRANSFER_COLLAPSED_ROW_COUNT)} />
+        }
+        full={<InsiderTransferList rows={transferRows} />}
+        showExpand={transferRows.length > INSIDER_TRANSFER_COLLAPSED_ROW_COUNT}
+        expandLabel={t("expandTo", { count: transferRows.length })}
+        title={t("insiderTransferTab")}
+        closeLabel={t("collapse")}
+        expanded={expanded}
+        onExpandedChange={setExpanded}
+      />
     );
   }
 

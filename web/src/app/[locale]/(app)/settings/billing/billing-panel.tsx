@@ -285,9 +285,7 @@ export function BillingPanel(): ReactNode {
   let plansBody: ReactNode = null;
   if (unconfigured) {
     plansBody = <p className="text-[13px] text-[var(--text-muted)]">{t("unconfigured")}</p>;
-  } else if (subscriptionQuery.isError) {
-    plansBody = null;
-  } else if (live) {
+  } else if (!subscriptionQuery.isError && live) {
     plansBody = (
       <PlansForm
         tier={tier}
@@ -306,7 +304,7 @@ export function BillingPanel(): ReactNode {
         locale={locale}
       />
     );
-  } else {
+  } else if (!subscriptionQuery.isError) {
     plansBody = (
       <PlansForm
         tier={tier}
