@@ -9,7 +9,7 @@ the services that hold database connections first, and take a `pg_dump` if the d
 Drops every table the models define and creates them again, so the schema is fresh and clean
 instead of being patched with ALTER TABLE as the models change. This empties the *app* database
 (users, threads, watchlists, alerts, subscriptions, derived scores). It never touches the market
-data (Parquet/DuckDB under PARQUET_ROOT/DUCKDB_PATH) or Redis. Refuses to run outside development,
+data (Parquet under PARQUET_ROOT) or Redis. Refuses to run outside development,
 and without `--yes`."""
 
 from __future__ import annotations

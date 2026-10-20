@@ -148,7 +148,7 @@ variable. The web app needs only `NEXT_PUBLIC_API_BASE` in `web/.env.local`.
 | Market data | `FINMIND_API_KEY` | Whole-market ingest needs FinMind **Backer** or above. Sponsor-only datasets (for example institutional detail and ETF holdings) stop updating on a lower plan, and the app then shows the last day it has |
 | Optional data | `FINNHUB_KEY` · `BRAVE_SEARCH_API_KEY` · `FRED_API_KEY` | US analyst estimates, web-search fallback, and the US macro dashboard (free key; without it the nightly job skips and the panels stay empty) |
 | Reference data | `REFERENCE_DATA_DIR` | The supply-chain, concept-theme and entity data you maintain locally (default `./reference-data`, gitignored, mounted read-only in Docker). It is not part of this repository: without it those panels show honest empty states. Load it with `python -m analytics.supply_chain load`, then `positions`; `eval` scores positions against your own labelled set |
-| Datastores | `DATABASE_URL` · `REDIS_URL` · `DUCKDB_PATH` · `PARQUET_ROOT` | SQLite + local paths work for dev |
+| Datastores | `DATABASE_URL` · `REDIS_URL` · `PARQUET_ROOT` | SQLite + local paths work for dev |
 | Sign-in | `GOOGLE_*` · `LINE_*` · `TELEGRAM_LOGIN_*` · `JWT_*` | Google, LINE Login, Log in with Telegram |
 | Delivery | `LINE_MESSAGING_*` · `TELEGRAM_BOT_*` · `RESEND_*` · `VAPID_*` | Alert and brief channels (LINE, Telegram, email, web push) |
 | Payments | `PADDLE_*` | Subscriptions; the webhook is the source of truth for entitlements |
