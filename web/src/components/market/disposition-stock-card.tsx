@@ -44,122 +44,136 @@ export function DispositionStockCard({
   readonly card: DispositionBoardCardRow;
   readonly sparkline: readonly number[];
 }): ReactNode {
-  const locale = useLocale();
+  return (
+    <div className="surface-card flex flex-col p-4">
+      <CardHeader card={card} />
+      <PriceLine card={card} />
+      <MovingAverages sparkline={sparkline} />
+      <StatsGrid card={card} />
+      <ProjectionNotes card={card} />
+      <FlagChips flags={card.flags} />
+      <CardFooter card={card} />
+    </div>
+  );
+}
+
+function CardHeader({ card }: { readonly card: DispositionBoardCardRow }): ReactNode {
   const t = useTranslations("market.cards.dispositionBoard");
+  return (
+    <div className="flex items-start justify-between gap-2">
+      <div className="min-w-0">
+        <p className="truncate font-medium text-[14px] text-[var(--text)]">
+          {card.company_name || card.symbol}
+          <span className="ml-1.5 text-[11.5px] text-[var(--text-muted)]">{card.symbol}</span>
+        </p>
+        <div className="mt-0.5 flex flex-wrap items-center gap-1">
+          <span className="inline-block rounded-[var(--radius-pill)] bg-[var(--surface-2)] px-1.5 py-0.5 text-[10.5px] text-[var(--text-muted)]">
+            {card.security_type === "twse" ? t("listed") : t("otc")}
+          </span>
+          {card.matching_interval_minutes !== null ? (
+            <span className="inline-block rounded-[var(--radius-pill)] bg-[var(--chart-1)]/15 px-1.5 py-0.5 text-[10.5px] text-[var(--chart-1)]">
+              {t("matchingInterval", { minutes: card.matching_interval_minutes })}
+            </span>
+          ) : null}
+        </div>
+      </div>
+      <span
+        className={cn(
+          "shrink-0 rounded-[var(--radius-pill)] px-2 py-0.5 font-medium text-[11px]",
+          card.bucket === "at_risk" && "bg-[var(--surface-2)] text-[var(--warn)]",
+          card.bucket === "in_disposition" && "bg-[var(--surface-2)] text-[var(--down)]",
+          card.bucket === "exiting_soon" && "bg-[var(--surface-2)] text-[var(--up)]",
+        )}
+      >
+        {t(`bucket.${card.bucket}`)}
+      </span>
+    </div>
+  );
+}
+
+function PriceLine({ card }: { readonly card: DispositionBoardCardRow }): ReactNode {
+  const locale = useLocale();
   const tCommon = useTranslations("common");
-  const changeUp = card.change_pct !== null && card.change_pct >= 0;
-  const changeColor = card.change_pct !== null ? directionColor(card.change_pct ?? 0) : null;
-  const activeFlags = new Set(card.flags);
+  const changePct = card.change_pct;
+  return (
+    <div className="mt-2 flex items-baseline gap-2">
+      <span className="font-num text-[20px] text-[var(--text)] tabular-nums">
+        {card.close !== null ? formatNumber(card.close, locale, { decimals: 1 }) : "—"}
+      </span>
+      {changePct !== null ? (
+        <span
+          role="group"
+          aria-label={`${changePct >= 0 ? tCommon("direction.up") : tCommon("direction.down")} ${Math.abs(changePct).toFixed(2)}%`}
+          className="font-num text-[13px] tabular-nums"
+          style={{ color: directionColor(changePct) ?? undefined }}
+        >
+          {directionGlyph(changePct)}
+          {formatNumber(Math.abs(changePct), locale, { decimals: 2 })}%
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function MovingAverages({ sparkline }: { readonly sparkline: readonly number[] }): ReactNode {
   const ma5 = movingAverage(sparkline, 5);
   const ma10 = movingAverage(sparkline, 10);
   const ma20 = movingAverage(sparkline, 20);
-
+  if (ma5 === null && ma10 === null && ma20 === null) return null;
   return (
-    <div className="surface-card flex flex-col p-4">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="truncate font-medium text-[14px] text-[var(--text)]">
-            {card.company_name || card.symbol}
-            <span className="ml-1.5 text-[11.5px] text-[var(--text-muted)]">{card.symbol}</span>
-          </p>
-          <div className="mt-0.5 flex flex-wrap items-center gap-1">
-            <span className="inline-block rounded-[var(--radius-pill)] bg-[var(--surface-2)] px-1.5 py-0.5 text-[10.5px] text-[var(--text-muted)]">
-              {card.security_type === "twse" ? t("listed") : t("otc")}
-            </span>
-            {card.matching_interval_minutes !== null ? (
-              <span className="inline-block rounded-[var(--radius-pill)] bg-[var(--chart-1)]/15 px-1.5 py-0.5 text-[10.5px] text-[var(--chart-1)]">
-                {t("matchingInterval", { minutes: card.matching_interval_minutes })}
-              </span>
-            ) : null}
-          </div>
-        </div>
-        <span
-          className={cn(
-            "shrink-0 rounded-[var(--radius-pill)] px-2 py-0.5 font-medium text-[11px]",
-            card.bucket === "at_risk" && "bg-[var(--surface-2)] text-[var(--warn)]",
-            card.bucket === "in_disposition" && "bg-[var(--surface-2)] text-[var(--down)]",
-            card.bucket === "exiting_soon" && "bg-[var(--surface-2)] text-[var(--up)]",
-          )}
-        >
-          {t(`bucket.${card.bucket}`)}
-        </span>
-      </div>
+    <div className="mt-1.5 flex gap-3 text-[11px] text-[var(--text-muted)]">
+      <span>
+        MA5 <span className="font-num tabular-nums">{ma5?.toFixed(1) ?? "—"}</span>
+      </span>
+      <span>
+        MA10 <span className="font-num tabular-nums">{ma10?.toFixed(1) ?? "—"}</span>
+      </span>
+      <span>
+        MA20 <span className="font-num tabular-nums">{ma20?.toFixed(1) ?? "—"}</span>
+      </span>
+    </div>
+  );
+}
 
-      <div className="mt-2 flex items-baseline gap-2">
-        <span className="font-num text-[20px] text-[var(--text)] tabular-nums">
-          {card.close !== null ? formatNumber(card.close, locale, { decimals: 1 }) : "—"}
-        </span>
-        {card.change_pct !== null ? (
-          <span
-            role="group"
-            aria-label={`${changeUp ? tCommon("direction.up") : tCommon("direction.down")} ${Math.abs(card.change_pct).toFixed(2)}%`}
-            className="font-num text-[13px] tabular-nums"
-            style={{ color: changeColor ?? undefined }}
-          >
-            {directionGlyph(card.change_pct ?? 0)}
-            {formatNumber(Math.abs(card.change_pct), locale, { decimals: 2 })}%
-          </span>
-        ) : null}
-      </div>
+/** `format(value)` for a present value, an em dash for a missing one. */
+function orDash(value: number | null, format: (value: number) => string): string {
+  return value === null ? "—" : format(value);
+}
 
-      {ma5 !== null || ma10 !== null || ma20 !== null ? (
-        <div className="mt-1.5 flex gap-3 text-[11px] text-[var(--text-muted)]">
-          <span>
-            MA5 <span className="font-num tabular-nums">{ma5?.toFixed(1) ?? "—"}</span>
-          </span>
-          <span>
-            MA10 <span className="font-num tabular-nums">{ma10?.toFixed(1) ?? "—"}</span>
-          </span>
-          <span>
-            MA20 <span className="font-num tabular-nums">{ma20?.toFixed(1) ?? "—"}</span>
-          </span>
-        </div>
-      ) : null}
+function StatsGrid({ card }: { readonly card: DispositionBoardCardRow }): ReactNode {
+  const locale = useLocale();
+  const t = useTranslations("market.cards.dispositionBoard");
+  const percent = (value: number): string => `${formatNumber(value, locale, { decimals: 1 })}%`;
+  return (
+    <dl className="mt-2.5 grid grid-cols-2 gap-y-1 text-[12px]">
+      <StatRow
+        label={t("volume")}
+        value={orDash(
+          card.volume,
+          (v) => `${formatNumber(v / 1000, locale, { decimals: 0 })}${t("lots")}`,
+        )}
+      />
+      <StatRow
+        label={t("turnover")}
+        value={orDash(card.turnover, (v) =>
+          t("twdAmount", { value: formatCompactNumber(v, locale) }),
+        )}
+      />
+      <StatRow
+        label={t("institutionalNet")}
+        value={orDash(card.institutional_net, (v) => formatCompactNumber(v, locale))}
+        valueColor={institutionalNetColor(card.institutional_net)}
+      />
+      <StatRow label={t("marginRatio")} value={orDash(card.margin_ratio, percent)} />
+      <StatRow label={t("dayTradingRatio")} value={orDash(card.day_trading_ratio, percent)} />
+    </dl>
+  );
+}
 
-      <dl className="mt-2.5 grid grid-cols-2 gap-y-1 text-[12px]">
-        <StatRow
-          label={t("volume")}
-          value={
-            card.volume !== null
-              ? `${formatNumber(card.volume / 1000, locale, { decimals: 0 })}${t("lots")}`
-              : "—"
-          }
-        />
-        <StatRow
-          label={t("turnover")}
-          value={
-            card.turnover !== null
-              ? t("twdAmount", { value: formatCompactNumber(card.turnover, locale) })
-              : "—"
-          }
-        />
-        <StatRow
-          label={t("institutionalNet")}
-          value={
-            card.institutional_net !== null
-              ? formatCompactNumber(card.institutional_net, locale)
-              : "—"
-          }
-          valueColor={institutionalNetColor(card.institutional_net)}
-        />
-        <StatRow
-          label={t("marginRatio")}
-          value={
-            card.margin_ratio !== null
-              ? `${formatNumber(card.margin_ratio, locale, { decimals: 1 })}%`
-              : "—"
-          }
-        />
-        <StatRow
-          label={t("dayTradingRatio")}
-          value={
-            card.day_trading_ratio !== null
-              ? `${formatNumber(card.day_trading_ratio, locale, { decimals: 1 })}%`
-              : "—"
-          }
-        />
-      </dl>
-
+function ProjectionNotes({ card }: { readonly card: DispositionBoardCardRow }): ReactNode {
+  const t = useTranslations("market.cards.dispositionBoard");
+  return (
+    <>
       {card.attention_flags_remaining !== null ? (
         <p className="mt-2.5 rounded-[var(--radius-input)] bg-[color-mix(in_srgb,var(--warn)_14%,transparent)] px-2.5 py-1.5 text-[12px] text-[var(--warn)]">
           {card.estimated_days_until_disposition !== null
@@ -177,30 +191,43 @@ export function DispositionStockCard({
             : t("daysUntilExiting", { days: card.days_until_exiting })}
         </p>
       ) : null}
+    </>
+  );
+}
 
-      <div className="mt-2.5 flex flex-wrap gap-1">
-        {FLAG_ORDER.map((flag) => {
-          const active = activeFlags.has(flag);
-          const color = FLAG_COLOR[flag];
-          return (
-            <span
-              key={flag}
-              className={cn(
-                "rounded-[var(--radius-pill)] px-1.5 py-0.5 text-[10.5px]",
-                !active && "bg-[var(--surface-2)] text-[var(--text-muted)]/50",
-              )}
-              style={
-                active
-                  ? { backgroundColor: `color-mix(in srgb, ${color} 20%, transparent)`, color }
-                  : undefined
-              }
-            >
-              {t(`flag.${flag}`)}
-            </span>
-          );
-        })}
-      </div>
+function FlagChips({ flags }: { readonly flags: readonly string[] }): ReactNode {
+  const t = useTranslations("market.cards.dispositionBoard");
+  const activeFlags = new Set(flags);
+  return (
+    <div className="mt-2.5 flex flex-wrap gap-1">
+      {FLAG_ORDER.map((flag) => {
+        const active = activeFlags.has(flag);
+        const color = FLAG_COLOR[flag];
+        return (
+          <span
+            key={flag}
+            className={cn(
+              "rounded-[var(--radius-pill)] px-1.5 py-0.5 text-[10.5px]",
+              !active && "bg-[var(--surface-2)] text-[var(--text-muted)]/50",
+            )}
+            style={
+              active
+                ? { backgroundColor: `color-mix(in srgb, ${color} 20%, transparent)`, color }
+                : undefined
+            }
+          >
+            {t(`flag.${flag}`)}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
 
+function CardFooter({ card }: { readonly card: DispositionBoardCardRow }): ReactNode {
+  const t = useTranslations("market.cards.dispositionBoard");
+  return (
+    <>
       {card.disposition_period_start && card.disposition_period_end ? (
         <p className="mt-2.5 text-[11px] text-[var(--text-muted)]">
           {t("dispositionPeriod")}: {card.disposition_period_start} ~ {card.disposition_period_end}
@@ -218,7 +245,7 @@ export function DispositionStockCard({
           {t("marginDegradedCaveat")}
         </p>
       ) : null}
-    </div>
+    </>
   );
 }
 
