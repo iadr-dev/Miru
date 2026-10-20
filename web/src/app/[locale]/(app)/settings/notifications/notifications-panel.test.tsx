@@ -360,7 +360,7 @@ describe("NotificationsPanel actions", () => {
       vi.advanceTimersByTime(4000);
     });
     await settle();
-    expect(vi.mocked(getChannelStatus).mock.calls.length).toBe(before + 1);
+    expect(vi.mocked(getChannelStatus).mock.calls).toHaveLength(before + 1);
   });
 
   it("drops the waiting code once the status says LINE is linked", async () => {

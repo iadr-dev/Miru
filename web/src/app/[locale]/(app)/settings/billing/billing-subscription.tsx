@@ -203,7 +203,9 @@ function confirmChangeText(
   selectedPlan: PlanInfo | undefined,
 ): string {
   const byokSuffix = picker.byok ? ` · ${t("byok")}` : "";
-  const planLabel = `${t(`tierOption.${picker.tier}`)} · ${t(`intervalOption.${picker.interval}`)}${byokSuffix}`;
+  const tierName = t(`tierOption.${picker.tier}`);
+  const intervalName = t(`intervalOption.${picker.interval}`);
+  const planLabel = `${tierName} · ${intervalName}${byokSuffix}`;
   return t("confirmChangeText", {
     plan: selectedPlan?.price
       ? `${planLabel} (${formatMinorAmount(selectedPlan.price.amount, selectedPlan.price.currency_code, picker.locale)})`
