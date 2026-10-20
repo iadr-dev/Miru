@@ -9,7 +9,7 @@ import { FRESHNESS } from "@/lib/freshness";
  * list, persisted thread history). One instance per browser session, created lazily so it isn't
  * shared across SSR requests. `staleTime` is conservative: threads are cheap cold reads refetched
  * on turn-end invalidation, not a high-frequency feed. */
-export function QueryProvider({ children }: { children: ReactNode }): ReactNode {
+export function QueryProvider({ children }: Readonly<{ children: ReactNode }>): ReactNode {
   const [client] = useState(
     () =>
       new QueryClient({

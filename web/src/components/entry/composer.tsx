@@ -17,7 +17,7 @@ type ComposerProps = {
 /** The entry composer. It is deliberately NOT a dead input: anonymous users can type, but sending
  * prompts sign-in (the backend requires auth for a turn). We don't build a lie into the UI — the
  * send affordance clearly reads as a sign-in gate via its label + lock hint. */
-export function EntryComposer({ onAttemptSend }: ComposerProps): ReactNode {
+export function EntryComposer({ onAttemptSend }: Readonly<ComposerProps>): ReactNode {
   const t = useTranslations("hero.composer");
   const [draft, setDraft] = useState("");
   const hints = t.raw("hints") as string[];

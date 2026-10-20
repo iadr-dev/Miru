@@ -165,14 +165,14 @@ function Reveal({
   description,
   reduceMotion,
   onDone,
-}: {
+}: Readonly<{
   outcome: PullOutcome;
   name: string;
   rarityLabel: string;
   description: string | null;
   reduceMotion: boolean;
   onDone: () => void;
-}): ReactNode {
+}>): ReactNode {
   const tw = useTranslations("settings.pets.welcome");
   return (
     <>

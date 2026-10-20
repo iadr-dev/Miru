@@ -15,14 +15,14 @@ export function PetAvatar({
   locked = false,
   label,
   className,
-}: {
+}: Readonly<{
   petId: string;
   rarity: PetRarity;
   size?: number;
   locked?: boolean;
   label?: string;
   className?: string;
-}): ReactNode {
+}>): ReactNode {
   const Art = PET_ART[petId];
   return (
     <span

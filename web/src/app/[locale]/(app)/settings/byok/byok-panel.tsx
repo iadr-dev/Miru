@@ -86,6 +86,12 @@ export function ByokPanel(): ReactNode {
     },
   });
 
+  const noSavedKeys = keysQuery.isError ? (
+    <QueryFailure query={keysQuery} />
+  ) : (
+    <p className="text-[13px] text-[var(--text-muted)]">{t("noneSaved")}</p>
+  );
+
   return (
     <SettingsSection title={t("title")} description={t("description")}>
       <div className="space-y-4 py-1">
@@ -108,10 +114,8 @@ export function ByokPanel(): ReactNode {
                 </li>
               ))}
             </ul>
-          ) : keysQuery.isError ? (
-            <QueryFailure query={keysQuery} />
           ) : (
-            <p className="text-[13px] text-[var(--text-muted)]">{t("noneSaved")}</p>
+            noSavedKeys
           )}
           <p className="text-[12px] text-[var(--text-muted)] leading-relaxed">{t("howItWorks")}</p>
         </div>

@@ -139,21 +139,27 @@ export function AssetHeader({
   const changePct = tick?.change_percent ?? eodChangePct;
   const isUp = changePct !== null && changePct >= 0;
   const priceColor = changePct === null ? "var(--text)" : directionColor(changePct ?? 0);
-  const ohlc = tick
+  const tickOhlc = tick
     ? {
         open: tick.open_price ?? null,
         high: tick.day_high ?? null,
         low: tick.day_low ?? null,
         volume: tick.day_volume ?? null,
       }
-    : eodLatestBar
-      ? {
-          open: eodLatestBar.open,
-          high: eodLatestBar.high,
-          low: eodLatestBar.low,
-          volume: eodLatestBar.volume,
-        }
-      : null;
+    : null;
+  const eodOhlc = eodLatestBar
+    ? {
+        open: eodLatestBar.open,
+        high: eodLatestBar.high,
+        low: eodLatestBar.low,
+        volume: eodLatestBar.volume,
+      }
+    : null;
+  const ohlc = tickOhlc ?? eodOhlc;
+  const directionLabel = isUp ? tCommon("direction.up") : tCommon("direction.down");
+  const isLive = Boolean(tick && liveQuote.marketOpen);
+  const statusDotClass = statusDotClassFor(isLive, historyQuery.isError);
+  const statusLabelKey = statusLabelKeyFor(isLive, market === "US", historyQuery.isError);
 
   const band = scoreQuery.data?.found ? scoreQuery.data.result?.band : undefined;
   const composite = scoreQuery.data?.found ? scoreQuery.data.result?.composite : undefined;
@@ -219,7 +225,7 @@ export function AssetHeader({
           role="group"
           aria-label={
             changePct !== null
-              ? `${formatNumber(price, locale)} ${isUp ? tCommon("direction.up") : tCommon("direction.down")} ${Math.abs(changePct).toFixed(2)}%`
+              ? `${formatNumber(price, locale)} ${directionLabel} ${Math.abs(changePct).toFixed(2)}%`
               : formatNumber(price, locale)
           }
           className="flex items-baseline gap-2"
@@ -291,24 +297,8 @@ export function AssetHeader({
             historyQuery.isError && "text-[var(--warn)]",
           )}
         >
-          <span
-            aria-hidden
-            className={cn(
-              "size-1.5 rounded-full",
-              tick && liveQuote.marketOpen
-                ? "bg-[var(--up)]"
-                : historyQuery.isError
-                  ? "bg-[var(--warn)]"
-                  : "bg-[var(--text-muted)]",
-            )}
-          />
-          {tick && liveQuote.marketOpen
-            ? t("liveNow")
-            : market === "US"
-              ? t("marketClosedEodPrice")
-              : historyQuery.isError
-                ? t("dataDelayed")
-                : t("eodOnly")}
+          <span aria-hidden className={cn("size-1.5 rounded-full", statusDotClass)} />
+          {t(statusLabelKey)}
         </span>
       </p>
     </header>
@@ -367,4 +357,21 @@ function ThemeTagBadge({ tag }: { readonly tag: string }): ReactNode {
  * donut/table. */
 function DistributionFrequencyBadge({ frequency }: { readonly frequency: string }): ReactNode {
   return <Badge label={frequency} color={hashToChartToken(frequency)} variant="outline" />;
+}
+
+function statusDotClassFor(isLive: boolean, isError: boolean): string {
+  if (isLive) return "bg-[var(--up)]";
+  if (isError) return "bg-[var(--warn)]";
+  return "bg-[var(--text-muted)]";
+}
+
+function statusLabelKeyFor(
+  isLive: boolean,
+  isUs: boolean,
+  isError: boolean,
+): "liveNow" | "marketClosedEodPrice" | "dataDelayed" | "eodOnly" {
+  if (isLive) return "liveNow";
+  if (isUs) return "marketClosedEodPrice";
+  if (isError) return "dataDelayed";
+  return "eodOnly";
 }

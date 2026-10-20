@@ -62,6 +62,7 @@ class ProposedTheme:
     name_zh: str
     name_en: str
     members: list[ProposedMember] = field(default_factory=lambda: [])
+    related: list[str] = field(default_factory=lambda: [])
 
     def row(self) -> Row:
         return {
@@ -69,7 +70,7 @@ class ProposedTheme:
             "name_zh": self.name_zh,
             "name_en": self.name_en,
             "description": NEW_THEME_DESCRIPTION,
-            "related": [],
+            "related": list(self.related),
             "thin": False,
             "members": [m.row() for m in self.members],
         }

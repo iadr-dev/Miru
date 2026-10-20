@@ -71,14 +71,14 @@ function FiveTierDepthChart({
   bestAskVolume,
   t,
   locale,
-}: {
+}: Readonly<{
   bestBid: string;
   bestBidVolume: string;
   bestAsk: string;
   bestAskVolume: string;
   t: ReturnType<typeof useTranslations>;
   locale: string;
-}): ReactNode {
+}>): ReactNode {
   const bids = parseDepthTiers(bestBid, bestBidVolume);
   const asks = parseDepthTiers(bestAsk, bestAskVolume);
   if (bids.length === 0 && asks.length === 0) {
@@ -122,7 +122,7 @@ function DepthColumn({
   t,
   locale,
   align,
-}: {
+}: Readonly<{
   label: string;
   tiers: DepthTier[];
   maxVolume: number;
@@ -130,7 +130,7 @@ function DepthColumn({
   t: ReturnType<typeof useTranslations>;
   locale: string;
   align: "left" | "right";
-}): ReactNode {
+}>): ReactNode {
   return (
     <div>
       <p className="mb-1.5 text-[11px] text-[var(--text-muted)]">{label}</p>
@@ -174,7 +174,10 @@ function DepthColumn({
  * `company_profile`, `etf_fund_info`, `stock_score`) — every one of these nests its real payload
  * one level down (`bar`, `snapshot`, `info`, `result`, or the top level itself for
  * `company_profile`), so this unwraps the first present nested object before deriving stats. */
-export function SnapshotCard({ card_type, data }: { card_type: string; data: unknown }): ReactNode {
+export function SnapshotCard({
+  card_type,
+  data,
+}: Readonly<{ card_type: string; data: unknown }>): ReactNode {
   const locale = useLocale();
   const t = useTranslations("chat.cards");
 
@@ -232,9 +235,7 @@ export function SnapshotCard({ card_type, data }: { card_type: string; data: unk
               }
             >
               {typeof value === "number"
-                ? COMPACT_NUMBER_FIELDS.has(key)
-                  ? formatCompactNumber(asNumber(value), locale)
-                  : formatNumber(asNumber(value), locale)
+                ? formatNumericField(key, value, locale)
                 : valueLabel(t, key, String(value))}
             </p>
           </div>
@@ -281,4 +282,9 @@ function unwrapEntity(data: unknown): Record<string, unknown> | null {
   }
   // company_profile has no wrapper — its fields sit at the top level.
   return record;
+}
+
+function formatNumericField(key: string, value: number, locale: string): string {
+  if (COMPACT_NUMBER_FIELDS.has(key)) return formatCompactNumber(asNumber(value), locale);
+  return formatNumber(asNumber(value), locale);
 }

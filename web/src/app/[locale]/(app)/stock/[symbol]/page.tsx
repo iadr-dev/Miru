@@ -22,26 +22,29 @@ const DEFAULT_MARKET: Market = "TW";
 export default async function StockDetailPage({
   params,
   searchParams,
-}: {
+}: Readonly<{
   params: Promise<{ locale: string; symbol: string }>;
   searchParams: Promise<{ market?: string }>;
-}): Promise<ReactNode> {
+}>): Promise<ReactNode> {
   const { locale, symbol } = await params;
   const { market: marketParam } = await searchParams;
   setRequestLocale(locale);
   const market: Market = marketParam === "US" ? "US" : DEFAULT_MARKET;
   const symbolType = classifySymbolType(symbol);
 
+  let tabs: ReactNode;
+  if (market === "US") {
+    tabs = <UsDetailTabRouter symbol={symbol} market={market} />;
+  } else if (isEtfSymbolType(symbolType)) {
+    tabs = <EtfTabBar symbol={symbol} market={market} symbolType={symbolType} />;
+  } else {
+    tabs = <StockTabBar symbol={symbol} market={market} />;
+  }
+
   return (
     <div className="flex min-h-[100dvh] flex-col">
       <AssetHeader symbol={symbol} market={market} symbolType={symbolType} />
-      {market === "US" ? (
-        <UsDetailTabRouter symbol={symbol} market={market} />
-      ) : isEtfSymbolType(symbolType) ? (
-        <EtfTabBar symbol={symbol} market={market} symbolType={symbolType} />
-      ) : (
-        <StockTabBar symbol={symbol} market={market} />
-      )}
+      {tabs}
     </div>
   );
 }

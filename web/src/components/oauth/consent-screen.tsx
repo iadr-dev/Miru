@@ -45,7 +45,7 @@ type Props = {
  * Server state is deliberately not in the TanStack cache: the request carries a single-use nonce,
  * must never be served stale or refetched in the background, and is read once per visit.
  */
-export function ConsentScreen({ requestId, error }: Props): ReactNode {
+export function ConsentScreen({ requestId, error }: Readonly<Props>): ReactNode {
   if (error !== null || requestId === null) {
     return (
       <ConsentFrame>
@@ -56,7 +56,7 @@ export function ConsentScreen({ requestId, error }: Props): ReactNode {
   return <ConsentRequest requestId={requestId} />;
 }
 
-function ConsentRequest({ requestId }: { requestId: string }): ReactNode {
+function ConsentRequest({ requestId }: Readonly<{ requestId: string }>): ReactNode {
   const locale = useLocale();
   const [phase, setPhase] = useState<Phase>({ kind: "loading" });
 
@@ -99,7 +99,7 @@ function ConsentRequest({ requestId }: { requestId: string }): ReactNode {
   );
 }
 
-function ConsentFrame({ children }: { children: ReactNode }): ReactNode {
+function ConsentFrame({ children }: Readonly<{ children: ReactNode }>): ReactNode {
   return (
     <main className="flex min-h-[100dvh] items-center justify-center bg-[var(--bg)] p-4">
       <div
@@ -133,7 +133,7 @@ function Brand(): ReactNode {
 }
 
 /** The heading takes focus when it appears so a screen reader starts at the question. */
-function FocusedHeading({ children }: { children: ReactNode }): ReactNode {
+function FocusedHeading({ children }: Readonly<{ children: ReactNode }>): ReactNode {
   const ref = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     ref.current?.focus();
@@ -167,7 +167,7 @@ function LoadingCard(): ReactNode {
   );
 }
 
-function ErrorCard({ title, body }: { title: string; body: string }): ReactNode {
+function ErrorCard({ title, body }: Readonly<{ title: string; body: string }>): ReactNode {
   const t = useTranslations("oauthConsent");
   return (
     <div>
@@ -195,13 +195,13 @@ function LinkErrorCard(): ReactNode {
   return <ErrorCard title={t("linkError.title")} body={t("linkError.body")} />;
 }
 
-function FailedCard({ code }: { code: string }): ReactNode {
+function FailedCard({ code }: Readonly<{ code: string }>): ReactNode {
   const t = useTranslations("oauthConsent");
   const key = isKnownError(code) ? code : "generic";
   return <ErrorCard title={t("errorTitle")} body={t(`errors.${key}`)} />;
 }
 
-function SignInCard({ next }: { next: string }): ReactNode {
+function SignInCard({ next }: Readonly<{ next: string }>): ReactNode {
   const t = useTranslations("oauthConsent");
   const [open, setOpen] = useState(true);
   return (
@@ -252,11 +252,11 @@ function ReadyCard({
   consent,
   onSignedOut,
   onFailed,
-}: {
+}: Readonly<{
   consent: ConsentResponse;
   onSignedOut: () => void;
   onFailed: (code: string) => void;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("oauthConsent");
   const [pending, setPending] = useState<ConsentDecision | null>(null);
   const [retryError, setRetryError] = useState<string | null>(null);

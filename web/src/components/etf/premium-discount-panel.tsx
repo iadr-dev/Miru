@@ -90,6 +90,18 @@ export function PremiumDiscountPanel({
   );
 }
 
+function premiumDiscountColor(pct: number): string {
+  if (pct > 0) return "var(--up)";
+  if (pct < 0) return "var(--down)";
+  return "var(--text)";
+}
+
+function premiumDiscountGlyph(pct: number): string {
+  if (pct > 0) return "▲";
+  if (pct < 0) return "▼";
+  return "";
+}
+
 function PremiumDiscountBarCard({
   rows,
   latest,
@@ -122,15 +134,10 @@ function PremiumDiscountBarCard({
         <div
           className="mb-2 font-num text-[28px] tabular-nums"
           style={{
-            color:
-              latest.premium_discount_pct > 0
-                ? "var(--up)"
-                : latest.premium_discount_pct < 0
-                  ? "var(--down)"
-                  : "var(--text)",
+            color: premiumDiscountColor(latest.premium_discount_pct),
           }}
         >
-          {latest.premium_discount_pct > 0 ? "▲" : latest.premium_discount_pct < 0 ? "▼" : ""}
+          {premiumDiscountGlyph(latest.premium_discount_pct)}
           {formatNumber(Math.abs(latest.premium_discount_pct), locale, { decimals: 2 })}%
         </div>
       ) : null}

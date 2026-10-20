@@ -14,11 +14,11 @@ export default async function AppGroupLayout({
   children,
   modal,
   params,
-}: {
+}: Readonly<{
   children: ReactNode;
   modal: ReactNode;
   params: Promise<{ locale: string }>;
-}): Promise<ReactNode> {
+}>): Promise<ReactNode> {
   const { locale } = await params;
   setRequestLocale(locale);
   return (

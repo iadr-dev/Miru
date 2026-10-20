@@ -41,7 +41,7 @@ const BAR_COLORS = [
  * per-category positioning) — rendered as a horizontal bar chart, one bar per named category,
  * since the category count varies (a handful to a few dozen) and a horizontal layout keeps long
  * Chinese category labels legible without rotation. */
-export function FlowDistribution({ data }: { data: unknown }): ReactNode {
+export function FlowDistribution({ data }: Readonly<{ data: unknown }>): ReactNode {
   const locale = useLocale();
   const { rows: allRows, isSectorWeighting } = extractRows(data);
   const nameKey = firstPresentKey(allRows, NAME_KEYS);

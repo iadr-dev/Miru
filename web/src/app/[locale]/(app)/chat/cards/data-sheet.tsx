@@ -21,7 +21,7 @@ const FLAT_SHEET_PREVIEW_ROWS = 8;
  * `item` × `period_end` × `value`) or a flat roster (`insider_shareholding`, `theme_members`).
  * Pivots into a wide table when a period-like field repeats across rows for the same category;
  * otherwise renders one row per record. */
-export function DataSheet({ data }: { data: unknown }): ReactNode {
+export function DataSheet({ data }: Readonly<{ data: unknown }>): ReactNode {
   const locale = useLocale();
   const t = useTranslations("chat.cards");
   const rows = extractRows(data);
@@ -55,14 +55,14 @@ function PivotedSheet({
   valueKey,
   locale,
   t,
-}: {
+}: Readonly<{
   rows: Record<string, unknown>[];
   categoryKey: string;
   periodKey: string;
   valueKey: string;
   locale: string;
   t: ReturnType<typeof useTranslations>;
-}): ReactNode {
+}>): ReactNode {
   const periods = [
     ...new Set(rows.map((r) => asString(r[periodKey])).filter((v): v is string => v !== null)),
   ];
@@ -130,11 +130,11 @@ function FlatSheet({
   rows,
   locale,
   t,
-}: {
+}: Readonly<{
   rows: Record<string, unknown>[];
   locale: string;
   t: ReturnType<typeof useTranslations>;
-}): ReactNode {
+}>): ReactNode {
   const columns = columnsFor(rows);
   const [expanded, setExpanded] = useState(false);
   const hiddenCount = rows.length - FLAT_SHEET_PREVIEW_ROWS;

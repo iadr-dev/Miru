@@ -21,7 +21,7 @@ import type { WebSearchSource } from "@/types/sse";
  * one). External links reuse `answer-markdown.tsx`'s external-link convention (`target="_blank"
  * rel="noopener noreferrer"`, accent underline) rather than inventing new link styling.
  */
-export function WebSearchSources({ sources }: { sources: WebSearchSource[] }): ReactNode {
+export function WebSearchSources({ sources }: Readonly<{ sources: WebSearchSource[] }>): ReactNode {
   const t = useTranslations("chat.turn.webSearch");
 
   if (sources.length === 0) {
@@ -71,7 +71,7 @@ export function WebSearchSources({ sources }: { sources: WebSearchSource[] }): R
   );
 }
 
-function SourceMenuItem({ source }: { source: WebSearchSource }): ReactNode {
+function SourceMenuItem({ source }: Readonly<{ source: WebSearchSource }>): ReactNode {
   return (
     <DropdownMenu.Item asChild>
       <a
@@ -100,7 +100,7 @@ function SourceMenuItem({ source }: { source: WebSearchSource }): ReactNode {
  * favicon-service fetch for anything else (`sourceLogoUrl`'s own docstring). Falls back to the
  * generic globe glyph on a load failure (unreachable favicon service, unparseable URL, 404) —
  * never a broken-image icon. */
-function SourceLogo({ url }: { url: string }): ReactNode {
+function SourceLogo({ url }: Readonly<{ url: string }>): ReactNode {
   const logoUrl = sourceLogoUrl(url);
   const [failed, setFailed] = useState(false);
 

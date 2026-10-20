@@ -22,10 +22,10 @@ function first(value: string | string[] | undefined): string | null {
 export default async function OAuthConsentPage({
   params,
   searchParams,
-}: {
+}: Readonly<{
   params: Promise<{ locale: string }>;
   searchParams: Promise<SearchParams>;
-}): Promise<ReactNode> {
+}>): Promise<ReactNode> {
   const { locale } = await params;
   setRequestLocale(locale);
   const query = await searchParams;

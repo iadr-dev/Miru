@@ -8,7 +8,7 @@ import { cn } from "@/lib/cn";
  * dismissible prop — governance forbids a way to hide it. The text is the governance copy already
  * in the message catalog (`chat.caveat.nonTrading`), not rewritten here.
  */
-export function Caveat({ text }: { text: string }): ReactNode {
+export function Caveat({ text }: Readonly<{ text: string }>): ReactNode {
   return (
     <p
       className={cn(

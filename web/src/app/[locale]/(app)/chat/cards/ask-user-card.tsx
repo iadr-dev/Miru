@@ -19,10 +19,10 @@ import { asString } from "@/lib/format-number";
 export function AskUserCard({
   data,
   onPick,
-}: {
+}: Readonly<{
   data: Record<string, unknown>;
   onPick: (prompt: string) => void;
-}): ReactNode {
+}>): ReactNode {
   const question = asString(data.question);
   const options = Array.isArray(data.options)
     ? data.options.filter((o): o is string => typeof o === "string")

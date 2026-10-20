@@ -23,12 +23,12 @@ export function SponsorTeaser({
   preview,
   requiredTier,
   children,
-}: {
+}: Readonly<{
   headline: string;
   preview: string;
   requiredTier: "premium" | "pro";
   children: ReactNode;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("market.teaser");
 
   return (

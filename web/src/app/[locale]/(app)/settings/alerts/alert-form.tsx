@@ -97,11 +97,11 @@ export function AlertForm({
   onDone,
   rule,
   preset,
-}: {
+}: Readonly<{
   onDone: () => void;
   rule?: AlertRule;
   preset?: AlertFormPreset | undefined;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("settings.alerts.form");
   const ts = useTranslations("settings.alerts.summary");
   const tc = useTranslations("settings.common");
@@ -115,12 +115,10 @@ export function AlertForm({
   const [market, setMarket] = useState<Market>(
     rule?.market === "US" || rule?.market === "TW" ? rule.market : (preset?.market ?? "TW"),
   );
+  const presetDraft: ConditionDraft =
+    preset?.scope === "watchlist" ? { ...DEFAULT_DRAFT, kind: GROUP_DEFAULT_KIND } : DEFAULT_DRAFT;
   const [draft, setDraft] = useState<ConditionDraft>(
-    rule
-      ? draftFromCondition(rule.condition)
-      : preset?.scope === "watchlist"
-        ? { ...DEFAULT_DRAFT, kind: GROUP_DEFAULT_KIND }
-        : DEFAULT_DRAFT,
+    rule ? draftFromCondition(rule.condition) : presetDraft,
   );
   const [triggerMode, setTriggerMode] = useState<AlertTriggerMode>(
     rule?.trigger_mode ?? "once_per_day",
@@ -129,8 +127,9 @@ export function AlertForm({
   // A rule follows one symbol, or every stock in one of the user's watchlist groups (the scope is
   // fixed once created). A group can hold both markets, so a group rule offers only the templates
   // that work for both.
+  const ruleScope = rule?.symbol ? "symbol" : "watchlist";
   const [scope, setScope] = useState<"symbol" | "watchlist" | "perStock">(
-    rule ? (rule.symbol ? "symbol" : "watchlist") : (preset?.scope ?? "symbol"),
+    rule ? ruleScope : (preset?.scope ?? "symbol"),
   );
   const [watchlistId, setWatchlistId] = useState(rule?.watchlist_id ?? preset?.groupId ?? "");
   const groups = useQuery({
@@ -216,8 +215,8 @@ export function AlertForm({
   // A group lives in one market, which decides the templates it can use (a Taiwan group can use the
   // Taiwan-only ones); until a group is chosen only the templates both markets have are offered.
   const groupMarket = (groups.data ?? []).find((g) => g.group.id === watchlistId)?.group.market;
-  const templateMarket: Market =
-    scope === "watchlist" ? (groupMarket === "TW" ? "TW" : "US") : market;
+  const groupTemplateMarket: Market = groupMarket === "TW" ? "TW" : "US";
+  const templateMarket: Market = scope === "watchlist" ? groupTemplateMarket : market;
   const offeredTemplates =
     scope === "watchlist" ? groupTemplatesFor(templateMarket) : templatesFor(templateMarket);
   const fields = fieldsFor(draft.kind);
@@ -614,12 +613,12 @@ function Field({
   htmlFor,
   className,
   children,
-}: {
+}: Readonly<{
   label: string;
   htmlFor: string;
   className?: string;
   children: ReactNode;
-}): ReactNode {
+}>): ReactNode {
   return (
     <div className={className}>
       <label className="mb-1 block text-[13px] text-[var(--text-muted)]" htmlFor={htmlFor}>

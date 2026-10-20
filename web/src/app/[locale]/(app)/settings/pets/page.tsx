@@ -4,9 +4,9 @@ import { PetsPanel } from "./pets-panel";
 
 export default async function PetsPage({
   params,
-}: {
+}: Readonly<{
   params: Promise<{ locale: string }>;
-}): Promise<ReactNode> {
+}>): Promise<ReactNode> {
   const { locale } = await params;
   setRequestLocale(locale);
   return <PetsPanel />;

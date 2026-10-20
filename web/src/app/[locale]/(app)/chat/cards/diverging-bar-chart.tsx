@@ -73,7 +73,7 @@ function netPointsFromCategoryRows(rows: Record<string, unknown>[]): NetPoint[] 
  * baseline. Distinct from `FlowDistribution`'s unsigned category bars: this metric is genuinely
  * signed (紅漲綠跌 territory), so bars use `--up`/`--down` with an explicit `aria-label` carrying
  * direction + value, never color alone. */
-export function DivergingBarChart({ data }: { data: unknown }): ReactNode {
+export function DivergingBarChart({ data }: Readonly<{ data: unknown }>): ReactNode {
   const locale = useLocale();
   const t = useTranslations("chat.cards");
   const points = extractNetPoints(data);

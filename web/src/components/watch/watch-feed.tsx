@@ -10,10 +10,10 @@ import type { StrategyWatchEvent } from "@/types/strategy-watch";
 export function WatchFeed({
   events,
   onSelect,
-}: {
+}: Readonly<{
   events: readonly StrategyWatchEvent[];
   onSelect: (event: StrategyWatchEvent) => void;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("watch");
   return (
     <section aria-labelledby="watch-feed" className="surface-card p-4">

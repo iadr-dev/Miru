@@ -18,7 +18,7 @@ function isProvider(value: string): value is OAuthProvider {
  * redirects the browser back with ?code=&state=; we forward those to the backend's JSON callback
  * (GET /auth/oauth/{provider}/callback) with credentials so it can verify state against the httpOnly
  * flow cookies and set the session cookies on our origin. On success we land at /market. */
-export function CallbackClient({ provider }: { provider: string }): ReactNode {
+export function CallbackClient({ provider }: Readonly<{ provider: string }>): ReactNode {
   const t = useTranslations("auth");
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -107,7 +107,7 @@ function readLineRetryUrl(): string | null {
   }
 }
 
-function Centered({ children }: { children: ReactNode }): ReactNode {
+function Centered({ children }: Readonly<{ children: ReactNode }>): ReactNode {
   return (
     <div className="flex min-h-[100dvh] items-center justify-center bg-[var(--bg)] p-4">
       {children}

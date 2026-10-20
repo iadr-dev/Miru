@@ -251,7 +251,10 @@ function errorKeyFor(error: unknown): "errorCap" | "errorStale" | "errorGeneric"
 /** Create or edit a schedule. Editing keeps the briefing type (changing it is delete + re-create,
  * like an alert's symbol) and lets the user change the stock(s). A 409 means another device saved
  * first: the list is refreshed and the user is told to reopen — the edit is a single field. */
-function ScheduleForm({ onDone, job }: { onDone: () => void; job?: ScheduleJob }): ReactNode {
+function ScheduleForm({
+  onDone,
+  job,
+}: Readonly<{ onDone: () => void; job?: ScheduleJob }>): ReactNode {
   const t = useTranslations("settings.alerts.schedules.form");
   const tt = useTranslations("settings.alerts.schedules.templates");
   const queryClient = useQueryClient();

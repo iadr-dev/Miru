@@ -28,7 +28,7 @@ export function FeatureMenu({
   deepResearchLocked,
   onAddFiles,
   onCaptureScreenshot,
-}: {
+}: Readonly<{
   label: string;
   addFilesLabel: string;
   webSearchEnabled: boolean;
@@ -37,7 +37,7 @@ export function FeatureMenu({
   deepResearchLocked: boolean;
   onAddFiles: () => void;
   onCaptureScreenshot: () => void;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("chat.composer");
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -88,7 +88,8 @@ export function FeatureMenu({
               checked={deepResearch.enabled}
               onSelect={() => deepResearch.onChange(!deepResearch.enabled)}
             />
-          ) : deepResearchLocked ? (
+          ) : null}
+          {deepResearch === null && deepResearchLocked ? (
             <FeatureMenuItem
               icon={MagnifyingGlassIcon}
               label={t("featureMenuItems.deepResearchLocked")}
@@ -112,13 +113,13 @@ function FeatureMenuItem({
   disabled,
   checked,
   onSelect,
-}: {
+}: Readonly<{
   icon: typeof PlusIcon;
   label: string;
   disabled?: boolean;
   checked?: boolean;
   onSelect?: () => void;
-}): ReactNode {
+}>): ReactNode {
   return (
     <DropdownMenu.Item
       disabled={disabled ?? false}

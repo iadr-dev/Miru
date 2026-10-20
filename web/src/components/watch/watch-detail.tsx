@@ -37,10 +37,10 @@ const CHART_DAYS = 60;
 export function WatchDetail({
   item,
   masked,
-}: {
+}: Readonly<{
   item: StrategyWatchItem | null;
   masked: boolean;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("watch");
   if (item === null) {
     return <p className="p-4 text-[13px] text-[var(--text-muted)]">{t("detail.select")}</p>;
@@ -115,10 +115,10 @@ export function WatchDetail({
 function ConditionList({
   conditions,
   color,
-}: {
+}: Readonly<{
   conditions: readonly StrategyCondition[];
   color: string;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("watch");
   const locale = useLocale();
   return (
@@ -153,7 +153,7 @@ type Fact = { text: string; icon: Icon; color: string };
 
 /** A fact's icon and colour say what kind of signal it is at a glance: sector (sky), 法人 (blue),
  * 大戶 (gold), 融資 (orange when it surges, else muted), 重訊 (purple). */
-function ContextFacts({ item }: { item: StrategyWatchItem }): ReactNode {
+function ContextFacts({ item }: Readonly<{ item: StrategyWatchItem }>): ReactNode {
   const t = useTranslations("watch.context");
   const heading = useTranslations("watch.detail")("context");
   const facts: Fact[] = [];
@@ -228,7 +228,7 @@ function ContextFacts({ item }: { item: StrategyWatchItem }): ReactNode {
   );
 }
 
-function LevelChart({ item }: { item: StrategyWatchItem }): ReactNode {
+function LevelChart({ item }: Readonly<{ item: StrategyWatchItem }>): ReactNode {
   const t = useTranslations("watch");
   const locale = useLocale();
   const history = usePriceHistory(item.symbol, "TW", CHART_DAYS);

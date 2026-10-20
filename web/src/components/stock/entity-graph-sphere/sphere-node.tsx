@@ -88,11 +88,14 @@ export function SphereNode({
     onPick(node.id);
   };
 
+  let emissiveIntensity = 0.12;
+  if (raised) emissiveIntensity = 0.55;
+  else if (node.focus) emissiveIntensity = 0.3;
   const materialProps = {
     ref: materialRef,
     color: item.color,
     emissive: item.color,
-    emissiveIntensity: raised ? 0.55 : node.focus ? 0.3 : 0.12,
+    emissiveIntensity,
     roughness: 0.45,
     metalness: 0.1,
     transparent: true,

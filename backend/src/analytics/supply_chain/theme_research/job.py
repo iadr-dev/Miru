@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import sys
 from collections import Counter
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from pathlib import Path
 
@@ -22,9 +23,13 @@ from analytics.supply_chain.domain.concepts import EntityType
 from analytics.supply_chain.refdata_io.loader import TRUST_FILE, load_trust_table
 from analytics.supply_chain.theme_discovery.io import ThemeMiningError
 from analytics.supply_chain.theme_research.files import (
+    CoveredRecord,
+    append_covered,
     append_rejections,
     claims_path,
+    covered_path,
     read_claims,
+    read_covered,
     read_rejected_keys,
     read_state,
     rejected_path,
@@ -49,12 +54,16 @@ from analytics.supply_chain.theme_research.research import ResearchConfig, Theme
 from analytics.supply_chain.theme_research.research import run_research as _run_research
 from analytics.supply_chain.theme_research.targets import read_catalog, select_targets
 from analytics.supply_chain.theme_research.verify import (
+    COVERED_THRESHOLD,
+    REASON_ALREADY_COVERED,
     REASON_ALREADY_PROPOSED,
     REASON_ALREADY_REJECTED,
+    RELATED_FLOOR,
     GroupResult,
     ThemeInfo,
     VerifiedMember,
     VerifyContext,
+    best_cover,
     evaluate_group,
     group_claims,
 )
@@ -183,35 +192,81 @@ def _candidate_key(member: VerifiedMember, ctx: VerifyContext) -> tuple[str, str
     return theme_key_for(member.theme, [member.label, *ctx.aliases_of(member.label)])
 
 
+@dataclass
+class Plan:
+    themes: list[ProposedTheme] = field(default_factory=lambda: [])
+    additions: list[tuple[str, ProposedMember]] = field(default_factory=lambda: [])
+    pending: int = 0
+    covered: list[CoveredRecord] = field(default_factory=lambda: [])
+    notes: list[str] = field(default_factory=lambda: [])
+
+
+def _plan_candidate(  # noqa: PLR0913, PLR0917 - one candidate and its decision inputs
+    plan: Plan,
+    candidate: str,
+    members: list[VerifiedMember],
+    ctx: VerifyContext,
+    prior: CoveredRecord | None,
+    threshold: float,
+) -> None:
+    """Coverage check, then the usual new-theme rule. The verified set includes the symbols an
+    earlier run already found covered, so a re-run judges the whole candidate."""
+    key, name_en = _candidate_key(members[0], ctx)
+    symbols = {m.company.symbol for m in members} | set(prior.symbols if prior else ())
+    cover = best_cover(symbols, ctx.themes)
+    related: list[str] = []
+    if cover is not None:
+        covering, overlap = cover
+        share = overlap / len(symbols)
+        tally = f"{overlap}/{len(symbols)}"
+        if share >= threshold:
+            held = ctx.themes[covering].members
+            fresh = [m for m in members if m.company.symbol not in held]
+            plan.additions.extend((covering, _proposed_member(m)) for m in fresh)
+            plan.covered.append(
+                CoveredRecord(candidate, covering, share, len(symbols), len(fresh), tuple(symbols))
+            )
+            plan.notes.append(f"candidate {candidate}: covered by {covering} ({tally})")
+            return
+        if share >= RELATED_FLOOR:
+            related = [covering]
+            plan.notes.append(f"candidate {candidate}: partly covered by {covering} ({tally})")
+    if len(members) >= MIN_NEW_THEME_MEMBERS:
+        plan.themes.append(
+            ProposedTheme(
+                key=key,
+                name_zh=members[0].label,
+                name_en=name_en,
+                members=[_proposed_member(m) for m in members],
+                related=related,
+            )
+        )
+    else:
+        plan.pending += 1
+
+
 def _plan(
-    verified: list[VerifiedMember], ctx: VerifyContext, proposed: Proposed
-) -> tuple[list[ProposedTheme], list[tuple[str, ProposedMember]], int]:
-    """(new theme rows, member rows for existing themes, candidate themes below the threshold)."""
-    additions: list[tuple[str, ProposedMember]] = []
+    verified: list[VerifiedMember],
+    ctx: VerifyContext,
+    proposed: Proposed,
+    covered: dict[str, CoveredRecord],
+    threshold: float,
+) -> Plan:
+    """New theme rows, member rows, candidates below the member threshold, covered decisions."""
+    plan = Plan()
     by_candidate: dict[str, list[VerifiedMember]] = {}
     for m in verified:
         if m.kind == "existing":
-            additions.append((m.theme, _proposed_member(m)))
+            plan.additions.append((m.theme, _proposed_member(m)))
         else:
             by_candidate.setdefault(m.theme, []).append(m)
-    themes: list[ProposedTheme] = []
-    pending = 0
-    for members in by_candidate.values():
-        key, name_en = _candidate_key(members[0], ctx)
+    for candidate, members in by_candidate.items():
+        key, _ = _candidate_key(members[0], ctx)
         if key in proposed.theme_keys or key in ctx.themes:
-            additions.extend((key, _proposed_member(m)) for m in members)
-        elif len(members) >= MIN_NEW_THEME_MEMBERS:
-            themes.append(
-                ProposedTheme(
-                    key=key,
-                    name_zh=members[0].label,
-                    name_en=name_en,
-                    members=[_proposed_member(m) for m in members],
-                )
-            )
+            plan.additions.extend((key, _proposed_member(m)) for m in members)
         else:
-            pending += 1
-    return themes, additions, pending
+            _plan_candidate(plan, candidate, members, ctx, covered.get(candidate), threshold)
+    return plan
 
 
 def _already_proposed(group: list[ThemeClaim], ctx: VerifyContext, proposed: Proposed) -> bool:
@@ -220,6 +275,12 @@ def _already_proposed(group: list[ThemeClaim], ctx: VerifyContext, proposed: Pro
     if first.kind == "candidate":
         key = theme_key_for(first.theme, [first.label, *ctx.aliases_of(first.label)])[0]
     return (key, first.symbol) in proposed.pairs
+
+
+def _already_covered(group: list[ThemeClaim], covered: dict[str, CoveredRecord]) -> bool:
+    first = group[0]
+    record = covered.get(first.theme) if first.kind == "candidate" else None
+    return record is not None and first.symbol in record.symbols
 
 
 async def execute_verify(  # noqa: PLR0913 - collaborators are injected; one per seam
@@ -232,6 +293,7 @@ async def execute_verify(  # noqa: PLR0913 - collaborators are injected; one per
     second_client: LLMClient | None = None,
     directory: CompanyDirectory | None = None,
     root: Path | None = None,
+    covered_threshold: float = COVERED_THRESHOLD,
 ) -> VerifySummary:
     """Step C. Raises `ConceptFileError` / `ProposalFileError` (and OSError) on an unusable file."""
     assert_no_byok_scope()
@@ -244,6 +306,7 @@ async def execute_verify(  # noqa: PLR0913 - collaborators are injected; one per
     ctx = _build_context(settings, base, known, today)
     rejected = read_rejected_keys(rejected_path(base))
     proposed = scan_proposed(base)
+    covered = read_covered(covered_path(base))
     reasons: Counter[str] = Counter()
     fresh: list[ThemeClaim] = []
     for claim in read_claims(claims_path(base)):
@@ -265,6 +328,9 @@ async def execute_verify(  # noqa: PLR0913 - collaborators are injected; one per
         if _already_proposed(group, ctx, proposed):
             reasons[REASON_ALREADY_PROPOSED] += 1
             continue
+        if _already_covered(group, covered):
+            reasons[REASON_ALREADY_COVERED] += 1
+            continue
         if not budget.try_claim():
             break
         result: GroupResult = await evaluate_group(group, ctx, budget, judge)
@@ -275,11 +341,12 @@ async def execute_verify(  # noqa: PLR0913 - collaborators are injected; one per
         rejections.extend(result.rejections)
         if result.member is not None:
             verified.append(result.member)
-    themes, additions, pending = _plan(verified, ctx, proposed)
+    plan = _plan(verified, ctx, proposed, covered, covered_threshold)
     written = write_proposals(
-        proposal_paths(base, today), themes=themes, additions=additions, dry_run=dry_run
+        proposal_paths(base, today), themes=plan.themes, additions=plan.additions, dry_run=dry_run
     )
     if not dry_run:
+        append_covered(covered_path(base), plan.covered, on=today)
         append_rejections(rejected_path(base), rejections, on=today)
     summary = VerifySummary(
         groups=len(outcomes),
@@ -289,17 +356,19 @@ async def execute_verify(  # noqa: PLR0913 - collaborators are injected; one per
         skipped=counts["skipped"],
         member_rows=written.member_rows,
         new_themes=written.new_themes,
-        pending_themes=pending,
+        pending_themes=plan.pending,
+        covered=len(plan.covered),
         llm_calls=budget.llm_calls,
         spend_usd=round(budget.spend_usd, 4),
         stopped_by=budget.stopped_by,
         dry_run=dry_run,
+        notes=plan.notes,
         reasons=dict(reasons),
         outcomes=outcomes,
     )
     logger.info(
         "sc_theme_verify_summary",
-        **summary.model_dump(exclude={"outcomes", "reasons"}),
+        **summary.model_dump(exclude={"outcomes", "reasons", "notes"}),
         reasons=summary.reasons,
     )
     return summary
@@ -312,7 +381,7 @@ def format_research(summary: ResearchSummary) -> str:
 
 
 def format_verify(summary: VerifySummary) -> str:
-    lines = [summary.line()]
+    lines = [summary.line(), *summary.notes]
     lines.extend(f"{group_id} {status}" for group_id, status in summary.outcomes.items())
     return "\n".join(lines) + "\n"
 
@@ -322,7 +391,14 @@ def command_blocker(settings: Settings, command: str) -> str | None:
     return missing_prerequisite(settings, need_second=need_second)
 
 
-async def run_theme_command(command: str, *, limit: int | None, dry_run: bool, source: str) -> int:
+async def run_theme_command(
+    command: str,
+    *,
+    limit: int | None,
+    dry_run: bool,
+    source: str,
+    covered_threshold: float = COVERED_THRESHOLD,
+) -> int:
     """`research-themes` / `verify-themes`. A real pass refuses without a search key and a model;
     a dry run needs them too, because it searches and judges."""
     settings = get_settings()
@@ -340,7 +416,12 @@ async def run_theme_command(command: str, *, limit: int | None, dry_run: bool, s
             sys.stdout.write(format_research(research))
         else:
             verify = await execute_verify(
-                settings, store, today=today, limit=limit, dry_run=dry_run
+                settings,
+                store,
+                today=today,
+                limit=limit,
+                dry_run=dry_run,
+                covered_threshold=covered_threshold,
             )
             sys.stdout.write(format_verify(verify))
     except FILE_ERRORS as exc:

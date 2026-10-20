@@ -35,7 +35,7 @@ type Phase =
  * provider_unconfigured (e.g. LINE not set in dev), oauth_failed (retryable), network_error, etc.
  * LINE's retry_authorization_url is surfaced as a fallback link when present.
  */
-export function AuthModal({ open, intent, onClose, next }: AuthModalProps): ReactNode {
+export function AuthModal({ open, intent, onClose, next }: Readonly<AuthModalProps>): ReactNode {
   const t = useTranslations("auth");
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -178,12 +178,12 @@ function AuthErrorPanel({
   code,
   retryable,
   onRetry,
-}: {
+}: Readonly<{
   provider: OAuthProvider;
   code: string;
   retryable: boolean;
   onRetry: () => void;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("auth");
   const providerLabel = t(`provider.${provider}`);
   // Only the keys the flow can actually surface; unknown → oauth_failed.

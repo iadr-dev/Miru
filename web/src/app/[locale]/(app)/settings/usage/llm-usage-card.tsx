@@ -90,7 +90,7 @@ export function LlmUsageCard(): ReactNode {
   );
 }
 
-function LlmUsageBody({ summary }: { summary: LlmUsageSummary }): ReactNode {
+function LlmUsageBody({ summary }: Readonly<{ summary: LlmUsageSummary }>): ReactNode {
   const t = useTranslations("settings.usage.llm");
   // Picking a model (legend chip or table row) narrows the figures to it and dims the rest of
   // the chart; picking it again clears. This is how cost is read per model / provider.
@@ -195,7 +195,7 @@ function LlmUsageBody({ summary }: { summary: LlmUsageSummary }): ReactNode {
 
 /** One cost figure in the right form: the provider's own charge, a marked estimate, or "no
  * price" - never a bare dash, and an estimate always carries the approximately sign. */
-function CostText({ kind, micros }: { kind: CostKind; micros: number }): ReactNode {
+function CostText({ kind, micros }: Readonly<{ kind: CostKind; micros: number }>): ReactNode {
   const t = useTranslations("settings.usage.llm");
   if (kind === "reported") {
     return formatCostMicros(micros);
@@ -215,7 +215,7 @@ function costString(kind: CostKind, micros: number): string {
   return kind === "estimated" ? formatEstimateMicros(micros) : formatCostMicros(micros);
 }
 
-function CostCell({ model }: { model: ModelTotals }): ReactNode {
+function CostCell({ model }: Readonly<{ model: ModelTotals }>): ReactNode {
   const cost = modelCost(model);
   return <CostText kind={cost.kind} micros={cost.micros} />;
 }
@@ -226,23 +226,20 @@ function CostCell({ model }: { model: ModelTotals }): ReactNode {
 function CostKpi({
   models,
   picked,
-}: {
+}: Readonly<{
   models: ModelTotals[];
   picked: ModelTotals | null;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("settings.usage.llm");
   if (picked !== null) {
     const cost = modelCost(picked);
     const value = cost.kind === "unpriced" ? "—" : costString(cost.kind, cost.micros);
+    const hintKey = cost.kind === "estimated" ? "estimatedHint" : "unpricedHint";
     return (
       <Kpi
         label={t("kpi.cost")}
         value={value}
-        note={
-          cost.kind === "reported"
-            ? undefined
-            : t(cost.kind === "estimated" ? "estimatedHint" : "unpricedHint")
-        }
+        note={cost.kind === "reported" ? undefined : t(hintKey)}
       />
     );
   }
@@ -250,8 +247,8 @@ function CostKpi({
   const known = perProvider.filter((p) => p.kind !== "unpriced");
   const total = known.reduce((sum, p) => sum + p.costMicros, 0);
   const hasEstimate = known.some((p) => p.kind === "estimated");
-  const value =
-    known.length === 0 ? "—" : costString(hasEstimate ? "estimated" : "reported", total);
+  const totalKind = hasEstimate ? "estimated" : "reported";
+  const value = known.length === 0 ? "—" : costString(totalKind, total);
   return (
     <Kpi
       label={t("kpi.cost")}
@@ -276,11 +273,11 @@ function Kpi({
   label,
   value,
   note,
-}: {
+}: Readonly<{
   label: string;
   value: string;
   note?: ReactNode;
-}): ReactNode {
+}>): ReactNode {
   return (
     <div className="rounded-[var(--radius-card)] border border-[var(--border)] px-3 py-2.5">
       <dt className="text-[12px] text-[var(--text-muted)]">{label}</dt>
@@ -299,12 +296,12 @@ function DailyChart({
   models,
   selected,
   onToggle,
-}: {
+}: Readonly<{
   daily: DailyUsage[];
   models: ModelTotals[];
   selected: string | null;
   onToggle: (key: string) => void;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("settings.usage.llm");
   const locale = useLocale();
   const dateFormat = new Intl.DateTimeFormat(locale, { month: "numeric", day: "numeric" });
@@ -406,12 +403,12 @@ function DashedCursor({
   y = 0,
   width = 0,
   height = 0,
-}: {
+}: Readonly<{
   x?: number;
   y?: number;
   width?: number;
   height?: number;
-}): ReactNode {
+}>): ReactNode {
   const centre = x + width / 2;
   return (
     <line
@@ -435,14 +432,14 @@ export function UsageTooltip({
   series,
   otherLabel,
   totalLabel,
-}: {
+}: Readonly<{
   active?: boolean;
   payload?: TooltipEntry[];
   label?: string | number;
   series: Series[];
   otherLabel: string;
   totalLabel: string;
-}): ReactNode {
+}>): ReactNode {
   if (!active || !payload || payload.length === 0) {
     return null;
   }

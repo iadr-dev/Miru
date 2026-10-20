@@ -16,11 +16,11 @@ export function AttachmentPreview({
   attachment,
   removeLabel,
   onRemove,
-}: {
+}: Readonly<{
   attachment: PendingAttachment;
   removeLabel: string;
   onRemove: () => void;
-}): ReactNode {
+}>): ReactNode {
   if (attachment.pastedText !== undefined) {
     return (
       <PastedTextPreview attachment={attachment} removeLabel={removeLabel} onRemove={onRemove} />
@@ -93,11 +93,11 @@ function PastedTextPreview({
   attachment,
   removeLabel,
   onRemove,
-}: {
+}: Readonly<{
   attachment: PendingAttachment;
   removeLabel: string;
   onRemove: () => void;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("chat.composer");
   const text = attachment.pastedText ?? "";
 

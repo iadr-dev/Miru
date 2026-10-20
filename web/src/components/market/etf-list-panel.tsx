@@ -15,7 +15,7 @@ import type { Market } from "@/types/settings";
  * `EtfListTable` is table body only), and hands the response to `EtfListTable`. No local sort/
  * filter state here; the table owns that itself, so a re-sort click never triggers a new
  * request. */
-export function EtfListPanel({ market }: { market: Market }): ReactNode {
+export function EtfListPanel({ market }: Readonly<{ market: Market }>): ReactNode {
   const t = useTranslations("market.cards.etfList");
   const query = useQuery({
     queryKey: queryKeys.marketRead("etf_list", market),

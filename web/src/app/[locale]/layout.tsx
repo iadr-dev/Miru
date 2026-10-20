@@ -45,10 +45,10 @@ export async function generateMetadata({
 export default async function LocaleLayout({
   children,
   params,
-}: {
+}: Readonly<{
   children: ReactNode;
   params: Promise<{ locale: string }>;
-}): Promise<ReactNode> {
+}>): Promise<ReactNode> {
   const { locale } = await params;
   if (!hasLocale(routing.locales, locale)) {
     notFound();

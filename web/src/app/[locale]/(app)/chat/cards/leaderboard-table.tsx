@@ -21,7 +21,7 @@ const FRACTION_FIELDS = new Set(["pct_held", "pct_change", "market_weight"]);
  * `sector_overview`, `chip_flows`, ...) — the row list itself may live under `rows`, `hits`,
  * `results`, or a ranking-specific key (`inflow_ranking`), so the first array-valued field is
  * used generically rather than naming every backend key here. */
-export function LeaderboardTable({ data }: { data: unknown }): ReactNode {
+export function LeaderboardTable({ data }: Readonly<{ data: unknown }>): ReactNode {
   const locale = useLocale();
   const t = useTranslations("chat.cards");
   const rows = extractRows(data);

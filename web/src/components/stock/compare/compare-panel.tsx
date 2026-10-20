@@ -164,6 +164,57 @@ export function StockComparePanel({
   const drawable = result.rows.length >= 2;
   const baseDate = result.baseDate ?? "";
 
+  let body: ReactNode;
+  if (needMore) {
+    body = <p className="mt-3 text-[13px] text-[var(--text-muted)]">{t("needMore")}</p>;
+  } else if (history.isError) {
+    body = (
+      <div className="mt-3">
+        <QueryFailure query={{ error: history.error, refetch: history.retry }} />
+      </div>
+    );
+  } else if (history.isLoading) {
+    body = (
+      <section className="surface-card mt-3 p-4 sm:p-5">
+        <CardSkeletonBody height={420} />
+      </section>
+    );
+  } else if (drawable) {
+    body = (
+      <ChartWithDataSheet rows={sheetRows}>
+        <CompareChart
+          rows={result.rows}
+          symbols={symbols}
+          visible={visible}
+          colors={colors}
+          labels={labels}
+          range={range}
+          ariaLabel={t("chartLabel", { date: baseDate })}
+        />
+        <CompareLegend
+          series={result.series}
+          visible={visible}
+          colors={colors}
+          labels={labels}
+          onToggle={toggle}
+        />
+        <div className="mt-3 flex flex-col gap-1 text-[12px] text-[var(--text-muted)]">
+          <p>{t("baseNote", { date: baseDate })}</p>
+          {result.limitedBy.length > 0 ? (
+            <p>
+              {t("limitedNote", { names: joinNames(result.limitedBy, labels), date: baseDate })}
+            </p>
+          ) : null}
+          {result.missing.length > 0 ? (
+            <p>{t("missingNote", { names: joinNames(result.missing, labels) })}</p>
+          ) : null}
+        </div>
+      </ChartWithDataSheet>
+    );
+  } else {
+    body = <p className="mt-3 text-[13px] text-[var(--text-muted)]">{t("tooFew")}</p>;
+  }
+
   return (
     <div className="@container flex flex-col">
       <section className="surface-card p-4 sm:p-5">
@@ -181,49 +232,7 @@ export function StockComparePanel({
         />
       </section>
 
-      {needMore ? (
-        <p className="mt-3 text-[13px] text-[var(--text-muted)]">{t("needMore")}</p>
-      ) : history.isError ? (
-        <div className="mt-3">
-          <QueryFailure query={{ error: history.error, refetch: history.retry }} />
-        </div>
-      ) : history.isLoading ? (
-        <section className="surface-card mt-3 p-4 sm:p-5">
-          <CardSkeletonBody height={420} />
-        </section>
-      ) : drawable ? (
-        <ChartWithDataSheet rows={sheetRows}>
-          <CompareChart
-            rows={result.rows}
-            symbols={symbols}
-            visible={visible}
-            colors={colors}
-            labels={labels}
-            range={range}
-            ariaLabel={t("chartLabel", { date: baseDate })}
-          />
-          <CompareLegend
-            series={result.series}
-            visible={visible}
-            colors={colors}
-            labels={labels}
-            onToggle={toggle}
-          />
-          <div className="mt-3 flex flex-col gap-1 text-[12px] text-[var(--text-muted)]">
-            <p>{t("baseNote", { date: baseDate })}</p>
-            {result.limitedBy.length > 0 ? (
-              <p>
-                {t("limitedNote", { names: joinNames(result.limitedBy, labels), date: baseDate })}
-              </p>
-            ) : null}
-            {result.missing.length > 0 ? (
-              <p>{t("missingNote", { names: joinNames(result.missing, labels) })}</p>
-            ) : null}
-          </div>
-        </ChartWithDataSheet>
-      ) : (
-        <p className="mt-3 text-[13px] text-[var(--text-muted)]">{t("tooFew")}</p>
-      )}
+      {body}
 
       <div>
         {asOf === "" ? null : (

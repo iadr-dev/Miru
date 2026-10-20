@@ -21,7 +21,7 @@ The model never decides anything the guards do not allow. Page text never reache
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date
 
@@ -61,6 +61,13 @@ REASON_NEEDS_SOURCE = "needs_second_source"
 REASON_SECOND_OPINION = "second_opinion_disagreed"
 REASON_ALREADY_PROPOSED = "already_proposed"
 REASON_ALREADY_REJECTED = "already_rejected"
+REASON_ALREADY_COVERED = "already_covered"
+
+# Post-verification coverage of a new-theme candidate: the share of its VERIFIED members already
+# in one existing concept theme. At or above the threshold the candidate is covered (no new
+# theme); from the floor up to it the theme is still proposed but related to the covering one.
+COVERED_THRESHOLD = 0.8
+RELATED_FLOOR = 0.5
 
 _MIN_NAME = 2
 
@@ -284,6 +291,17 @@ async def evaluate_group(
     return GroupResult(group_id, "verified", "", member, rejections)
 
 
+def best_cover(symbols: Collection[str], themes: Mapping[str, ThemeInfo]) -> tuple[str, int] | None:
+    """(theme key, overlap) of the existing theme holding most of `symbols`; ties go to the
+    smaller key. None when no theme holds any."""
+    best: tuple[str, int] | None = None
+    for key in sorted(themes):
+        overlap = len(themes[key].members.intersection(symbols))
+        if overlap and (best is None or overlap > best[1]):
+            best = (key, overlap)
+    return best
+
+
 def group_claims(claims: Iterable[ThemeClaim]) -> dict[tuple[str, str], list[ThemeClaim]]:
     groups: dict[tuple[str, str], list[ThemeClaim]] = {}
     for claim in claims:
@@ -292,14 +310,18 @@ def group_claims(claims: Iterable[ThemeClaim]) -> dict[tuple[str, str], list[The
 
 
 __all__ = [
+    "COVERED_THRESHOLD",
+    "REASON_ALREADY_COVERED",
     "REASON_ALREADY_PROPOSED",
     "REASON_ALREADY_REJECTED",
     "REASON_NEEDS_SOURCE",
     "REASON_SECOND_OPINION",
+    "RELATED_FLOOR",
     "GroupResult",
     "ThemeInfo",
     "VerifiedMember",
     "VerifyContext",
+    "best_cover",
     "claim_rejection",
     "evaluate_group",
     "group_claims",

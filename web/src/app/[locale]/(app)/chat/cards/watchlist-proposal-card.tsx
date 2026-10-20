@@ -45,7 +45,9 @@ type Choices = Partial<Record<WatchlistAssetClass, GroupChoice>>;
  * picks - or creates - the group, and taps the button, which calls the ordinary watchlist routes
  * (shared cache with the sidebar, so it updates too). The agent itself has no write path.
  */
-export function WatchlistProposalCard({ data }: { data: Record<string, unknown> }): ReactNode {
+export function WatchlistProposalCard({
+  data,
+}: Readonly<{ data: Record<string, unknown> }>): ReactNode {
   const t = useTranslations("chat.cards.watchlistProposal");
   const proposal = parseWatchlistProposal(data);
   const market = proposal?.market ?? "TW";
@@ -126,11 +128,11 @@ function SymbolList({
   proposal,
   names,
   unknown,
-}: {
+}: Readonly<{
   proposal: WatchlistProposal;
   names: Map<string, string>;
   unknown: string[];
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("chat.cards.watchlistProposal");
   return (
     <ul className="m-0 mt-0.5 flex list-none flex-col gap-0.5 p-0">
@@ -156,14 +158,14 @@ function ProposalBody({
   unknown,
   onDone,
   onDismiss,
-}: {
+}: Readonly<{
   proposal: WatchlistProposal;
   groups: WatchlistGroupView[];
   loading: boolean;
   unknown: string[];
   onDone: () => void;
   onDismiss: () => void;
-}): ReactNode {
+}>): ReactNode {
   const shared = { proposal, groups, loading, onDone, onDismiss };
   switch (proposal.action) {
     case "add":
@@ -188,14 +190,14 @@ function AddBody({
   unknown,
   onDone,
   onDismiss,
-}: {
+}: Readonly<{
   proposal: WatchlistProposal;
   groups: WatchlistGroupView[];
   loading: boolean;
   unknown: string[];
   onDone: () => void;
   onDismiss: () => void;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("chat.cards.watchlistProposal");
   const queryClient = useQueryClient();
   const [picked, setPicked] = useState<Choices>({});
@@ -269,14 +271,14 @@ function GroupPicker({
   choice,
   onChange,
   disabled,
-}: {
+}: Readonly<{
   batch: SymbolBatch;
   groups: WatchlistGroupView[];
   market: WatchlistProposal["market"];
   choice: GroupChoice;
   onChange: (next: GroupChoice) => void;
   disabled: boolean;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("chat.cards.watchlistProposal");
   const candidates = matchingGroups(groups, market, batch.assetClass);
   const label = t(`groupFor.${batch.assetClass}`);
@@ -323,13 +325,13 @@ function RemoveBody({
   loading,
   onDone,
   onDismiss,
-}: {
+}: Readonly<{
   proposal: WatchlistProposal;
   groups: WatchlistGroupView[];
   loading: boolean;
   onDone: () => void;
   onDismiss: () => void;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("chat.cards.watchlistProposal");
   const queryClient = useQueryClient();
   const [pending, setPending] = useState(false);

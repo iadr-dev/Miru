@@ -9,7 +9,7 @@ import type { ReactNode } from "react";
  */
 
 /** Google "G" mark, official 4-color version (per Google's brand guidelines — never monochrome). */
-export function GoogleIcon({ size = 20 }: { size?: number }): ReactNode {
+export function GoogleIcon({ size = 20 }: Readonly<{ size?: number }>): ReactNode {
   return (
     <svg
       width={size}
@@ -40,7 +40,7 @@ export function GoogleIcon({ size = 20 }: { size?: number }): ReactNode {
 }
 
 /** LINE's official app mark — solid rounded-square with the white "LINE" speech-bubble glyph. */
-export function LineIcon({ size = 20 }: { size?: number }): ReactNode {
+export function LineIcon({ size = 20 }: Readonly<{ size?: number }>): ReactNode {
   return (
     <svg
       width={size}
@@ -60,7 +60,7 @@ export function LineIcon({ size = 20 }: { size?: number }): ReactNode {
 }
 
 /** Telegram's official mark — blue disc with the white paper plane. */
-export function TelegramIcon({ size = 20 }: { size?: number }): ReactNode {
+export function TelegramIcon({ size = 20 }: Readonly<{ size?: number }>): ReactNode {
   return (
     <svg
       width={size}

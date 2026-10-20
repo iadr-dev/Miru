@@ -19,7 +19,7 @@ type TierRow = { sub_industry: string; source: string };
  * flow (matches how a supply chain is conventionally read and how the model already narrates it) —
  * replaces the flat `DataSheet` rendering of the same payload, which listed all three tiers as one
  * undifferentiated table with no left-right structure. */
-export function ThemeTiersFlow({ data }: { data: unknown }): ReactNode {
+export function ThemeTiersFlow({ data }: Readonly<{ data: unknown }>): ReactNode {
   const t = useTranslations("chat.cards");
   if (!data || typeof data !== "object") {
     return null;
@@ -77,11 +77,11 @@ function TierColumn({
   tierKey,
   rows,
   t,
-}: {
+}: Readonly<{
   tierKey: TierKey;
   rows: TierRow[];
   t: ReturnType<typeof useTranslations>;
-}): ReactNode {
+}>): ReactNode {
   return (
     <div className="min-w-0 flex-1 rounded-[var(--radius-input)] border border-[var(--border)] bg-[var(--surface-2)] p-3">
       <p className="mb-2 font-medium text-[13px] text-[var(--text)]">{t(`themeTier.${tierKey}`)}</p>

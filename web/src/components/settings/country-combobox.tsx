@@ -9,7 +9,7 @@ import { type ReactNode, useState } from "react";
 import { cn } from "@/lib/cn";
 import { COUNTRIES, type CountryEntry } from "@/lib/countries";
 
-function CountryFlag({ iso2 }: { iso2: string }): ReactNode {
+function CountryFlag({ iso2 }: Readonly<{ iso2: string }>): ReactNode {
   const Flag = (Flags as Record<string, (props: { className?: string }) => ReactNode>)[iso2];
   if (!Flag) {
     return <span className="inline-block h-3 w-4 shrink-0 rounded-[2px] bg-[var(--surface-2)]" />;
@@ -41,24 +41,22 @@ export function CountryCombobox({
   emptyLabel,
   display,
   ...rest
-}: CountryComboboxProps): ReactNode {
+}: Readonly<CountryComboboxProps>): ReactNode {
   const locale = useLocale();
   const [open, setOpen] = useState(false);
   const selected = value ? COUNTRIES.find((c) => c.iso2 === value) : undefined;
   const nameFor = (c: CountryEntry): string => (locale === "zh-TW" ? c.nameZh : c.nameEn);
+  const describe = (c: CountryEntry, separator: string): string => {
+    if (display === "dialCode") return `+${c.dialCode}${separator}${nameFor(c)}`;
+    return nameFor(c);
+  };
 
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger
         type="button"
         aria-label={
-          selected
-            ? `${rest["aria-label"]}: ${
-                display === "dialCode"
-                  ? `+${selected.dialCode} ${nameFor(selected)}`
-                  : nameFor(selected)
-              }`
-            : rest["aria-label"]
+          selected ? `${rest["aria-label"]}: ${describe(selected, " ")}` : rest["aria-label"]
         }
         className={cn(
           "flex min-h-11 w-full items-center gap-2 rounded-[var(--radius-input)] border border-[var(--border)]",
@@ -68,11 +66,7 @@ export function CountryCombobox({
       >
         {selected ? <CountryFlag iso2={selected.iso2} /> : null}
         <span className={cn("flex-1 truncate", !selected && "text-[var(--text-muted)]")}>
-          {selected
-            ? display === "dialCode"
-              ? `+${selected.dialCode} · ${nameFor(selected)}`
-              : nameFor(selected)
-            : placeholder}
+          {selected ? describe(selected, " · ") : placeholder}
         </span>
         <CaretDownIcon size={14} weight="regular" className="shrink-0 text-[var(--text-muted)]" />
       </Popover.Trigger>

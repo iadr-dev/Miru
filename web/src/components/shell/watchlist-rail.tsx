@@ -545,32 +545,31 @@ function WatchlistGroupSection({
         </button>
       </div>
 
-      {expanded ? (
-        view.items.length === 0 ? (
-          <GroupDropZone groupId={view.group.id}>
-            <p className="px-4 py-3 text-[12px] text-[var(--text-muted)]">{t("emptyGroup")}</p>
-          </GroupDropZone>
-        ) : (
-          <DndContext sensors={sensors} onDragEnd={onItemDragEnd}>
-            <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
-              <GroupDropZone groupId={view.group.id}>
-                <ul className="divide-y divide-[var(--border)]">
-                  {view.items.map((item) => (
-                    <WatchlistStockRow
-                      key={item.id}
-                      item={item}
-                      market={market}
-                      quote={quoteBySymbol.get(item.symbol)}
-                      quoteLoading={quotesLoading}
-                      watchlistId={view.group.id}
-                      reduceMotion={reduceMotion}
-                    />
-                  ))}
-                </ul>
-              </GroupDropZone>
-            </SortableContext>
-          </DndContext>
-        )
+      {expanded && view.items.length === 0 ? (
+        <GroupDropZone groupId={view.group.id}>
+          <p className="px-4 py-3 text-[12px] text-[var(--text-muted)]">{t("emptyGroup")}</p>
+        </GroupDropZone>
+      ) : null}
+      {expanded && view.items.length > 0 ? (
+        <DndContext sensors={sensors} onDragEnd={onItemDragEnd}>
+          <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
+            <GroupDropZone groupId={view.group.id}>
+              <ul className="divide-y divide-[var(--border)]">
+                {view.items.map((item) => (
+                  <WatchlistStockRow
+                    key={item.id}
+                    item={item}
+                    market={market}
+                    quote={quoteBySymbol.get(item.symbol)}
+                    quoteLoading={quotesLoading}
+                    watchlistId={view.group.id}
+                    reduceMotion={reduceMotion}
+                  />
+                ))}
+              </ul>
+            </GroupDropZone>
+          </SortableContext>
+        </DndContext>
       ) : null}
 
       <AlertDialog.Root open={confirmingDelete} onOpenChange={setConfirmingDelete}>
