@@ -50,6 +50,7 @@ from analytics.supply_chain.jobs import (
     job_sc_refdata_load,
     job_sc_themes_entities_load,
 )
+from analytics.supply_chain.theme_discovery.job import job_sc_theme_candidates
 from analytics.supply_chain.verification.job import job_sc_research
 from analytics.themes.seed import seed_industry_themes
 from analytics.themes.tiers_seed import seed_theme_tiers
@@ -312,6 +313,12 @@ SCHEDULED_JOBS: tuple[ScheduledIngestJob, ...] = (
     # a journaled SKIPPED unless SUPPLY_CHAIN_RESEARCH_ENABLED (off by default, off in production),
     # a search key and an LLM role are all present. Fires in the quiet evening window.
     ScheduledIngestJob("sc_research", time_(22, 15), job_sc_research, Cadence.WEEKLY),
+    # Concept-theme candidate mining (Step A): deterministic, reads only the private entity and
+    # theme files, spends nothing, so it is NOT gated by the research flag. Leader-only; a
+    # journaled SKIPPED when the reference files are absent. Writes the private candidates file.
+    ScheduledIngestJob(
+        "sc_theme_candidates", time_(22, 5), job_sc_theme_candidates, Cadence.WEEKLY
+    ),
     # US price EOD — US markets close 16:00 ET (UTC-4/-5), i.e. ~04:00-05:00 Taipei the next
     # calendar day; 06:00 Taipei gives yfinance's own upstream data a comfortable landing buffer
     # past that close before this pulls. `job_us_price_eod` is calendar-gated the same Mon-Fri

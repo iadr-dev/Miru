@@ -8,6 +8,10 @@ scores them against the golden file (exit 1 when the gate fails or the golden fi
 `discover [--limit N] [--source S]` lists the next claims to research; `verify [--limit N]
 [--source S] [--dry-run]` researches them (see `verification/cli.py`). Both print counts and
 claim ids only.
+`discover --themes [--min-companies N] [--limit N] [--dry-run]` instead mines new concept-theme
+candidates from the entity mentions (no search, no model, no key needed) and writes the private
+candidates file unless `--dry-run`; it prints rank, label, type, company count, trend and up to five
+stock symbols, never a company name (see `theme_discovery/`).
 """
 
 from __future__ import annotations
@@ -31,6 +35,7 @@ from analytics.supply_chain.refdata_io.loader import RelationFileError, load_ref
 from analytics.supply_chain.store.concept_protocol import ConceptCollisionError
 from analytics.supply_chain.store.concept_store import SqlAlchemyConceptStore
 from analytics.supply_chain.store.sqlalchemy_store import SqlAlchemySupplyChainStore
+from analytics.supply_chain.theme_discovery.job import run_themes_command
 from analytics.supply_chain.themes_io.loader import ConceptFileError, load_concept_themes
 from analytics.supply_chain.verification.cli import run_research_command
 from analytics.themes.store import SqlAlchemyThemeStore
@@ -138,7 +143,24 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--golden", type=Path, default=None, help="eval: golden file path")
     parser.add_argument("--json", action="store_true", help="eval: print the report as JSON")
-    parser.add_argument("--limit", type=int, default=None, help="discover/verify: max claims")
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="discover/verify: max claims; --themes: max candidates",
+    )
+    parser.add_argument(
+        "--themes",
+        action="store_true",
+        help="discover: only mine new concept-theme candidates from entity mentions "
+        "(no search, no LLM, no key; writes the private candidates file unless --dry-run)",
+    )
+    parser.add_argument(
+        "--min-companies",
+        type=int,
+        default=None,
+        help="discover --themes: min distinct listed companies per entity (default 5)",
+    )
     parser.add_argument(
         "--source",
         choices=["candidates", "gaps", "stale", "all"],
@@ -146,9 +168,17 @@ def main(argv: list[str] | None = None) -> int:
         help="discover/verify: which claims to take",
     )
     parser.add_argument(
-        "--dry-run", action="store_true", help="verify: search and judge, write nothing"
+        "--dry-run",
+        action="store_true",
+        help="verify: search and judge, write nothing; discover --themes: print, write nothing",
     )
     args = parser.parse_args(argv)
+    if args.themes:
+        if args.command != "discover":
+            parser.error("--themes applies to the discover command only")
+        return run_themes_command(
+            min_companies=args.min_companies, limit=args.limit, dry_run=args.dry_run
+        )
     if args.command in ("discover", "verify"):
         return asyncio.run(
             run_research_command(

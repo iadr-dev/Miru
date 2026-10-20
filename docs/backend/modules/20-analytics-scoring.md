@@ -511,6 +511,33 @@ results are written to the private relation files and the loader then refreshes 
   mounts `reference-data` read-write (the other services keep it read-only) because it is the single
   writer.
 
+### Theme candidates (Step A)
+
+Concept-theme discovery is designed in three steps: **A** deterministic mining of our own entity
+mentions for new candidate themes, **B** evidence gathering and judging per candidate (search plus
+model, budgeted like `verify`), **C** human promotion into a concept-theme file. **Only A exists.**
+
+`analytics/supply_chain/theme_discovery/` (`mining.py` pure, `io.py` files, `job.py` job and CLI) reads
+the private entity catalog, mentions and concept-theme files (never the database) and proposes every
+technology / material / application / product entity mentioned by at least N distinct listed
+companies (default 5) that no concept theme already covers (theme key, zh/en name or related name,
+or an entity alias, compared ignoring case, width, spaces and punctuation). Entities sharing a name or
+alias are merged first; labels under 2 characters or purely numeric are dropped; the list is capped
+(default 50) and ordered by company count, total mentions, then label. Each candidate carries a stable
+`candidate_id`, symbols only (top 15 by mention count), the sections it appears in, `first_seen` and a
+`trend` against the previous run (new / rising / steady / falling).
+
+Output is a private file, `reference-data/themes/theme_candidates.jsonl` (one JSON object per line),
+written atomically (temp file then rename); the previous file is kept as
+`theme_candidates.prev.jsonl`. Nothing is published or indexed. No search, no model, no network.
+
+- CLI: `python -m analytics.supply_chain discover --themes [--min-companies N] [--limit N] [--dry-run]`
+  runs only this mining (no key and no research flag needed) and prints rank, label, type, company
+  count, trend and up to five stock symbols, never a company name.
+- Job: `sc_theme_candidates` (weekly 22:05, leader-only, journaled). It spends nothing, so it is not
+  gated by `SUPPLY_CHAIN_RESEARCH_ENABLED`; it journals SKIPPED with a reason when not the leader or
+  when the entity files are absent.
+
 ## 5c. 策略盯盤 strategy watch (`analytics/strategy_watch/`)
 
 A three-stage pipeline: an 08:00 screen, an intraday check every 10 minutes (09:00-13:30), and an
