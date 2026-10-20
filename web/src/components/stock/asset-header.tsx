@@ -24,7 +24,9 @@ import { formatNumber } from "@/lib/format-number";
 import { FRESHNESS } from "@/lib/freshness";
 import { directionColor, directionGlyph } from "@/lib/signed";
 import { isEtfSymbolType } from "@/lib/symbol-type";
+import type { LivePriceTick } from "@/types/live-quote";
 import type { EtfListRow } from "@/types/market/etf";
+import type { PriceHistoryBar } from "@/types/market/quotes";
 import type { ScoreBand } from "@/types/market/rankings";
 import type { SymbolType } from "@/types/market/shared";
 import type { Market } from "@/types/settings";
@@ -66,10 +68,6 @@ export function AssetHeader({
   readonly market: Market;
   readonly symbolType?: SymbolType;
 }): ReactNode {
-  const t = useTranslations("stock.assetHeader");
-  const tCommon = useTranslations("common");
-  const locale = useLocale();
-  const reduceMotion = useReducedMotion();
   const isEtf = isEtfSymbolType(symbolType);
 
   const symbolInfoQuery = useQuery({
@@ -77,89 +75,12 @@ export function AssetHeader({
     queryFn: () => getSymbolInfo([symbol], market),
   });
   const symbolInfo = symbolInfoQuery.data?.rows[0];
-  const etfFundInfoQuery = useQuery({
-    queryKey: queryKeys.symbolRead("etf_fund_info", symbol, market),
-    queryFn: () => getEtfFundInfo(symbol, market),
-    enabled: isEtf,
-  });
-  const trackedIndex = etfFundInfoQuery.data?.info?.tracked_index;
-  // `get_etf_list` is whole-market (no per-symbol input — see its own docstring), so this reads
-  // the same list the market ETF tab already fetches and narrows to this one symbol client-side,
-  // the same "fetch whole, filter locally" shape every other per-symbol slice of a whole-market
-  // dataset in this codebase uses. TanStack dedupes this against the market tab's own identical
-  // query key, so an ETF's own detail page doesn't cost a second distinct network request beyond
-  // whatever's already cached.
-  const etfListQuery = useQuery({
-    queryKey: queryKeys.marketRead("etf_list", market),
-    queryFn: () => getEtfList(market),
-    enabled: isEtf,
-  });
-  const etfListRow = etfListQuery.data?.data_available
-    ? etfListQuery.data.rows.find((row) => row.symbol === symbol)
-    : undefined;
-  const distributionFrequency = etfListRow?.distribution_frequency;
-  const themeTagsQuery = useQuery({
-    queryKey: queryKeys.symbolRead("etf_theme_tags", symbol, market),
-    queryFn: () => getEtfThemeTags(symbol, market),
-    enabled: isEtf,
-  });
-  const themeTags = themeTagsQuery.data?.tags ?? [];
+  const etf = useEtfHeaderData(symbol, market, isEtf);
   const scoreQuery = useQuery({
     queryKey: queryKeys.symbolRead("stock_score", symbol, market),
     queryFn: () => getStockScore(symbol, market),
   });
-  const historyQuery = usePriceHistory(symbol, market, HISTORY_DAYS_FOR_CHANGE);
-  const bars = [...(historyQuery.data?.rows ?? [])].sort((a, b) =>
-    a.trade_date.localeCompare(b.trade_date),
-  );
-  const eodLatestBar = bars.at(-1) ?? null;
-  const eodPriorBar = bars.length >= 2 ? bars.at(-2) : null;
-  const eodChangePct =
-    eodLatestBar && eodPriorBar && eodPriorBar.close !== 0
-      ? (eodLatestBar.close / eodPriorBar.close - 1) * 100
-      : null;
-
-  // For US: the SSE stream (`useLiveQuote`) only carries a tick while the market session is
-  // open (the poller's bounded-observation gate never fetches off-hours), so a one-shot
-  // `getLivePriceQuote` read on mount covers the load-time/off-hours case — its own adapter
-  // already falls back to a `.info` snapshot when no WS tick has streamed in. The SSE tick wins
-  // once it starts arriving (a strictly-live overwrite of the one-shot snapshot); EOD history is
-  // the final fallback for TW/ETF, which have no live-quote path at all.
-  const liveQuote = useLiveQuote(symbol, market);
-  const liveQuoteSnapshotQuery = useQuery({
-    queryKey: queryKeys.symbolRead("live_price_quote", symbol, market),
-    queryFn: () => getLivePriceQuote(symbol, market),
-    enabled: market === "US",
-    staleTime: FRESHNESS.live,
-  });
-  const tick = liveQuote.tick ?? liveQuoteSnapshotQuery.data?.tick ?? null;
-  const price = tick?.price ?? eodLatestBar?.close ?? null;
-  // `tick.change_percent` is already percent-scaled (e.g. `-0.196` means -0.196%), matching
-  // yfinance's own `.info`/WebSocket convention — never multiply by 100 again here.
-  const changePct = tick?.change_percent ?? eodChangePct;
-  const isUp = changePct !== null && changePct >= 0;
-  const priceColor = changePct === null ? "var(--text)" : directionColor(changePct ?? 0);
-  const tickOhlc = tick
-    ? {
-        open: tick.open_price ?? null,
-        high: tick.day_high ?? null,
-        low: tick.day_low ?? null,
-        volume: tick.day_volume ?? null,
-      }
-    : null;
-  const eodOhlc = eodLatestBar
-    ? {
-        open: eodLatestBar.open,
-        high: eodLatestBar.high,
-        low: eodLatestBar.low,
-        volume: eodLatestBar.volume,
-      }
-    : null;
-  const ohlc = tickOhlc ?? eodOhlc;
-  const directionLabel = isUp ? tCommon("direction.up") : tCommon("direction.down");
-  const isLive = Boolean(tick && liveQuote.marketOpen);
-  const statusDotClass = statusDotClassFor(isLive, historyQuery.isError);
-  const statusLabelKey = statusLabelKeyFor(isLive, market === "US", historyQuery.isError);
+  const quote = useHeaderQuote(symbol, market);
 
   const band = scoreQuery.data?.found ? scoreQuery.data.result?.band : undefined;
   const composite = scoreQuery.data?.found ? scoreQuery.data.result?.composite : undefined;
@@ -176,132 +97,311 @@ export function AssetHeader({
           </span>
           {headerChipLabel({
             isEtf,
-            trackedIndex,
+            trackedIndex: etf.trackedIndex,
             industryCategory: symbolInfo?.industry_category,
           })}
-          {isEtf ? <EtfStructureBadges row={etfListRow} /> : null}
-          {distributionFrequency ? (
-            <DistributionFrequencyBadge frequency={distributionFrequency} />
+          {isEtf ? <EtfStructureBadges row={etf.listRow} /> : null}
+          {etf.distributionFrequency ? (
+            <DistributionFrequencyBadge frequency={etf.distributionFrequency} />
           ) : null}
-          {themeTags.map((tag) => (
+          {etf.themeTags.map((tag) => (
             <ThemeTagBadge key={tag} tag={tag} />
           ))}
           {!isEtf ? <TwStockSignalBadges symbol={symbol} market={market} /> : null}
         </div>
-        <div className="flex shrink-0 items-center gap-1.5">
-          <WatchlistStarButton
-            symbol={symbol}
-            market={market}
-            assetClass={isEtf ? "etf" : "stock"}
-          />
-          <SymbolAlertButton symbol={symbol} market={market} isEtf={isEtf} />
-          <Link
-            href="/chat"
-            className="inline-flex min-h-11 items-center gap-1.5 rounded-[var(--radius-button)] px-3 text-[13px] text-[var(--accent-text)] transition-colors hover:bg-[var(--surface-2)]"
-          >
-            <motion.span
-              aria-hidden
-              className="inline-flex"
-              {...(reduceMotion
-                ? {}
-                : {
-                    animate: { rotate: [0, 15, -10, 0], scale: [1, 1.15, 1] },
-                    transition: {
-                      duration: 2.4,
-                      repeat: Number.POSITIVE_INFINITY,
-                      ease: "easeInOut",
-                    },
-                  })}
-            >
-              <SparkleIcon size={16} weight="fill" />
-            </motion.span>
-            {t("askMiru")}
-          </Link>
-        </div>
+        <HeaderActions symbol={symbol} market={market} isEtf={isEtf} />
       </div>
 
-      <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1">
-        <span
-          role="group"
-          aria-label={
-            changePct !== null
-              ? `${formatNumber(price, locale)} ${directionLabel} ${Math.abs(changePct).toFixed(2)}%`
-              : formatNumber(price, locale)
-          }
-          className="flex items-baseline gap-2"
+      <PriceLine
+        price={quote.price}
+        changePct={quote.changePct}
+        band={band}
+        composite={composite}
+      />
+      <OhlcStatusRow quote={quote} market={market} />
+    </header>
+  );
+}
+
+type EtfHeaderData = {
+  readonly trackedIndex: string | null | undefined;
+  readonly listRow: EtfListRow | undefined;
+  readonly distributionFrequency: string | null | undefined;
+  readonly themeTags: readonly string[];
+};
+
+/** The ETF-only reads (tracked index, list row, theme tags); disabled for a stock. */
+function useEtfHeaderData(symbol: string, market: Market, isEtf: boolean): EtfHeaderData {
+  const etfFundInfoQuery = useQuery({
+    queryKey: queryKeys.symbolRead("etf_fund_info", symbol, market),
+    queryFn: () => getEtfFundInfo(symbol, market),
+    enabled: isEtf,
+  });
+  // `get_etf_list` is whole-market (no per-symbol input — see its own docstring), so this reads
+  // the same list the market ETF tab already fetches and narrows to this one symbol client-side,
+  // the same "fetch whole, filter locally" shape every other per-symbol slice of a whole-market
+  // dataset in this codebase uses. TanStack dedupes this against the market tab's own identical
+  // query key, so an ETF's own detail page doesn't cost a second distinct network request beyond
+  // whatever's already cached.
+  const etfListQuery = useQuery({
+    queryKey: queryKeys.marketRead("etf_list", market),
+    queryFn: () => getEtfList(market),
+    enabled: isEtf,
+  });
+  const listRow = etfListQuery.data?.data_available
+    ? etfListQuery.data.rows.find((row) => row.symbol === symbol)
+    : undefined;
+  const themeTagsQuery = useQuery({
+    queryKey: queryKeys.symbolRead("etf_theme_tags", symbol, market),
+    queryFn: () => getEtfThemeTags(symbol, market),
+    enabled: isEtf,
+  });
+  return {
+    trackedIndex: etfFundInfoQuery.data?.info?.tracked_index,
+    listRow,
+    distributionFrequency: listRow?.distribution_frequency,
+    themeTags: themeTagsQuery.data?.tags ?? [],
+  };
+}
+
+type Ohlc = {
+  readonly open: number | null;
+  readonly high: number | null;
+  readonly low: number | null;
+  readonly volume: number | null;
+};
+
+type HeaderQuote = {
+  readonly price: number | null;
+  readonly changePct: number | null;
+  readonly ohlc: Ohlc | null;
+  readonly isLive: boolean;
+  readonly isError: boolean;
+};
+
+/** The latest EOD bar and its change against the prior bar (null when there is no prior close). */
+function latestEodChange(rows: readonly PriceHistoryBar[]): {
+  readonly latest: PriceHistoryBar | null;
+  readonly changePct: number | null;
+} {
+  const bars = [...rows].sort((a, b) => a.trade_date.localeCompare(b.trade_date));
+  const latest = bars.at(-1) ?? null;
+  const prior = bars.length >= 2 ? bars.at(-2) : null;
+  const changePct =
+    latest && prior && prior.close !== 0 ? (latest.close / prior.close - 1) * 100 : null;
+  return { latest, changePct };
+}
+
+function tickOhlc(tick: LivePriceTick): Ohlc {
+  return {
+    open: tick.open_price ?? null,
+    high: tick.day_high ?? null,
+    low: tick.day_low ?? null,
+    volume: tick.day_volume ?? null,
+  };
+}
+
+function barOhlc(bar: PriceHistoryBar): Ohlc {
+  return { open: bar.open, high: bar.high, low: bar.low, volume: bar.volume };
+}
+
+/** The tick's OHLC wins, then the latest EOD bar's, else none. */
+function pickOhlc(tick: LivePriceTick | null, bar: PriceHistoryBar | null): Ohlc | null {
+  if (tick) return tickOhlc(tick);
+  if (bar) return barOhlc(bar);
+  return null;
+}
+
+/**
+ * Price, change and OHLC for the header. For US: the SSE stream (`useLiveQuote`) only carries a
+ * tick while the market session is open (the poller's bounded-observation gate never fetches
+ * off-hours), so a one-shot `getLivePriceQuote` read on mount covers the load-time/off-hours
+ * case — its own adapter already falls back to a `.info` snapshot when no WS tick has streamed
+ * in. The SSE tick wins once it starts arriving (a strictly-live overwrite of the one-shot
+ * snapshot); EOD history is the final fallback for TW/ETF, which have no live-quote path at all.
+ */
+function useHeaderQuote(symbol: string, market: Market): HeaderQuote {
+  const historyQuery = usePriceHistory(symbol, market, HISTORY_DAYS_FOR_CHANGE);
+  const eod = latestEodChange(historyQuery.data?.rows ?? []);
+
+  const liveQuote = useLiveQuote(symbol, market);
+  const liveQuoteSnapshotQuery = useQuery({
+    queryKey: queryKeys.symbolRead("live_price_quote", symbol, market),
+    queryFn: () => getLivePriceQuote(symbol, market),
+    enabled: market === "US",
+    staleTime: FRESHNESS.live,
+  });
+  const tick = liveQuote.tick ?? liveQuoteSnapshotQuery.data?.tick ?? null;
+  return {
+    price: tick?.price ?? eod.latest?.close ?? null,
+    // `tick.change_percent` is already percent-scaled (e.g. `-0.196` means -0.196%), matching
+    // yfinance's own `.info`/WebSocket convention — never multiply by 100 again here.
+    changePct: tick?.change_percent ?? eod.changePct,
+    ohlc: pickOhlc(tick, eod.latest),
+    isLive: Boolean(tick && liveQuote.marketOpen),
+    isError: historyQuery.isError,
+  };
+}
+
+function HeaderActions({
+  symbol,
+  market,
+  isEtf,
+}: {
+  readonly symbol: string;
+  readonly market: Market;
+  readonly isEtf: boolean;
+}): ReactNode {
+  const t = useTranslations("stock.assetHeader");
+  const reduceMotion = useReducedMotion();
+  return (
+    <div className="flex shrink-0 items-center gap-1.5">
+      <WatchlistStarButton symbol={symbol} market={market} assetClass={isEtf ? "etf" : "stock"} />
+      <SymbolAlertButton symbol={symbol} market={market} isEtf={isEtf} />
+      <Link
+        href="/chat"
+        className="inline-flex min-h-11 items-center gap-1.5 rounded-[var(--radius-button)] px-3 text-[13px] text-[var(--accent-text)] transition-colors hover:bg-[var(--surface-2)]"
+      >
+        <motion.span
+          aria-hidden
+          className="inline-flex"
+          {...(reduceMotion
+            ? {}
+            : {
+                animate: { rotate: [0, 15, -10, 0], scale: [1, 1.15, 1] },
+                transition: {
+                  duration: 2.4,
+                  repeat: Number.POSITIVE_INFINITY,
+                  ease: "easeInOut",
+                },
+              })}
         >
+          <SparkleIcon size={16} weight="fill" />
+        </motion.span>
+        {t("askMiru")}
+      </Link>
+    </div>
+  );
+}
+
+function PriceLine({
+  price,
+  changePct,
+  band,
+  composite,
+}: {
+  readonly price: number | null;
+  readonly changePct: number | null;
+  readonly band: ScoreBand | undefined;
+  readonly composite: number | null | undefined;
+}): ReactNode {
+  const tCommon = useTranslations("common");
+  const locale = useLocale();
+  const isUp = changePct !== null && changePct >= 0;
+  const priceColor = changePct === null ? "var(--text)" : directionColor(changePct);
+  const directionLabel = isUp ? tCommon("direction.up") : tCommon("direction.down");
+  return (
+    <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+      <span
+        role="group"
+        aria-label={
+          changePct !== null
+            ? `${formatNumber(price, locale)} ${directionLabel} ${Math.abs(changePct).toFixed(2)}%`
+            : formatNumber(price, locale)
+        }
+        className="flex items-baseline gap-2"
+      >
+        <span
+          aria-hidden
+          className="font-display font-light text-[34px] tabular-nums leading-none"
+          style={{ color: priceColor }}
+        >
+          {formatNumber(price, locale, { decimals: 2 })}
+        </span>
+        {changePct !== null ? (
           <span
             aria-hidden
-            className="font-display font-light text-[34px] tabular-nums leading-none"
+            className="font-num text-[15px] tabular-nums"
             style={{ color: priceColor }}
           >
-            {formatNumber(price, locale, { decimals: 2 })}
+            {directionGlyph(changePct)}
+            {formatNumber(Math.abs(changePct), locale, { decimals: 2 })}%
           </span>
-          {changePct !== null ? (
-            <span
-              aria-hidden
-              className="font-num text-[15px] tabular-nums"
-              style={{ color: priceColor }}
-            >
-              {directionGlyph(changePct ?? 0)}
-              {formatNumber(Math.abs(changePct), locale, { decimals: 2 })}%
-            </span>
-          ) : null}
-        </span>
-
-        {band ? (
-          <a
-            href="#stock-score-gauge"
-            className="rounded-[var(--radius-pill)] px-2.5 py-1 font-medium text-[12px] transition-opacity hover:opacity-80"
-            style={{ backgroundColor: `${BAND_TOKEN[band]}1F`, color: BAND_TOKEN[band] }}
-          >
-            {band}
-            {composite != null ? ` ${composite.toFixed(0)}` : ""}
-          </a>
         ) : null}
-      </div>
+      </span>
 
-      {/* 開/高/低/量 are neutral OHLC facts, not signed price/%/score deltas — categorical
-          `--chart-1..4` per label (never `--up`/`--down`) just to visually separate the 4
-          labels from each other, web/OVERVIEW.md §4. */}
-      <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 font-num text-[12px] tabular-nums">
-        {ohlc ? (
-          <>
-            <span>
-              <span style={{ color: "var(--chart-1)" }}>{t("open")} </span>
-              <span className="text-[var(--text)]">
-                {formatNumber(ohlc.open, locale, { decimals: 2 })}
-              </span>
-            </span>
-            <span>
-              <span style={{ color: "var(--chart-2)" }}>{t("high")} </span>
-              <span className="text-[var(--text)]">
-                {formatNumber(ohlc.high, locale, { decimals: 2 })}
-              </span>
-            </span>
-            <span>
-              <span style={{ color: "var(--chart-3)" }}>{t("low")} </span>
-              <span className="text-[var(--text)]">
-                {formatNumber(ohlc.low, locale, { decimals: 2 })}
-              </span>
-            </span>
-            <span>
-              <span style={{ color: "var(--chart-4)" }}>{t("volume")} </span>
-              <span className="text-[var(--text)]">{formatNumber(ohlc.volume, locale)}</span>
-            </span>
-          </>
-        ) : null}
-        <span
-          className={cn(
-            "inline-flex items-center gap-1",
-            historyQuery.isError && "text-[var(--warn)]",
-          )}
+      {band ? (
+        <a
+          href="#stock-score-gauge"
+          className="rounded-[var(--radius-pill)] px-2.5 py-1 font-medium text-[12px] transition-opacity hover:opacity-80"
+          style={{ backgroundColor: `${BAND_TOKEN[band]}1F`, color: BAND_TOKEN[band] }}
         >
-          <span aria-hidden className={cn("size-1.5 rounded-full", statusDotClass)} />
-          {t(statusLabelKey)}
-        </span>
-      </p>
-    </header>
+          {band}
+          {composite != null ? ` ${composite.toFixed(0)}` : ""}
+        </a>
+      ) : null}
+    </div>
+  );
+}
+
+/** One 開/高/低/量 cell: a categorical-coloured label and its value. */
+function OhlcCell({
+  label,
+  color,
+  children,
+}: {
+  readonly label: string;
+  readonly color: string;
+  readonly children: string;
+}): ReactNode {
+  return (
+    <span>
+      <span style={{ color }}>{label} </span>
+      <span className="text-[var(--text)]">{children}</span>
+    </span>
+  );
+}
+
+function OhlcStatusRow({
+  quote,
+  market,
+}: {
+  readonly quote: HeaderQuote;
+  readonly market: Market;
+}): ReactNode {
+  const t = useTranslations("stock.assetHeader");
+  const locale = useLocale();
+  const { ohlc, isLive, isError } = quote;
+  const price2 = (value: number | null): string => formatNumber(value, locale, { decimals: 2 });
+  return (
+    // 開/高/低/量 are neutral OHLC facts, not signed price/%/score deltas — categorical
+    // `--chart-1..4` per label (never `--up`/`--down`) just to visually separate the 4
+    // labels from each other, web/OVERVIEW.md §4.
+    <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 font-num text-[12px] tabular-nums">
+      {ohlc ? (
+        <>
+          <OhlcCell label={t("open")} color="var(--chart-1)">
+            {price2(ohlc.open)}
+          </OhlcCell>
+          <OhlcCell label={t("high")} color="var(--chart-2)">
+            {price2(ohlc.high)}
+          </OhlcCell>
+          <OhlcCell label={t("low")} color="var(--chart-3)">
+            {price2(ohlc.low)}
+          </OhlcCell>
+          <OhlcCell label={t("volume")} color="var(--chart-4)">
+            {formatNumber(ohlc.volume, locale)}
+          </OhlcCell>
+        </>
+      ) : null}
+      <span className={cn("inline-flex items-center gap-1", isError && "text-[var(--warn)]")}>
+        <span
+          aria-hidden
+          className={cn("size-1.5 rounded-full", statusDotClassFor(isLive, isError))}
+        />
+        {t(statusLabelKeyFor(isLive, market === "US", isError))}
+      </span>
+    </p>
   );
 }
 
