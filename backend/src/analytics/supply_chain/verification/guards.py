@@ -196,7 +196,7 @@ def parse_loose_date(text: str | None, *, today: date | None = None) -> date | N
 _URL_SLASHED = re.compile(r"(?<!\d)(\d{4})/(\d{2})/(\d{2})(?!\d)")
 _URL_DASHED = re.compile(r"(?<!\d)(\d{4})-(\d{2})-(\d{2})(?!\d)")
 _URL_COMPACT = re.compile(r"(\d{4})(\d{2})(\d{2})(?:\.html?)?")
-_URL_ID = re.compile(r"(\d{4})(\d{2})(\d{2})\d{1,2}")
+_URL_ID = re.compile(r"(\d{4})(\d{2})(\d{2})\d{1,4}")
 _URL_ID_PARENTS: Final = frozenset({"post", "posts", "article", "articles", "news", "story", "id"})
 _URL_MIN_YEAR = 2000
 
@@ -211,7 +211,7 @@ def _url_candidate(year: str, month: str, day: str, today: date) -> date | None:
 
 def url_date(url: str | None, today: date) -> date | None:
     """A publication date embedded in the URL path, only in unambiguous forms: /YYYY/MM/DD/,
-    YYYY-MM-DD, a bare /YYYYMMDD segment, or a 9-10 digit id after a post/article-like segment
+    YYYY-MM-DD, a bare /YYYYMMDD segment, or a 9-12 digit id (date + a short sequence) after a post/article-like segment
     whose first eight digits are a valid date. Query strings, other numeric ids and out-of-range
     years (before 2000, after today) yield None."""
     if not url:
