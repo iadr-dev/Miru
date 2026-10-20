@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import time
 from collections.abc import Mapping, Sequence
 from typing import Final, Protocol, cast
 
@@ -15,11 +17,14 @@ from analytics.supply_chain.verification.budget import Budget
 from analytics.supply_chain.verification.models import Company, Page, Target
 from dataaccess.web_search import WebSearchGateway
 from schemas.enums import TLSPolicy
-from schemas.source import HealthStatus
+from schemas.source import HealthStatus, SourceResult
 
 logger = structlog.get_logger(__name__)
 
 _SEARCH_COUNT: Final = 10
+# Brave's free plan allows one request per second: space calls out, and retry a refused one once.
+_MIN_GAP_SECONDS: Final = 1.2
+_RETRY_WAIT_SECONDS: Final = 2.0
 _TRUST_RANK: Final = {Trust.PRIMARY: 0, Trust.SECONDARY: 1, Trust.TERTIARY: 2, Trust.REJECTED: 3}
 
 
@@ -50,11 +55,27 @@ class BraveSearchProvider:
     ) -> None:
         self._gateway = gateway or WebSearchGateway()
         self._tls = tls_policy
+        self._gap_lock = asyncio.Lock()
+        self._last_call = 0.0
+
+    async def _spaced_search(self, query: str, count: int) -> SourceResult:
+        """One gateway search, never closer than `_MIN_GAP_SECONDS` to the previous one."""
+        async with self._gap_lock:
+            wait = self._last_call + _MIN_GAP_SECONDS - time.monotonic()
+            if wait > 0:
+                await asyncio.sleep(wait)
+            try:
+                return await self._gateway.search(query, tls_policy=self._tls, count=count)
+            finally:
+                self._last_call = time.monotonic()
 
     async def search(self, query: str, *, count: int = _SEARCH_COUNT) -> list[SearchHit] | None:
-        result = await self._gateway.search(query, tls_policy=self._tls, count=count)
+        result = await self._spaced_search(query, count)
         if result.health.status in (HealthStatus.UNAVAILABLE_TIER, HealthStatus.UNREACHABLE):
-            return None
+            await asyncio.sleep(_RETRY_WAIT_SECONDS)
+            result = await self._spaced_search(query, count)
+            if result.health.status in (HealthStatus.UNAVAILABLE_TIER, HealthStatus.UNREACHABLE):
+                return None
         raw = result.payload.get("hits")
         hits: list[SearchHit] = []
         for item in cast("list[object]", raw) if isinstance(raw, list) else []:

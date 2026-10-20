@@ -51,6 +51,7 @@ from analytics.supply_chain.jobs import (
     job_sc_themes_entities_load,
 )
 from analytics.supply_chain.theme_discovery.job import job_sc_theme_candidates
+from analytics.supply_chain.theme_research.job import job_sc_theme_research
 from analytics.supply_chain.verification.job import job_sc_research
 from analytics.themes.seed import seed_industry_themes
 from analytics.themes.tiers_seed import seed_theme_tiers
@@ -319,6 +320,11 @@ SCHEDULED_JOBS: tuple[ScheduledIngestJob, ...] = (
     ScheduledIngestJob(
         "sc_theme_candidates", time_(22, 5), job_sc_theme_candidates, Cadence.WEEKLY
     ),
+    # Concept-theme web research then verification (Steps B and C): budgeted search + LLM claim
+    # extraction, deterministic evidence rules, proposal files only. It NEVER promotes: a person
+    # reviews the files and runs `promote`. Gated like sc_research (SUPPLY_CHAIN_RESEARCH_ENABLED,
+    # leader, search key, LLM role); a journaled SKIPPED otherwise. Fires after sc_research.
+    ScheduledIngestJob("sc_theme_research", time_(22, 30), job_sc_theme_research, Cadence.WEEKLY),
     # US price EOD — US markets close 16:00 ET (UTC-4/-5), i.e. ~04:00-05:00 Taipei the next
     # calendar day; 06:00 Taipei gives yfinance's own upstream data a comfortable landing buffer
     # past that close before this pulls. `job_us_price_eod` is calendar-gated the same Mon-Fri

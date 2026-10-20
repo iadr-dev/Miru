@@ -472,7 +472,10 @@ results are written to the private relation files and the loader then refreshes 
   customer") are rejected; sector, peer and concept-stock lists are rejected; a `supplies` claim needs
   relation wording and a `competes` claim explicit rivalry wording; the direction must match and not
   be flipped; the source is rejected when older than `SUPPLY_CHAIN_MAX_SOURCE_AGE_DAYS` (1095) when a
-  date can be parsed, and so is a host whose trust is `rejected`; and the excerpt is scanned with
+  date can be parsed (page text and search metadata first; only when neither yields a date, an
+  unambiguous date in the URL path such as `/YYYY/MM/DD/`, `YYYY-MM-DD`, `/YYYYMMDD` or a
+  `post/YYYYMMDDNN` id, years 2000 to the current year; query strings and other digit runs are
+  ignored; the same rule applies to theme research), and so is a host whose trust is `rejected`; and the excerpt is scanned with
   `governance.textscan` (advice wording or a data-vendor name rejects it).
 - **Aggregate**. Each accepted page becomes `Evidence(checker=llm)`; the grade is
   `domain.rules.grade_from_evidence` (publisher = the page host, so independence is by host). A claim
@@ -513,9 +516,10 @@ results are written to the private relation files and the loader then refreshes 
 
 ### Theme candidates (Step A)
 
-Concept-theme discovery is designed in three steps: **A** deterministic mining of our own entity
-mentions for new candidate themes, **B** evidence gathering and judging per candidate (search plus
-model, budgeted like `verify`), **C** human promotion into a concept-theme file. **Only A exists.**
+Concept-theme discovery is a loop: **A** deterministic mining of our own entity mentions for new
+candidate themes (this section), **B** web research per theme and **C** evidence verification (both
+in "Theme research (Steps B and C)" below), then a **human review** and the explicit `promote` step
+("Promoting proposals"). Nothing before `promote` edits a live concept-theme file.
 
 `analytics/supply_chain/theme_discovery/` (`mining.py` pure, `io.py` files, `job.py` job and CLI) reads
 the private entity catalog, mentions and concept-theme files (never the database) and proposes every
@@ -596,6 +600,84 @@ validated first and one failure writes nothing. `--dry-run` prints the report an
 run appends one line to `themes/promote_log.jsonl` (timestamp, input file names, counts per reason; no
 names). Output is counts per theme and reject reasons with symbols only; exit 1 on an unusable input
 file. Run `load` (or wait for the 06:25 job) afterwards to index the result.
+
+#### Theme research (Steps B and C)
+
+`analytics/supply_chain/theme_research/` turns web pages into **proposal files** that `promote` reads.
+It never edits a live concept-theme file and never calls `promote`.
+
+```
+discover --themes (A)      theme_candidates.jsonl ──┐
+                                                    ├─> research-themes (B) ──> proposals/claims.jsonl
+existing concept themes (rotating, oldest first) ───┘     search -> read -> extract    (raw claims)
+                                                                                          │
+                                  proposals/rejected.jsonl <── verify-themes (C) <───────┘
+                                  (reason codes, no names)     quote guard, trust, staleness,
+                                                               universe, membership, 2nd opinion
+                                                                          │ verified only
+                                                  proposals/new_themes_<UTC date>.yaml
+                                                  proposals/theme_members_<UTC date>.yaml
+                                                                          │
+                                           HUMAN review ──> promote --dry-run ──> promote
+```
+
+**Step B** (`research.py`, `extract.py`, `targets.py`). `python -m analytics.supply_chain research-themes
+[--limit N] [--source candidates|existing|all] [--dry-run]`. Targets: the unresearched entries of
+`themes/theme_candidates.jsonl` in file order (new-theme proposals), and the existing concept themes
+looking for **missing members**, least recently researched first (`themes/research_state.json`
+records the date per theme key and candidate id, replaced atomically; a target that was skipped for a
+cap or an outage is not marked). With `--source all` candidates take the first half of the limit and
+the rest flows to existing themes. Per target: two Brave queries built from the label (`<label>
+概念股`, `<label> 供應鏈 台灣`), then up to `SUPPLY_CHAIN_PAGES_PER_CLAIM` pages through the same
+`SearchProvider` as claim verification (rejected publishers dropped, primary then secondary then
+tertiary preferred; the fetch goes through `dataaccess.web_search`, which carries the SSRF, size and
+timeout limits). A page older than `SUPPLY_CHAIN_MAX_SOURCE_AGE_DAYS` or not mentioning the theme never
+reaches the model. One extraction call per page (`resolve_role_with_override(ModelRole.SUBAGENT,
+SUPPLY_CHAIN_RESEARCH_MODEL)`, the page in the same delimited untrusted block as the claim judge)
+returns `[{company, symbol|null, excerpt, position}]`. A company counts only when the **company
+directory** resolves its name (`verification/directory.py`; a stated symbol is accepted only if the
+directory knows it); anything unresolved, non-Taiwan, already a member, or whose excerpt is not literally
+in the page is dropped and counted. A claim is `{theme, kind, label, symbol, excerpt, url, publisher,
+retrieved_at, position, published_on}` (`theme` = concept theme key or candidate id), appended to
+`themes/proposals/claims.jsonl` (one `O_APPEND` write, de-duplicated on theme + symbol + url).
+
+**Step C** (`verify.py`, `proposals.py`). `verify-themes [--limit N] [--dry-run]` groups the claims
+by (theme, symbol) and applies the **same evidence rules as supply-chain claims**: the symbol must be a
+`tw_company` of the entity catalog (the universe) and resolve in the directory, an existing theme must
+still exist and not already hold the symbol; each claim must pass the **quote guard** (https URL,
+publisher not `rejected`, excerpt at most 200 characters and literally naming the company or an alias
+AND the theme label or alias, compared ignoring case, width, spaces and punctuation, no advice wording,
+source not older than `SUPPLY_CHAIN_MAX_SOURCE_AGE_DAYS` when dated). Surviving sources are graded by
+`verification.pipeline.status_for`: **verified** with at least one primary/secondary source or two
+independent tertiary registrable domains (`independence_key`; subdomains of one site count once, an
+unlisted host is tertiary); a single tertiary source stays a **candidate** and is not written. With
+`SUPPLY_CHAIN_SECOND_OPINION=true` a single weak source must also convince the SYNTHESIS model
+(`SUPPLY_CHAIN_RESEARCH_SECOND_MODEL`), which sees only the excerpt; a refusal for budget skips the
+group instead of writing it. Verified members become the two shapes `promote` reads: member rows
+`{theme_key, symbol, name, position, publisher, url, excerpt, confidence}` for existing themes, and
+`{key, name_zh, name_en, description, related, thin: false, members}` for a candidate that has **at
+least 6** verified members (fewer stay pending; the claims are kept and counted again next run).
+`confidence` is `high` with a primary/secondary source, else `medium`; `position` is the model's
+majority guess. A pair already present in any proposal file is not proposed again, and writing merges
+into the day's files (union, atomic replace), so a re-run changes nothing. Rejected claims append to
+`themes/proposals/rejected.jsonl` as `{theme, symbol, url, rejected_on, reason}` (no names); reasons
+include `unknown_theme`, `already_member`, `not_in_universe`, `url_not_https`, `host_rejected`,
+`excerpt_too_long`, `company_not_in_quote`, `theme_not_in_quote`, `advice_language`,
+`source_too_old`. A new-theme key is the slug of the first ASCII label or alias, else the candidate id;
+review and rename before promoting.
+
+**Gating and budget.** Both commands refuse (exit 1, one line on stderr) without `BRAVE_SEARCH_API_KEY`
+and an LLM role for the research model (and the second model when the second opinion is on); a dry run
+needs them too because it searches and judges, but writes no claim, state, proposal or rejection.
+Caps are `verification/budget.py` with the `SUPPLY_CHAIN_RESEARCH_*` settings (targets/groups count as
+claims); the first cap hit ends the run gracefully. Console output and the journal carry counts and ids
+only (never page text or a company name). Neither command takes the ingest writer lease: they write
+private proposal files only (no index, no DuckDB).
+
+**Job.** `sc_theme_research` (weekly 22:30, leader-only, journaled) runs B then C with the caps and is
+gated exactly like `sc_research`: it journals SKIPPED when `SUPPLY_CHAIN_RESEARCH_ENABLED` is off, the
+process is not the leader, or the search key or LLM role is missing. It never calls `promote`: the
+operator reviews `themes/proposals/*.yaml`, runs `promote FILE... --dry-run`, then `promote`.
 
 ## 5c. 策略盯盤 strategy watch (`analytics/strategy_watch/`)
 
