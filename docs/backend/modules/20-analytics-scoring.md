@@ -570,7 +570,7 @@ operator can audit a drop. Entities below the company threshold are not listed. 
 
 `python -m analytics.supply_chain promote FILE... [--dry-run] [--min-confidence medium|high]`
 (`themes_io/promote.py`) is the explicit, repeatable operator step that turns reviewed proposal files
-into live `reference-data/themes/concepts/*.yaml`. It is never scheduled. A proposal file is a YAML
+into live `reference-data/themes/concepts/*.yaml`. It is never scheduled. Proposal files live under the reference directory (e.g. `reference-data/tools/`): a path that is not a `.yaml`/`.yml` file inside it (after resolving `..` and symlinks) is an invalid input file, exit 1, nothing written. A proposal file is a YAML
 list; each row is either a **new theme** (`key, name_zh, name_en, description, related, thin,
 members[]`) or a **member addition** (`theme_key, symbol, name, position, publisher, url, excerpt,
 confidence`), detected per row. Every failed check is a counted reject reason, never a silent drop:

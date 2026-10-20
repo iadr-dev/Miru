@@ -286,6 +286,41 @@ def test_unusable_proposal_file_raises(root: Path) -> None:
         run_promote(root, [bad], industry=INDUSTRY)
 
 
+def test_proposal_path_must_be_a_yaml_file_inside_the_reference_dir(
+    root: Path, tmp_path_factory: pytest.TempPathFactory
+) -> None:
+    outside = tmp_path_factory.mktemp("outside") / "o.yaml"
+    outside.write_text(yaml.safe_dump([addition()]), encoding="utf-8")
+    inside = proposal(root, [addition()], "ok.yaml")
+    assert pr.safe_proposal_path(root, inside) == inside.resolve()
+    traversal = root / ".." / outside.parent.name / "o.yaml"
+    wrong_suffix = root / "p.txt"
+    wrong_suffix.write_text("[]", encoding="utf-8")
+    cases = [outside, traversal, wrong_suffix, root / "nope.yaml", root]
+    link = root / "link.yaml"
+    try:
+        link.symlink_to(outside)
+        cases.append(link)
+    except OSError:  # symlinks need privileges on Windows
+        pass
+    for bad in cases:
+        with pytest.raises(ProposalFileError, match="inside the reference data directory"):
+            run_promote(root, [bad], industry=INDUSTRY)
+    assert len(concept(root)["members"]) == 1
+    assert not (root / "themes" / "promote_log.jsonl").exists()
+
+
+def test_cli_rejects_path_outside_reference_dir(
+    wired: Path, tmp_path_factory: pytest.TempPathFactory, capsys: pytest.CaptureFixture[str]
+) -> None:
+    outside = tmp_path_factory.mktemp("outside2") / "o.yaml"
+    outside.write_text(yaml.safe_dump([addition()]), encoding="utf-8")
+    assert cli.main(["promote", str(outside)]) == 1
+    err = capsys.readouterr().err
+    assert "proposal must be a .yaml file inside the reference data directory" in err
+    assert len(concept(wired)["members"]) == 1
+
+
 # --- CLI -------------------------------------------------------------------------------------
 
 

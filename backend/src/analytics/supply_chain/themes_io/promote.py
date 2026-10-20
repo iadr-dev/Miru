@@ -123,6 +123,23 @@ class _Roster:
     names: dict[str, set[str]]  # symbol -> normalised catalog names and aliases
 
 
+PROPOSAL_PATH_MESSAGE = "proposal must be a .yaml file inside the reference data directory"
+
+
+def safe_proposal_path(root: Path, candidate: Path) -> Path:
+    """The resolved proposal path, or `ProposalFileError`. Symlinks are resolved first, so a link
+    pointing outside the reference directory is rejected. Read only from the returned value."""
+    base = root.resolve(strict=False)
+    resolved = Path(candidate).resolve(strict=False)
+    if (
+        resolved.suffix.lower() not in {".yaml", ".yml"}
+        or not resolved.is_relative_to(base)
+        or not resolved.is_file()
+    ):
+        raise ProposalFileError(f"{candidate.name}: {PROPOSAL_PATH_MESSAGE}")
+    return resolved
+
+
 def _read_proposals(path: Path) -> list[object]:
     try:
         raw: object = yaml.safe_load(path.read_text(encoding="utf-8"))
@@ -371,7 +388,8 @@ def run_promote(  # noqa: PLR0913 - keyword-only knobs of one entry point
         )
     concepts_dir = root.joinpath(*CONCEPTS_SUBDIR)
     themes = _load_existing(concepts_dir)
-    proposals = [(p, _read_proposals(p)) for p in files]
+    safe_files = [safe_proposal_path(root, p) for p in files]
+    proposals = [(p, _read_proposals(p)) for p in safe_files]
     promoter = _Promoter(
         themes,
         _roster(root, industry),
