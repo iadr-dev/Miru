@@ -77,6 +77,64 @@ def _add_unique_sql(name: str, constraint: UniqueConstraint, table: Table, diale
     return f"ALTER TABLE {quote(table.name)} ADD CONSTRAINT {quote(name)} UNIQUE ({cols})"
 
 
+def _missing_column_steps(table: Table, live_columns: set[str], dialect: Dialect) -> list[_Step]:
+    steps: list[_Step] = []
+    for column in table.columns:
+        if column.name in live_columns:
+            continue
+        steps.append(
+            _Step(
+                f"column {table.name}.{column.name}",
+                _add_column_sql(table, column, dialect),
+                is_column=True,
+            )
+        )
+        if column.unique:
+            name = f"uq_{table.name}_{column.name}"
+            steps.append(
+                _Step(
+                    f"unique {table.name}.{name}",
+                    _unique_index_sql(name, table, [column.name], dialect),
+                    is_column=False,
+                )
+            )
+    return steps
+
+
+def _missing_index_steps(table: Table, live_index_names: set[str], dialect: Dialect) -> list[_Step]:
+    return [
+        _Step(
+            f"index {table.name}.{index.name}",
+            str(CreateIndex(index, if_not_exists=True).compile(dialect=dialect)),
+            is_column=False,
+        )
+        for index in table.indexes
+        if index.name is not None and index.name not in live_index_names
+    ]
+
+
+def _missing_unique_steps(
+    table: Table, live_unique_names: set[str], live_index_names: set[str], dialect: Dialect
+) -> list[_Step]:
+    steps: list[_Step] = []
+    for constraint in table.constraints:
+        if not isinstance(constraint, UniqueConstraint):
+            continue
+        constraint_name = constraint.name
+        if not isinstance(constraint_name, str):
+            continue
+        if constraint_name in live_unique_names or constraint_name in live_index_names:
+            continue
+        steps.append(
+            _Step(
+                f"unique {table.name}.{constraint_name}",
+                _add_unique_sql(constraint_name, constraint, table, dialect),
+                is_column=False,
+            )
+        )
+    return steps
+
+
 def _plan(conn: Connection, metadata: MetaData) -> list[_Step]:
     """Everything the live schema is missing relative to `metadata`, in a safe order."""
     inspector = inspect(conn)
@@ -89,50 +147,9 @@ def _plan(conn: Connection, metadata: MetaData) -> list[_Step]:
         live_columns = {c["name"] for c in inspector.get_columns(table.name)}
         live_index_names = {i["name"] for i in inspector.get_indexes(table.name)}
         live_unique_names = {u["name"] for u in inspector.get_unique_constraints(table.name)}
-        for column in table.columns:
-            if column.name in live_columns:
-                continue
-            steps.append(
-                _Step(
-                    f"column {table.name}.{column.name}",
-                    _add_column_sql(table, column, dialect),
-                    is_column=True,
-                )
-            )
-            if column.unique:
-                name = f"uq_{table.name}_{column.name}"
-                steps.append(
-                    _Step(
-                        f"unique {table.name}.{name}",
-                        _unique_index_sql(name, table, [column.name], dialect),
-                        is_column=False,
-                    )
-                )
-        for index in table.indexes:
-            if index.name is None or index.name in live_index_names:
-                continue
-            steps.append(
-                _Step(
-                    f"index {table.name}.{index.name}",
-                    str(CreateIndex(index, if_not_exists=True).compile(dialect=dialect)),
-                    is_column=False,
-                )
-            )
-        for constraint in table.constraints:
-            if not isinstance(constraint, UniqueConstraint):
-                continue
-            constraint_name = constraint.name
-            if not isinstance(constraint_name, str):
-                continue
-            if constraint_name in live_unique_names or constraint_name in live_index_names:
-                continue
-            steps.append(
-                _Step(
-                    f"unique {table.name}.{constraint_name}",
-                    _add_unique_sql(constraint_name, constraint, table, dialect),
-                    is_column=False,
-                )
-            )
+        steps += _missing_column_steps(table, live_columns, dialect)
+        steps += _missing_index_steps(table, live_index_names, dialect)
+        steps += _missing_unique_steps(table, live_unique_names, live_index_names, dialect)
     # Columns first: indexes and unique keys may reference a column added in the same pass.
     return sorted(steps, key=lambda step: not step.is_column)
 
