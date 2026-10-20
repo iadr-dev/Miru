@@ -18,8 +18,9 @@ themes only. `promote FILE... [--dry-run] [--min-confidence medium|high]` turns 
 proposal files into live concept-theme files (see `themes_io/promote.py`); an explicit
 operator step, never scheduled.
 `research-themes [--limit N] [--source candidates|existing|all] [--dry-run]` (Step B) and
-`verify-themes [--limit N] [--dry-run]` (Step C) turn web research into proposal files for
-`promote` to read after a person has reviewed them (see `theme_research/`); counts and ids only.
+`verify-themes [--limit N] [--covered-threshold X] [--dry-run]` (Step C) turn web research into
+proposal files for `promote` to read after a person has reviewed them (see `theme_research/`);
+counts and ids only.
 """
 
 from __future__ import annotations
@@ -50,6 +51,7 @@ from analytics.supply_chain.theme_discovery.industry import (
 )
 from analytics.supply_chain.theme_discovery.job import run_themes_command
 from analytics.supply_chain.theme_research.job import run_theme_command
+from analytics.supply_chain.theme_research.verify import COVERED_THRESHOLD
 from analytics.supply_chain.themes_io.loader import ConceptFileError, load_concept_themes
 from analytics.supply_chain.themes_io.promote import (
     IndustryRoster,
@@ -271,6 +273,13 @@ def main(argv: list[str] | None = None) -> int:
         "one existing concept theme (default 0.6)",
     )
     parser.add_argument(
+        "--covered-threshold",
+        type=float,
+        default=COVERED_THRESHOLD,
+        help="verify-themes: a new-theme candidate whose verified members are at least this "
+        "share inside one existing concept theme is not proposed as a theme (default 0.8)",
+    )
+    parser.add_argument(
         "--source",
         choices=["candidates", "gaps", "stale", "existing", "all"],
         default="all",
@@ -291,9 +300,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.command in ("research-themes", "verify-themes"):
         if args.command == "research-themes" and args.source in ("gaps", "stale"):
             parser.error("research-themes --source is one of candidates|existing|all")
+        if not 0 < args.covered_threshold <= 1:
+            parser.error("--covered-threshold must be above 0 and at most 1")
         return asyncio.run(
             run_theme_command(
-                args.command, limit=args.limit, dry_run=args.dry_run, source=args.source
+                args.command,
+                limit=args.limit,
+                dry_run=args.dry_run,
+                source=args.source,
+                covered_threshold=args.covered_threshold,
             )
         )
     if args.source == "existing":
