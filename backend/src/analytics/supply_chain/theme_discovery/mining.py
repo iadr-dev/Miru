@@ -166,6 +166,92 @@ def _best_overlap(
     return best[1] if best else None
 
 
+@dataclass(frozen=True)
+class _Filters:
+    """The precision filters of one run, applied in their documented order."""
+
+    covered: set[str]
+    stop: set[str]
+    n_tw: int
+    max_company_share: float
+    groups: Mapping[str, frozenset[str]]
+    overlap_threshold: float
+
+    def reason(self, group: _Group, per_company: Mapping[str, int]) -> str | None:
+        if group.names & self.covered:
+            return "covered_by_name"
+        if group.names & self.stop:
+            return "stoplist"
+        if self.n_tw > 0 and len(per_company) / self.n_tw > self.max_company_share:
+            return "generic"
+        hit = _best_overlap(frozenset(per_company), self.groups, self.overlap_threshold)
+        return f"overlap:{hit}" if hit is not None else None
+
+
+def _index_mentions(
+    mentions: Sequence[EntityMention],
+) -> tuple[dict[str, dict[str, int]], dict[str, set[str]]]:
+    """Per entity: mentions per TW company, and the sections it was mentioned in."""
+    by_entity: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    sections: dict[str, set[str]] = defaultdict(set)
+    for m in mentions:
+        if m.count <= 0 or market_of_symbol(m.symbol) != "TW":
+            continue
+        by_entity[m.entity_id][m.symbol] += m.count
+        sections[m.entity_id].add(m.section.value)
+    return by_entity, sections
+
+
+def _group_totals(
+    group: _Group, by_entity: Mapping[str, dict[str, int]], sections: Mapping[str, set[str]]
+) -> tuple[dict[str, int], set[str]]:
+    per_company: dict[str, int] = defaultdict(int)
+    sects: set[str] = set()
+    for entity in group.entities:
+        for symbol, count in by_entity.get(entity.id, {}).items():
+            per_company[symbol] += count
+        sects |= sections.get(entity.id, set())
+    return per_company, sects
+
+
+def _representative(group: _Group, by_entity: Mapping[str, dict[str, int]]) -> Entity:
+    return min(
+        group.entities,
+        key=lambda e: (
+            -len(by_entity.get(e.id, {})),
+            -sum(by_entity.get(e.id, {}).values()),
+            e.id,
+        ),
+    )
+
+
+def _candidate(  # noqa: PLR0913 - one value per output field
+    cid: str,
+    rep: Entity,
+    per_company: Mapping[str, int],
+    *,
+    sects: set[str],
+    score: float,
+    trend: tuple[str, Trend, int],
+) -> ThemeCandidate:
+    ranked = sorted(per_company.items(), key=lambda kv: (-kv[1], kv[0]))
+    first_seen, trend_kind, delta = trend
+    return ThemeCandidate(
+        candidate_id=cid,
+        entity_id=rep.id,
+        label=rep.id,
+        type=rep.type.value,
+        company_count=len(per_company),
+        total_mentions=sum(per_company.values()),
+        specificity=score,
+        top_companies=tuple(s for s, _ in ranked[:MAX_TOP_COMPANIES]),
+        sections=tuple(sorted(sects)),
+        first_seen=first_seen,
+        trend=trend_kind,
+        trend_delta=delta,
+    )
+
+
 def mine(  # noqa: PLR0913 - keyword-only knobs of one pure function
     catalog: Sequence[Entity],
     mentions: Sequence[EntityMention],
@@ -180,54 +266,32 @@ def mine(  # noqa: PLR0913 - keyword-only knobs of one pure function
     stoplist: Collection[str] = (),
     industry_groups: Mapping[str, frozenset[str]] | None = None,
 ) -> MiningOutcome:
-    covered = covered_names(existing_themes)
-    stop = {n for n in (normalize(s) for s in stoplist) if n}
     n_tw = sum(1 for e in catalog if e.type is EntityType.TW_COMPANY)
     groups: dict[str, frozenset[str]] = dict(concept_groups(existing_themes))
     groups.update(industry_groups or {})
+    filters = _Filters(
+        covered=covered_names(existing_themes),
+        stop={n for n in (normalize(s) for s in stoplist) if n},
+        n_tw=n_tw,
+        max_company_share=max_company_share,
+        groups=groups,
+        overlap_threshold=overlap_threshold,
+    )
     pool = [e for e in catalog if e.type in CANDIDATE_TYPES and not is_noise(e.id)]
-    by_entity: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
-    sections: dict[str, set[str]] = defaultdict(set)
-    for m in mentions:
-        if m.count <= 0 or market_of_symbol(m.symbol) != "TW":
-            continue
-        by_entity[m.entity_id][m.symbol] += m.count
-        sections[m.entity_id].add(m.section.value)
+    by_entity, sections = _index_mentions(mentions)
     stamp = (today or date.min).isoformat()
     prev = previous or {}
     found: list[ThemeCandidate] = []
     skipped: list[SkippedCandidate] = []
     for group in _merge_groups(pool):
-        per_company: dict[str, int] = defaultdict(int)
-        sects: set[str] = set()
-        for entity in group.entities:
-            for symbol, count in by_entity.get(entity.id, {}).items():
-                per_company[symbol] += count
-            sects |= sections.get(entity.id, set())
+        per_company, sects = _group_totals(group, by_entity, sections)
         if len(per_company) < min_companies:
             continue
-        rep = min(
-            group.entities,
-            key=lambda e: (
-                -len(by_entity.get(e.id, {})),
-                -sum(by_entity.get(e.id, {}).values()),
-                e.id,
-            ),
-        )
+        rep = _representative(group, by_entity)
         cid = _candidate_id(group)
         n_companies = len(per_company)
         score = specificity_score(n_companies, n_tw)
-        reason: str | None = None
-        if group.names & covered:
-            reason = "covered_by_name"
-        elif group.names & stop:
-            reason = "stoplist"
-        elif n_tw > 0 and n_companies / n_tw > max_company_share:
-            reason = "generic"
-        else:
-            hit = _best_overlap(frozenset(per_company), groups, overlap_threshold)
-            if hit is not None:
-                reason = f"overlap:{hit}"
+        reason = filters.reason(group, per_company)
         if reason is not None:
             skipped.append(
                 SkippedCandidate(
@@ -240,24 +304,8 @@ def mine(  # noqa: PLR0913 - keyword-only knobs of one pure function
                 )
             )
             continue
-        ranked = sorted(per_company.items(), key=lambda kv: (-kv[1], kv[0]))
-        first_seen, trend, delta = _trend(n_companies, prev.get(cid), stamp)
-        found.append(
-            ThemeCandidate(
-                candidate_id=cid,
-                entity_id=rep.id,
-                label=rep.id,
-                type=rep.type.value,
-                company_count=n_companies,
-                total_mentions=sum(per_company.values()),
-                specificity=score,
-                top_companies=tuple(s for s, _ in ranked[:MAX_TOP_COMPANIES]),
-                sections=tuple(sorted(sects)),
-                first_seen=first_seen,
-                trend=trend,
-                trend_delta=delta,
-            )
-        )
+        trend = _trend(n_companies, prev.get(cid), stamp)
+        found.append(_candidate(cid, rep, per_company, sects=sects, score=score, trend=trend))
     found.sort(key=lambda c: (-c.specificity, -c.total_mentions, c.label, c.candidate_id))
     skipped.sort(key=lambda s: (s.reason, -s.company_count, s.label, s.candidate_id))
     return MiningOutcome(found[: max(limit, 0)], skipped)

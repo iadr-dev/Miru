@@ -40,7 +40,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import cast
 
 import structlog
@@ -65,6 +65,7 @@ from config.settings import Settings, get_settings
 from llm.base import (
     ImagePart,
     LLMClient,
+    LLMEvent,
     LLMResponse,
     Message,
     MessageRole,
@@ -234,6 +235,19 @@ def _render_result_for_model(result: BaseModel) -> str:
     if len(text) > _MAX_MODEL_RESULT_CHARS:
         text = f"{text[:_MAX_MODEL_RESULT_CHARS]}...<truncated, {len(text)} chars total>"
     return text
+
+
+@dataclass
+class _StepStream:
+    """Mutable per-Step state `_stream_step` folds the LLM event stream into."""
+
+    text_parts: list[str] = field(default_factory=list[str])
+    tool_calls: list[ToolCall] = field(default_factory=list[ToolCall])
+    stop_reason: StopReason = StopReason.END_TURN
+    usage: TokenUsage = field(
+        default_factory=lambda: TokenUsage(input_tokens=0, output_tokens=0, total_tokens=0)
+    )
+    answer_buffer: str = ""
 
 
 class AgentLoop:
@@ -504,63 +518,82 @@ class AgentLoop:
         appends here, in addition to firing the observe-only `web_search`/`thinking` hooks, so
         `TurnResult.web_search_sources`/`thinking_text` reflect the whole Turn (not just each
         hook's live SSE echo, which nothing durable ever re-reads once the turn ends)."""
-        text_parts: list[str] = []
-        tool_calls: list[ToolCall] = []
-        stop_reason = StopReason.END_TURN
-        usage = TokenUsage(input_tokens=0, output_tokens=0, total_tokens=0)
-        answer_buffer = ""
+        acc = _StepStream()
         async for event in self._llm.stream(
             messages, tools=self._tool_specs, native_web_search=self._native_web_search
         ):
-            if isinstance(event, TextDeltaEvent):
-                text_parts.append(event.text)
-                answer_buffer += event.text
-                chunks = guardrails.split_sentences_streaming(answer_buffer)
-                if len(chunks) > 1:
-                    *complete, answer_buffer = chunks
-                    for chunk in complete:
-                        safe_chunk = guardrails.scan_sentence(chunk)
-                        if safe_chunk:
-                            await self._run_answer_delta_hooks(safe_chunk)
-            elif isinstance(event, ThinkingDeltaEvent):
-                verdict = guardrails.check_output(event.text, has_market_data=False)
-                safe_text = event.text if verdict.redacted_text is None else verdict.redacted_text
-                if safe_text:
-                    thinking_parts.append(safe_text)
-                    await self._run_thinking_hooks(safe_text)
-            elif isinstance(event, ToolCallEvent):
-                tool_calls.append(event.tool_call)
-            elif isinstance(event, WebSearchResultEvent):
-                web_search_sources.extend(event.sources)
-                await self._run_web_search_hooks(event)
-            elif isinstance(event, StreamDoneEvent):
-                stop_reason = event.stop_reason
-                usage = event.usage
-            # `ToolCallDeltaEvent` — the incrementally-assembled tool-call fragment every
-            # streaming client also emits before its final `ToolCallEvent` — carries nothing
-            # this Step needs; the client itself already assembles the complete `ToolCallEvent`
-            # this loop consumes above, so the fragment is intentionally a no-op here.
-        if not tool_calls and (call := self._recovered_text_call("".join(text_parts))) is not None:
+            await self._consume_event(
+                acc, event, web_search_sources=web_search_sources, thinking_parts=thinking_parts
+            )
+        if (
+            not acc.tool_calls
+            and (call := self._recovered_text_call("".join(acc.text_parts))) is not None
+        ):
             # The model wrote its tool call out as text: run it as the call it was meant to be and
             # drop the raw JSON from the reply.
-            tool_calls.append(call)
-            text_parts.clear()
-            answer_buffer = ""
-            stop_reason = StopReason.TOOL_USE
+            acc.tool_calls.append(call)
+            acc.text_parts.clear()
+            acc.answer_buffer = ""
+            acc.stop_reason = StopReason.TOOL_USE
         # The stream ended with a trailing fragment still held back (either a genuinely final
         # sentence with no more text coming, or a short answer with no terminator at all, e.g.
         # "好的") — flush it now rather than losing it, since no further delta will ever close it.
-        trailing = guardrails.scan_sentence(answer_buffer)
+        trailing = guardrails.scan_sentence(acc.answer_buffer)
         if trailing:
             await self._run_answer_delta_hooks(trailing)
         return LLMResponse(
-            text="".join(text_parts) or None,
-            tool_calls=tuple(tool_calls),
-            stop_reason=stop_reason,
-            usage=usage.model_copy(
+            text="".join(acc.text_parts) or None,
+            tool_calls=tuple(acc.tool_calls),
+            stop_reason=acc.stop_reason,
+            usage=acc.usage.model_copy(
                 update={"provider": self._llm.provider_id, "model": self._llm.model_id}
             ),
         )
+
+    async def _consume_event(
+        self,
+        acc: _StepStream,
+        event: LLMEvent,
+        *,
+        web_search_sources: list[WebSearchSource],
+        thinking_parts: list[str],
+    ) -> None:
+        if isinstance(event, TextDeltaEvent):
+            await self._on_text_delta(acc, event)
+        elif isinstance(event, ThinkingDeltaEvent):
+            await self._on_thinking_delta(event, thinking_parts)
+        elif isinstance(event, ToolCallEvent):
+            acc.tool_calls.append(event.tool_call)
+        elif isinstance(event, WebSearchResultEvent):
+            web_search_sources.extend(event.sources)
+            await self._run_web_search_hooks(event)
+        elif isinstance(event, StreamDoneEvent):
+            acc.stop_reason = event.stop_reason
+            acc.usage = event.usage
+        # `ToolCallDeltaEvent` — the incrementally-assembled tool-call fragment every
+        # streaming client also emits before its final `ToolCallEvent` — carries nothing
+        # this Step needs; the client itself already assembles the complete `ToolCallEvent`
+        # this loop consumes above, so the fragment is intentionally a no-op here.
+
+    async def _on_text_delta(self, acc: _StepStream, event: TextDeltaEvent) -> None:
+        acc.text_parts.append(event.text)
+        acc.answer_buffer += event.text
+        chunks = guardrails.split_sentences_streaming(acc.answer_buffer)
+        if len(chunks) > 1:
+            *complete, acc.answer_buffer = chunks
+            for chunk in complete:
+                safe_chunk = guardrails.scan_sentence(chunk)
+                if safe_chunk:
+                    await self._run_answer_delta_hooks(safe_chunk)
+
+    async def _on_thinking_delta(
+        self, event: ThinkingDeltaEvent, thinking_parts: list[str]
+    ) -> None:
+        verdict = guardrails.check_output(event.text, has_market_data=False)
+        safe_text = event.text if verdict.redacted_text is None else verdict.redacted_text
+        if safe_text:
+            thinking_parts.append(safe_text)
+            await self._run_thinking_hooks(safe_text)
 
     def _recovered_text_call(self, text: str) -> ToolCall | None:
         recovered = recover_textual_tool_call(text, {tool.name for tool in self._tools})

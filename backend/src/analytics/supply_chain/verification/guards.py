@@ -324,7 +324,77 @@ def has_advice_language(text: str) -> bool:
     return check_output(text, has_market_data=False).redacted_text is not None
 
 
-def evaluate(  # noqa: PLR0913, PLR0911, PLR0912 - one flat and ordered rule list is the point
+def _claim_rule(
+    judgement: Judgement, kind: Kind, url: str, trust_table: Mapping[str, Trust] | None
+) -> Reason | None:
+    """The model said yes, the host is usable and the direction is the claimed one."""
+    if not judgement.supports:
+        return Reason.NOT_SUPPORTED
+    if trust_for_url(url, trust_table) is Trust.REJECTED:
+        return Reason.HOST_REJECTED
+    if judgement.direction is None or judgement.direction != kind.value:
+        return Reason.DIRECTION
+    return None
+
+
+def _verdict_rule(judgement: Judgement, kind: Kind) -> Reason | None:
+    """Supplier-first order, present tense and a named counterparty, as the model flagged them."""
+    if kind is Kind.SUPPLIES and not judgement.supplier_is_first:
+        return Reason.FLIPPED
+    if not judgement.current:
+        return Reason.NOT_CURRENT
+    if judgement.anonymous_counterparty:
+        return Reason.ANONYMOUS
+    return None
+
+
+def _excerpt_rule(
+    excerpt: str,
+    page_text: str,
+    supplier_names: Iterable[str],
+    customer_names: Iterable[str],
+) -> Reason | None:
+    """The excerpt exists, fits, is literally in the page and names both companies."""
+    if not excerpt:
+        return Reason.NO_EXCERPT
+    if len(excerpt) > EXCERPT_MAX:
+        return Reason.EXCERPT_LONG
+    if not excerpt_in_page(excerpt, page_text):
+        return Reason.NOT_IN_PAGE
+    if not (mentions_any(excerpt, supplier_names) and mentions_any(excerpt, customer_names)):
+        return Reason.NAMES_MISSING
+    return None
+
+
+def _wording_rule(excerpt: str, kind: Kind) -> Reason | None:
+    """The excerpt reads as a present, named, explicit relationship of the claimed kind."""
+    if is_anonymous(excerpt):
+        return Reason.ANONYMOUS
+    if has_unqualified_past_marker(excerpt):
+        return Reason.PAST_TENSE
+    if is_peer_or_concept_list(excerpt):
+        return Reason.PEER_LIST
+    if kind is Kind.SUPPLIES and not has_relation_wording(excerpt):
+        return Reason.NO_RELATION
+    if kind is Kind.COMPETES and not has_rivalry_wording(excerpt):
+        return Reason.NO_RIVALRY
+    return None
+
+
+def _age_rule(
+    judgement: Judgement, page_published: date | None, today: date, max_age_days: int
+) -> Reason | None:
+    if source_too_old(page_published, today, max_age_days):
+        return Reason.SOURCE_OLD
+    if (
+        judgement.as_of_year is not None
+        and judgement.as_of_year < (today - timedelta(days=max_age_days)).year
+    ):
+        return Reason.AS_OF_OLD
+    return None
+
+
+def evaluate(  # noqa: PLR0913 - one value per guard input
     judgement: Judgement,
     *,
     kind: Kind,
@@ -339,47 +409,15 @@ def evaluate(  # noqa: PLR0913, PLR0911, PLR0912 - one flat and ordered rule lis
 ) -> Reason:
     """The first rule the judgement breaks, or `Reason.OK`. The order is stable (cheapest and most
     decisive first) so rejection reasons are comparable across runs."""
-    if not judgement.supports:
-        return Reason.NOT_SUPPORTED
-    if trust_for_url(url, trust_table) is Trust.REJECTED:
-        return Reason.HOST_REJECTED
-    if judgement.direction is None or judgement.direction != kind.value:
-        return Reason.DIRECTION
-    if kind is Kind.SUPPLIES and not judgement.supplier_is_first:
-        return Reason.FLIPPED
-    if not judgement.current:
-        return Reason.NOT_CURRENT
-    if judgement.anonymous_counterparty:
-        return Reason.ANONYMOUS
     excerpt = judgement.excerpt.strip()
-    if not excerpt:
-        return Reason.NO_EXCERPT
-    if len(excerpt) > EXCERPT_MAX:
-        return Reason.EXCERPT_LONG
-    if not excerpt_in_page(excerpt, page_text):
-        return Reason.NOT_IN_PAGE
-    if not (mentions_any(excerpt, supplier_names) and mentions_any(excerpt, customer_names)):
-        return Reason.NAMES_MISSING
-    if is_anonymous(excerpt):
-        return Reason.ANONYMOUS
-    if has_unqualified_past_marker(excerpt):
-        return Reason.PAST_TENSE
-    if is_peer_or_concept_list(excerpt):
-        return Reason.PEER_LIST
-    if kind is Kind.SUPPLIES and not has_relation_wording(excerpt):
-        return Reason.NO_RELATION
-    if kind is Kind.COMPETES and not has_rivalry_wording(excerpt):
-        return Reason.NO_RIVALRY
-    if source_too_old(page_published, today, max_age_days):
-        return Reason.SOURCE_OLD
-    if (
-        judgement.as_of_year is not None
-        and judgement.as_of_year < (today - timedelta(days=max_age_days)).year
-    ):
-        return Reason.AS_OF_OLD
-    if has_advice_language(excerpt):
-        return Reason.ADVICE
-    return Reason.OK
+    return (
+        _claim_rule(judgement, kind, url, trust_table)
+        or _verdict_rule(judgement, kind)
+        or _excerpt_rule(excerpt, page_text, supplier_names, customer_names)
+        or _wording_rule(excerpt, kind)
+        or _age_rule(judgement, page_published, today, max_age_days)
+        or (Reason.ADVICE if has_advice_language(excerpt) else Reason.OK)
+    )
 
 
 __all__ = [

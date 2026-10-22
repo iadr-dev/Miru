@@ -23,6 +23,7 @@ from analytics.supply_chain.verification.directory import CompanyDirectory
 from analytics.supply_chain.verification.judge import (
     REASON_BUDGET,
     Assessment,
+    GapFinding,
     JudgeContext,
     assess_gap,
     assess_pair,
@@ -79,6 +80,18 @@ def _as_of(evidence: Sequence[Evidence], years: Sequence[int]) -> date | None:
     if dated:
         return max(dated)
     return date(max(years), 1, 1) if years else None
+
+
+def _collect_pair_evidence(collected: _Collected, page: Page, assessment: Assessment) -> bool:
+    """Fold an accepted assessment into the claim; True when the page loop should stop (the
+    evidence reached a high grade, or the budget refused the model call)."""
+    if assessment.accepted and assessment.evidence is not None:
+        collected.evidence.append(assessment.evidence)
+        collected.pages.append(page)
+        if assessment.as_of_year is not None:
+            collected.years.append(assessment.as_of_year)
+        return grade_from_evidence(collected.evidence) is Grade.HIGH
+    return assessment.reason == REASON_BUDGET
 
 
 class Pipeline:
@@ -168,14 +181,7 @@ class Pipeline:
             )
             self._note(assessment)
             examined += int(assessment.reason != REASON_BUDGET)
-            if assessment.accepted and assessment.evidence is not None:
-                collected.evidence.append(assessment.evidence)
-                collected.pages.append(page)
-                if assessment.as_of_year is not None:
-                    collected.years.append(assessment.as_of_year)
-                if grade_from_evidence(collected.evidence) is Grade.HIGH:
-                    break
-            elif assessment.reason == REASON_BUDGET:
+            if _collect_pair_evidence(collected, page, assessment):
                 break
         if not collected.evidence:
             return self._unsupported(target, examined)
@@ -246,25 +252,34 @@ class Pipeline:
                 self._client, target, page, self._directory, ctx=self._ctx(), budget=self.budget
             )
             examined += int(page_reason != REASON_BUDGET)
-            if page_reason:
-                self._bump(page_reason)
-                if page_reason == REASON_BUDGET:
-                    break
-            for finding in findings:
-                self._note(finding.assessment)
-                if not (finding.assessment.accepted and finding.assessment.evidence):
-                    continue
-                entry = found.setdefault(
-                    finding.target.claim_id,
-                    _Collected(finding.target.supplier, finding.customer, finding.target),
-                )
-                entry.evidence.append(finding.assessment.evidence)
-                if finding.assessment.as_of_year is not None:
-                    entry.years.append(finding.assessment.as_of_year)
+            if self._note_page_reason(page_reason):
+                break
+            self._absorb_gap_findings(found, findings)
         results = tuple(self._finish_plain(c) for c in found.values())
         if not results:
             return self._unsupported(target, examined)
         return ClaimOutcome(claim_id=target.claim_id, kind=OutcomeKind.VERIFIED, results=results)
+
+    def _note_page_reason(self, page_reason: str) -> bool:
+        """Count why a page could not be asked; True when that reason is the budget (stop)."""
+        if page_reason:
+            self._bump(page_reason)
+        return page_reason == REASON_BUDGET
+
+    def _absorb_gap_findings(
+        self, found: dict[str, _Collected], findings: list[GapFinding]
+    ) -> None:
+        for finding in findings:
+            self._note(finding.assessment)
+            if not (finding.assessment.accepted and finding.assessment.evidence):
+                continue
+            entry = found.setdefault(
+                finding.target.claim_id,
+                _Collected(finding.target.supplier, finding.customer, finding.target),
+            )
+            entry.evidence.append(finding.assessment.evidence)
+            if finding.assessment.as_of_year is not None:
+                entry.years.append(finding.assessment.as_of_year)
 
     def _finish_plain(self, collected: _Collected) -> ClaimResult:
         grade = grade_from_evidence(collected.evidence) or Grade.LOW
@@ -292,6 +307,66 @@ def status_for(evidence: Sequence[Evidence]) -> Status:
     )
 
 
+@dataclass
+class _Tally:
+    verified: int = 0
+    candidates: int = 0
+    rejected: int = 0
+    skipped: int = 0
+    written: int = 0
+    outcomes: dict[str, str] = field(default_factory=lambda: {})
+    stopped: str | None = None
+
+
+@dataclass(frozen=True)
+class _Sinks:
+    writer: RelationWriter | None
+    rejected_file: Path | None
+    today: date
+    dry_run: bool
+
+
+async def _record_verified(
+    tally: _Tally, pipeline: Pipeline, sinks: _Sinks, target: Target, outcome: ClaimOutcome
+) -> bool:
+    """Count and write a verified claim; True when the run must stop (not the leader)."""
+    has_candidate = any(r.status is Status.CANDIDATE for r in outcome.results)
+    tally.verified += int(not has_candidate)
+    tally.candidates += int(has_candidate)
+    if sinks.writer is None:
+        return False
+    try:
+        report = await anyio.to_thread.run_sync(sinks.writer.apply, outcome.results)
+        tally.written += report.rows_written
+    except NotLeaderError:
+        tally.stopped = STOP_NOT_LEADER
+        return True
+    except WriterError as exc:
+        pipeline.note_write_failure()
+        logger.warning("sc_research_write_failed", claim_id=target.claim_id, error=str(exc))
+    return False
+
+
+async def _record_outcome(
+    tally: _Tally, pipeline: Pipeline, sinks: _Sinks, target: Target, outcome: ClaimOutcome
+) -> bool:
+    """Fold one claim's outcome into the tally (writing or logging it); True to stop the run."""
+    if outcome.kind is OutcomeKind.VERIFIED:
+        return await _record_verified(tally, pipeline, sinks, target, outcome)
+    if outcome.kind is OutcomeKind.REJECTED:
+        tally.rejected += 1
+        if sinks.rejected_file is not None and not sinks.dry_run:
+            append_rejection(
+                sinks.rejected_file,
+                claim_id=target.claim_id,
+                on=sinks.today,
+                reason=outcome.reason,
+            )
+    else:
+        tally.skipped += 1
+    return False
+
+
 async def run_pipeline(  # noqa: PLR0913 - collaborators are injected; one per seam
     targets: Sequence[Target],
     pipeline: Pipeline,
@@ -304,55 +379,30 @@ async def run_pipeline(  # noqa: PLR0913 - collaborators are injected; one per s
     """Run the targets in order until they or the budget run out. Writes after each claim so a
     crash loses at most the claim in flight."""
     budget = pipeline.budget
-    verified = candidates = rejected = skipped = written = 0
-    outcomes: dict[str, str] = {}
-    stopped: str | None = None
+    sinks = _Sinks(writer, rejected_file, today, dry_run)
+    tally = _Tally()
     for target in targets:
         if not budget.try_claim():
             break
         outcome = await pipeline.verify_target(target)
-        outcomes[target.claim_id] = outcome.kind.value
-        if outcome.kind is OutcomeKind.VERIFIED:
-            has_candidate = any(r.status is Status.CANDIDATE for r in outcome.results)
-            verified += int(not has_candidate)
-            candidates += int(has_candidate)
-            if writer is not None:
-                try:
-                    report = await anyio.to_thread.run_sync(writer.apply, outcome.results)
-                    written += report.rows_written
-                except NotLeaderError:
-                    stopped = STOP_NOT_LEADER
-                    break
-                except WriterError as exc:
-                    pipeline.note_write_failure()
-                    logger.warning(
-                        "sc_research_write_failed", claim_id=target.claim_id, error=str(exc)
-                    )
-        elif outcome.kind is OutcomeKind.REJECTED:
-            rejected += 1
-            if rejected_file is not None and not dry_run:
-                append_rejection(
-                    rejected_file, claim_id=target.claim_id, on=today, reason=outcome.reason
-                )
-        else:
-            skipped += 1
-        if budget.exhausted:
+        tally.outcomes[target.claim_id] = outcome.kind.value
+        if await _record_outcome(tally, pipeline, sinks, target, outcome) or budget.exhausted:
             break
     return RunSummary(
-        claims_tried=len(outcomes),
-        verified=verified,
-        candidates=candidates,
-        rejected=rejected,
-        skipped=skipped,
+        claims_tried=len(tally.outcomes),
+        verified=tally.verified,
+        candidates=tally.candidates,
+        rejected=tally.rejected,
+        skipped=tally.skipped,
         searches=budget.searches,
         pages=budget.pages,
         llm_calls=budget.llm_calls,
         spend_usd=round(budget.spend_usd, 4),
-        stopped_by=stopped or budget.stopped_by,
+        stopped_by=tally.stopped or budget.stopped_by,
         dry_run=dry_run,
-        rows_written=written,
+        rows_written=tally.written,
         reasons=dict(pipeline.reasons),
-        outcomes=outcomes,
+        outcomes=tally.outcomes,
     )
 
 
