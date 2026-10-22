@@ -2187,9 +2187,6 @@
       "estimatedCost": "Estimated cost, not a billed charge"
     }
   },
-  "disclaimer": {
-    "text": "Analysis from Miru is data observation, not investment advice."
-  },
   "meta": {
     "title": "Miru — AI analysis companion for Taiwan stocks",
     "description": "Miru is an AI analysis companion for Taiwan stocks & ETFs — data, the tape, and the flows. Its analysis is data observation, not investment advice."
@@ -4193,7 +4190,7 @@
       "notFoundTitle": "Theme not found",
       "notFoundBody": "The theme may have been removed. Go back to the Themes tab on Market to pick another.",
       "backToThemes": "Back to themes",
-      "quoteNote": "Change is the latest close against the previous trading day. Theme groupings are data organisation, not investment advice.",
+      "quoteNote": "Change is the latest close against the previous trading day. Theme groupings are data organisation.",
       "showAll": "Show all ({count} more)",
       "showFewer": "Show fewer"
     },
@@ -4208,7 +4205,7 @@
       "avgLabel": "Average change",
       "avgSample": "from {count}",
       "avgUnavailable": "No quotes",
-      "quoteNote": "Average change is the latest close against the previous trading day. Theme groupings are data organisation, not investment advice."
+      "quoteNote": "Average change is the latest close against the previous trading day. Theme groupings are data organisation."
     }
   }
 }

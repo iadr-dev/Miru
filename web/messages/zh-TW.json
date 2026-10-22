@@ -2187,9 +2187,6 @@
       "estimatedCost": "預估費用，非實際帳單金額"
     }
   },
-  "disclaimer": {
-    "text": "Miru 提供的分析為資料觀察，不構成投資建議。"
-  },
   "meta": {
     "title": "Miru — 台股 AI 分析夥伴",
     "description": "Miru 是台股與 ETF 的 AI 分析夥伴，帶你看資料、看盤面、看籌碼；提供的分析為資料觀察，不構成投資建議。"
@@ -4193,7 +4190,7 @@
       "notFoundTitle": "找不到這個題材",
       "notFoundBody": "題材可能已被移除，請回到大盤的題材分頁挑選其他題材。",
       "backToThemes": "回到題材列表",
-      "quoteNote": "漲跌幅為最近一個交易日收盤相較前一日，題材分類為資料整理，不構成投資建議。",
+      "quoteNote": "漲跌幅為最近一個交易日收盤相較前一日，題材分類為資料整理。",
       "showAll": "顯示全部（還有 {count} 檔）",
       "showFewer": "收合"
     },
@@ -4208,7 +4205,7 @@
       "avgLabel": "平均漲跌",
       "avgSample": "取 {count} 檔計算",
       "avgUnavailable": "暫無報價",
-      "quoteNote": "平均漲跌為最近一個交易日收盤相較前一日；題材分類為資料整理，不構成投資建議。"
+      "quoteNote": "平均漲跌為最近一個交易日收盤相較前一日；題材分類為資料整理。"
     }
   }
 }

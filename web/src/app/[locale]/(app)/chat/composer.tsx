@@ -37,8 +37,7 @@ import { cn } from "@/lib/cn";
 
 /**
  * The chat composer (chat/README.md §Composer). Auto-grow textarea; the send button MORPHS between
- * idle→send (➤) and streaming→stop (■). The disclaimer line under it reuses the exact governance
- * copy already in the catalog (`disclaimer.text`) — not rewritten.
+ * idle→send (➤) and streaming→stop (■).
  *
  * "Add files or photos" and "Take a screenshot" are both wired for real: the backend already has
  * a full attachment pipeline (`api/attachments.py::process_attachments` — image → vision input,
@@ -103,7 +102,6 @@ export function Composer({
   onOpenVoiceMode: () => void;
 }>): ReactNode {
   const t = useTranslations("chat.composer");
-  const tDisc = useTranslations("disclaimer");
   const locale = useLocale();
   const [draft, setDraft] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -503,9 +501,6 @@ export function Composer({
           </div>
         </div>
       </form>
-      <p className="mt-2 text-center text-[13px] text-[var(--text-muted)] leading-relaxed">
-        {tDisc("text")}
-      </p>
     </div>
   );
 }
