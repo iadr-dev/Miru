@@ -200,13 +200,12 @@ def _skill_prompt_layers(
     skill: Skill | None, personality_fragment: StyleFragments, locale: str
 ) -> PromptLayers:
     base = default_prompt_layers(locale)
-    layers: PromptLayers = dataclasses.replace(
+    layers = dataclasses.replace(
         base, personality=personality_fragment.personality, pet_hint=personality_fragment.pet_hint
     )
     if skill is None:
         return layers
-    with_skill: PromptLayers = dataclasses.replace(layers, skill_body=skill.body)
-    return with_skill
+    return dataclasses.replace(layers, skill_body=skill.body)
 
 
 def _lane_from_turn(turn: TurnResult, *, agent_id: str, skill: str) -> LaneResult:
