@@ -94,7 +94,7 @@ describe("PersistedThreadView", () => {
 
   it("shows no caveat chip under an assistant answer", () => {
     renderWithIntl(<PersistedThreadView thread={conversation} />);
-    expect(screen.queryByText(messages.disclaimer.text)).toBeNull();
+    expect(screen.queryByText(/不構成投資建議/)).toBeNull();
   });
 
   it("keeps the tool process collapsed until asked, then shows it", () => {

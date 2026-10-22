@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 
 /** The entry page (chat-app landing pattern): full-bleed dark canvas, logo top-left, sign-in /
- * register top-right, a vertically-centered hero (wordmark + composer), disclaimer pinned bottom.
+ * register top-right, a vertically-centered hero (wordmark + composer).
  * The composer is a come-on: an anonymous send opens the auth modal (chat needs auth). */
 export function EntryScreen(): ReactNode {
   const t = useTranslations();
@@ -97,13 +97,6 @@ export function EntryScreen(): ReactNode {
           ) : null}
         </div>
       </main>
-
-      {/* Footer disclaimer — governance non-trading framing (governance.md §1). */}
-      <footer className="px-4 pt-2 pb-6">
-        <p className="mx-auto max-w-2xl text-center text-[13px] text-[var(--text-muted)] leading-relaxed">
-          {t("disclaimer.text")}
-        </p>
-      </footer>
 
       <AuthModal
         open={modal.open}

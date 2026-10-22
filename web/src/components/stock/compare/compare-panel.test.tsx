@@ -122,7 +122,7 @@ describe("StockComparePanel", () => {
         (label) => label.includes(messages.common.direction.down) && label.includes("10.00%"),
       ),
     ).toBe(true);
-    expect(screen.queryByText(messages.disclaimer.text)).toBeNull();
+    expect(screen.queryByText(/不構成投資建議/)).toBeNull();
     expect(screen.getByText(copy.asOf.replace("{date}", "2026-03-04"))).toBeTruthy();
     expect(screen.getByText(copy.baseNote.replace("{date}", "2026-03-02"))).toBeTruthy();
   });
@@ -176,7 +176,7 @@ describe("StockComparePanel", () => {
     mockHistories([undefined, undefined], { isLoading: true });
     const view = renderWithIntl(<StockComparePanel symbol="2330" market="TW" />);
     expect(screen.queryByText(copy.legendLabel)).toBeNull();
-    expect(screen.queryByText(messages.disclaimer.text)).toBeNull();
+    expect(screen.queryByText(/不構成投資建議/)).toBeNull();
     view.unmount();
 
     const retry = vi.fn();
