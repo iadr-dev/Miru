@@ -153,6 +153,62 @@ async def test_get_market_index_strip_is_public_and_computes_change() -> None:
     assert by_key["crude_oil_brent"].change == -1.0
 
 
+def _series(prices: list[float], key: str = "price", **extra: object) -> SourceResult:
+    return _result(
+        {
+            "rows": [
+                {"symbol": "S", "market": "TW", "trade_date": f"2026-09-0{i + 1}", key: p, **extra}
+                for i, p in enumerate(prices)
+            ]
+        }
+    )
+
+
+async def test_strip_item_order_labels_as_of_and_change_pct_are_pinned() -> None:
+    fx = {"cash_buy": 1.0, "cash_sell": 1.0, "spot_sell": 1.0}
+    results = {
+        (Capability.TAIEX_5S_INDEX, ""): _result(
+            {
+                "rows": [
+                    {"market": "TW", "trade_date": "2026-09-03", "taiex": 200.0},
+                    {"market": "TW", "trade_date": "2026-09-04", "taiex": 210.0},
+                ]
+            }
+        ),
+        (Capability.TOTAL_RETURN_INDEX, "TPEx"): _series([0.0, 5.0]),  # zero prior: no pct
+        (Capability.EXCHANGE_RATE, "USD"): _series([30.0, 31.5], "spot_buy", **fx),
+        (Capability.EXCHANGE_RATE, "JPY"): _series([0.2], "spot_buy", **fx),
+        (Capability.GOLD_PRICE, ""): _result(
+            {
+                "rows": [
+                    {"market": "GLOBAL", "date": "2026-08-28", "price": 100.0},
+                    {"market": "GLOBAL", "date": "2026-08-29", "price": 90.0},
+                ]
+            }
+        ),
+        (Capability.CRUDE_OIL_PRICES, "WTI"): _result(
+            {"rows": [{"symbol": "WTI", "market": "GLOBAL", "date": "2026-08-29", "price": 71.5}]}
+        ),
+        (Capability.CRUDE_OIL_PRICES, "Brent"): _result({"rows": []}),
+    }
+
+    output = await GetMarketIndexStripTool(_router(results)).run(
+        GetMarketIndexStripInput(), ToolContext(tier=Tier.FREE)
+    )
+
+    got = [
+        (r.key, r.label, r.value, r.change, r.change_pct, r.as_of.isoformat()) for r in output.rows
+    ]
+    assert got == [
+        ("taiex", "加權指數", 210.0, 10.0, 10.0 / 200.0 * 100, "2026-09-04"),
+        ("otc", "櫃買指數", 5.0, 5.0, None, "2026-09-02"),
+        ("usd_twd", "美元/台幣", 31.5, 1.5, 1.5 / 30.0 * 100, "2026-09-02"),
+        ("jpy_twd", "日圓/台幣", 0.2, None, None, "2026-09-01"),
+        ("gold", "黃金", 90.0, -10.0, -10.0, "2026-08-29"),
+        ("crude_oil_wti", "原油 WTI", 71.5, None, None, "2026-08-29"),
+    ]
+
+
 async def test_get_market_index_strip_omits_every_item_when_all_rows_are_empty() -> None:
     tool = GetMarketIndexStripTool(_router({}))
 

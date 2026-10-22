@@ -504,25 +504,37 @@ def _etf_rows(
     return out
 
 
-def _flags(us: list[BriefRow], tw: list[BriefRow], etfs: list[BriefEtf]) -> list[str]:
+def _us_flag(row: BriefRow) -> str | None:
+    """The one unusual-move flag for a US overnight row, or None."""
+    chg, name = row.change_pct, row.label.upper()
+    if chg is None:
+        return None
+    if name.startswith("VIX") and chg >= _VIX_JUMP_PCT:
+        return f"VIX 單日上升 {chg:.1f}%"
+    if "SOX" in name and abs(chg) >= _SOX_MOVE_PCT:
+        return f"費城半導體指數單日 {chg:+.1f}%"
+    if name.startswith(("S&P", "NASDAQ", "DOW")) and abs(chg) >= _INDEX_MOVE_PCT:
+        return f"{row.label}單日 {chg:+.1f}%"
+    return None
+
+
+def _tw_flags(row: BriefRow) -> list[str]:
+    """TAIEX and TSMC-ADR moves of a TW row (a label may trip both)."""
+    chg = row.change_pct
+    if chg is None:
+        return []
     flags: list[str] = []
-    for r in us:
-        chg, name = r.change_pct, r.label.upper()
-        if chg is None:
-            continue
-        if name.startswith("VIX") and chg >= _VIX_JUMP_PCT:
-            flags.append(f"VIX 單日上升 {chg:.1f}%")
-        elif "SOX" in name and abs(chg) >= _SOX_MOVE_PCT:
-            flags.append(f"費城半導體指數單日 {chg:+.1f}%")
-        elif name.startswith(("S&P", "NASDAQ", "DOW")) and abs(chg) >= _INDEX_MOVE_PCT:
-            flags.append(f"{r.label}單日 {chg:+.1f}%")
+    if "TAIEX" in row.label and abs(chg) >= _INDEX_MOVE_PCT:
+        flags.append(f"加權指數單日 {chg:+.1f}%")
+    if "ADR" in row.label and abs(chg) >= _ADR_MOVE_PCT:
+        flags.append(f"台積電 ADR 單日 {chg:+.1f}%")
+    return flags
+
+
+def _flags(us: list[BriefRow], tw: list[BriefRow], etfs: list[BriefEtf]) -> list[str]:
+    flags = [flag for flag in map(_us_flag, us) if flag is not None]
     for r in tw:
-        if r.change_pct is None:
-            continue
-        if "TAIEX" in r.label and abs(r.change_pct) >= _INDEX_MOVE_PCT:
-            flags.append(f"加權指數單日 {r.change_pct:+.1f}%")
-        if "ADR" in r.label and abs(r.change_pct) >= _ADR_MOVE_PCT:
-            flags.append(f"台積電 ADR 單日 {r.change_pct:+.1f}%")
+        flags.extend(_tw_flags(r))
     flags.extend(
         f"{e.symbol} 折溢價 {e.premium_pct:+.2f}%（絕對值超過 {_ETF_PREMIUM_PCT:.0f}%）"
         for e in etfs
