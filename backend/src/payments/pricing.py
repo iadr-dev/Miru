@@ -70,19 +70,33 @@ def _as_price(value: object) -> PlanPrice | None:
     return None
 
 
+def _override_price(item: object, country_code: str) -> PlanPrice | None:
+    """The price of one `unit_price_overrides` entry if it lists `country_code`."""
+    if not isinstance(item, Mapping):
+        return None
+    entry = cast("Mapping[str, object]", item)
+    codes = entry.get("country_codes")
+    if isinstance(codes, list) and country_code in cast("list[object]", codes):
+        return _as_price(entry.get("unit_price"))
+    return None
+
+
+def _country_override(row: Mapping[str, object], country: str) -> PlanPrice | None:
+    overrides = row.get("unit_price_overrides")
+    if not isinstance(overrides, list):
+        return None
+    for item in cast("list[object]", overrides):
+        override = _override_price(item, country.upper())
+        if override is not None:
+            return override
+    return None
+
+
 def _pick_price(row: Mapping[str, object], country: str | None) -> PlanPrice | None:
     if country:
-        overrides = row.get("unit_price_overrides")
-        if isinstance(overrides, list):
-            for item in cast("list[object]", overrides):
-                if not isinstance(item, Mapping):
-                    continue
-                entry = cast("Mapping[str, object]", item)
-                codes = entry.get("country_codes")
-                if isinstance(codes, list) and country.upper() in cast("list[object]", codes):
-                    override = _as_price(entry.get("unit_price"))
-                    if override is not None:
-                        return override
+        override = _country_override(row, country)
+        if override is not None:
+            return override
     return _as_price(row.get("unit_price"))
 
 
