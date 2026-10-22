@@ -195,7 +195,7 @@ export function InstitutionalFlowBody({
                   ? tFields("fields.close")
                   : bucketLabel(t, name as InstitutionalBucket),
               ]}
-              labelFormatter={(label) => String(label)}
+              labelFormatter={String}
             />
             <Legend
               content={

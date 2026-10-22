@@ -493,7 +493,7 @@ function renderPlot(
         {...TOOLTIP_STYLE}
         {...(hint.mark === "bar" ? { cursor: BAR_HOVER_CURSOR } : {})}
         formatter={(value) => `${formatNumber(asNumber(value), locale)}${unitSuffix(hint.title)}`}
-        labelFormatter={(key) => String(key)}
+        labelFormatter={String}
       />
       {seriesLabels.length > 1 ? (
         <Legend

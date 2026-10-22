@@ -105,7 +105,7 @@ export function BarChart({ data }: Readonly<{ data: unknown }>): ReactNode {
               itemStyle={{ color: "var(--text)" }}
               cursor={{ fill: "var(--accent)", opacity: 0.08 }}
               formatter={(value) => formatNumber(asNumber(value), locale)}
-              labelFormatter={(key) => String(key)}
+              labelFormatter={String}
             />
             {metricKeys.length > 1 ? (
               <Legend

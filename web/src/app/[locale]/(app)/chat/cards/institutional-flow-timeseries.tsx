@@ -164,7 +164,7 @@ export function InstitutionalFlowTimeseries({ data }: Readonly<{ data: unknown }
               itemStyle={{ color: "var(--text)" }}
               cursor={{ fill: "var(--accent)", opacity: 0.08 }}
               formatter={(value) => formatNumber(asNumber(value), locale)}
-              labelFormatter={(key) => String(key)}
+              labelFormatter={String}
             />
             {visible.map((category) => (
               <Bar
