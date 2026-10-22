@@ -129,7 +129,7 @@ def _level(label: str, latest: float | None, before: float | None, note: str = "
 
 
 def _dated_note(as_of: str, today: date) -> str:
-    return as_of if as_of and as_of[:10] != today.isoformat() else ""
+    return as_of if as_of and not as_of.startswith(today.isoformat()) else ""
 
 
 def _us_overnight(data: Row | None, today: date) -> list[BriefRow]:

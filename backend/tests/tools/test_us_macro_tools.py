@@ -4,7 +4,6 @@ in `tests/fred_support.py`) - never a live fetch."""
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Iterator
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -48,7 +47,7 @@ def _today() -> date:
 
 
 @pytest.fixture(scope="module")
-def store_root(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
+def store_root(tmp_path_factory: pytest.TempPathFactory) -> Path:
     root = tmp_path_factory.mktemp("us_macro_store")
     server = FakeFredServer()
     server.revisions["PAYEMS"] = {
@@ -62,7 +61,7 @@ def store_root(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
     with pytest.MonkeyPatch.context() as patch:
         run, _ = asyncio.run(run_job(root, patch, server))
     assert run.status.value == "success"
-    yield root
+    return root
 
 
 @pytest.fixture
