@@ -29,6 +29,7 @@ import { resolveToken } from "@/lib/resolve-css-token";
 import { directionColor, directionGlyph } from "@/lib/signed";
 import { isMaskedTeaser } from "@/types/market/shared";
 import type { Market } from "@/types/settings";
+import type { LiveQuoteSnapshot, PriceTickRow } from "@/types/stock/realtime";
 
 // TWSE MIS is a single-shot snapshot (never a poll/stream) — the client re-fetches on this
 // interval to approximate a live feel, matching the ~5s cadence the reference app's own ladder
@@ -557,6 +558,51 @@ function ChangeStat({
 //     though the source stats are real, not fabricated.
 // ---------------------------------------------------------------------------
 
+type TickStats = {
+  hasTicks: boolean;
+  insideVolume: number;
+  outsideVolume: number;
+  avgPrice: number | null;
+  lastTradeSize: number | null;
+};
+
+/** 內盤/外盤/均價/單量 over the day's tick replay: 內盤 is tick_type "2" (seller-initiated at the
+ * bid), 外盤 "1" (buyer-initiated at the ask), 均價 the volume-weighted mean deal price and 單量
+ * the most recent tick's own volume. */
+function tickStatsOf(tickRows: readonly PriceTickRow[]): TickStats {
+  const volumeOf = (type: string): number =>
+    tickRows.filter((r) => r.tick_type === type).reduce((sum, r) => sum + r.volume, 0);
+  const totalTickVolume = tickRows.reduce((sum, r) => sum + r.volume, 0);
+  return {
+    hasTicks: tickRows.length > 0,
+    insideVolume: volumeOf("2"),
+    outsideVolume: volumeOf("1"),
+    avgPrice:
+      totalTickVolume > 0
+        ? tickRows.reduce((sum, r) => sum + r.deal_price * r.volume, 0) / totalTickVolume
+        : null,
+    lastTradeSize: tickRows.at(-1)?.volume ?? null,
+  };
+}
+
+type LiveStats = { change: number | null; changePct: number | null; amplitudePct: number | null };
+
+/** 漲跌/幅度/振幅 — the live snapshot against the day's reference price. */
+function liveStatsOf(snapshot: LiveQuoteSnapshot | null | undefined, reference: number): LiveStats {
+  const change = snapshot ? snapshot.last_price - reference : null;
+  return {
+    change,
+    changePct: change !== null && reference !== 0 ? (change / reference) * 100 : null,
+    amplitudePct:
+      snapshot && reference !== 0 ? ((snapshot.high - snapshot.low) / reference) * 100 : null,
+  };
+}
+
+/** A number formatted for a stat cell, or a dash when there is none. */
+function numberOrDash(value: number | null, locale: string, decimals: number): string {
+  return value !== null ? formatNumber(value, locale, { decimals }) : "—";
+}
+
 function DetailStatsPanel({
   symbol,
   market,
@@ -589,30 +635,10 @@ function DetailStatsPanel({
   if (!limitRow) return null;
 
   const snapshot = quoteQuery.data?.snapshot;
-  const change = snapshot ? snapshot.last_price - limitRow.reference_price : null;
-  const changePct =
-    change !== null && limitRow.reference_price !== 0
-      ? (change / limitRow.reference_price) * 100
-      : null;
-  const amplitudePct =
-    snapshot && limitRow.reference_price !== 0
-      ? ((snapshot.high - snapshot.low) / limitRow.reference_price) * 100
-      : null;
-
+  const live = liveStatsOf(snapshot, limitRow.reference_price);
   const tickData = tickQuery.data;
-  const tickRows = tickData !== undefined && !isMaskedTeaser(tickData) ? tickData.rows : [];
-  const insideVolume = tickRows
-    .filter((r) => r.tick_type === "2")
-    .reduce((sum, r) => sum + r.volume, 0);
-  const outsideVolume = tickRows
-    .filter((r) => r.tick_type === "1")
-    .reduce((sum, r) => sum + r.volume, 0);
-  const totalTickVolume = tickRows.reduce((sum, r) => sum + r.volume, 0);
-  const avgPrice =
-    totalTickVolume > 0
-      ? tickRows.reduce((sum, r) => sum + r.deal_price * r.volume, 0) / totalTickVolume
-      : null;
-  const lastTradeSize = tickRows.at(-1)?.volume ?? null;
+  const ticksOfDay = tickData !== undefined && !isMaskedTeaser(tickData) ? tickData.rows : [];
+  const tickStats = tickStatsOf(ticksOfDay);
 
   return (
     <section className="surface-card p-4 sm:p-5">
@@ -637,43 +663,31 @@ function DetailStatsPanel({
       <div className="mt-3 grid grid-cols-3 gap-3 text-[13px]">
         <Stat
           label={t("lastPrice")}
-          value={snapshot ? formatNumber(snapshot.last_price, locale, { decimals: 2 }) : "—"}
+          value={numberOrDash(snapshot?.last_price ?? null, locale, 2)}
         />
-        <ChangeStat label={t("change")} change={change} changePct={changePct} locale={locale} />
+        <ChangeStat
+          label={t("change")}
+          change={live.change}
+          changePct={live.changePct}
+          locale={locale}
+        />
         <Stat
           label={t("amplitude")}
-          value={amplitudePct !== null ? `${amplitudePct.toFixed(2)}%` : "—"}
+          value={live.amplitudePct !== null ? `${live.amplitudePct.toFixed(2)}%` : "—"}
         />
-        <Stat
-          label={t("low")}
-          value={snapshot ? formatNumber(snapshot.low, locale, { decimals: 2 }) : "—"}
-        />
-        <Stat
-          label={t("high")}
-          value={snapshot ? formatNumber(snapshot.high, locale, { decimals: 2 }) : "—"}
-        />
-        <Stat
-          label={t("totalVolume")}
-          value={snapshot ? formatNumber(snapshot.volume, locale, { decimals: 0 }) : "—"}
-        />
+        <Stat label={t("low")} value={numberOrDash(snapshot?.low ?? null, locale, 2)} />
+        <Stat label={t("high")} value={numberOrDash(snapshot?.high ?? null, locale, 2)} />
+        <Stat label={t("totalVolume")} value={numberOrDash(snapshot?.volume ?? null, locale, 0)} />
         <Stat
           label={t("insideVolume")}
-          value={tickRows.length > 0 ? formatNumber(insideVolume, locale, { decimals: 0 }) : "—"}
+          value={numberOrDash(tickStats.hasTicks ? tickStats.insideVolume : null, locale, 0)}
         />
         <Stat
           label={t("outsideVolume")}
-          value={tickRows.length > 0 ? formatNumber(outsideVolume, locale, { decimals: 0 }) : "—"}
+          value={numberOrDash(tickStats.hasTicks ? tickStats.outsideVolume : null, locale, 0)}
         />
-        <Stat
-          label={t("lastTradeSize")}
-          value={
-            lastTradeSize !== null ? formatNumber(lastTradeSize, locale, { decimals: 0 }) : "—"
-          }
-        />
-        <Stat
-          label={t("averagePrice")}
-          value={avgPrice !== null ? formatNumber(avgPrice, locale, { decimals: 2 }) : "—"}
-        />
+        <Stat label={t("lastTradeSize")} value={numberOrDash(tickStats.lastTradeSize, locale, 0)} />
+        <Stat label={t("averagePrice")} value={numberOrDash(tickStats.avgPrice, locale, 2)} />
       </div>
       <p className="mt-2 text-[11px] text-[var(--text-muted)]">
         {t("dayTradingAsOf", { date: limitRow.trade_date })}
