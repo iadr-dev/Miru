@@ -320,7 +320,7 @@ def _year_ago_targets(
 
 def _find_year_ago_rows(
     store: ParquetStore,
-    known_dates: list[date_],
+    known_dates: Iterable[date_],
     target_by_symbol: dict[str, tuple[int, int]],
 ) -> dict[str, dict[str, object]]:
     """First row (in partition-date order) matching each symbol's target month and year."""
