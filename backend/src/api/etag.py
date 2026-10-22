@@ -34,6 +34,87 @@ def _matches(if_none_match: str, etag: str) -> bool:
     return any(tag == "*" or tag.removeprefix("W/") == wanted for tag in listed)
 
 
+def _request_if_none_match(scope: Scope) -> str:
+    """The request's `If-None-Match` value (the last one if repeated), `""` when absent."""
+    value = ""
+    for name, raw in scope["headers"]:
+        if name == b"if-none-match":
+            value = raw.decode("latin-1")
+    return value
+
+
+def _is_taggable(start: Message) -> bool:
+    """Only a plain 200 JSON response that sets no cookie and carries no tag of its own."""
+    headers: list[tuple[bytes, bytes]] = list(start.get("headers", []))
+    names = {name.lower() for name, _ in headers}
+    content_type = next((v for n, v in headers if n.lower() == b"content-type"), b"")
+    return (
+        start["status"] == 200  # noqa: PLR2004
+        and content_type.startswith(_JSON)
+        and not names & _SKIP_HEADERS
+        and b"etag" not in names
+    )
+
+
+def _tagged_headers(start: Message, etag: str) -> list[tuple[bytes, bytes]]:
+    headers: list[tuple[bytes, bytes]] = list(start.get("headers", []))
+    headers.append((b"etag", etag.encode("latin-1")))
+    names = {name.lower() for name, _ in headers}
+    if b"cache-control" not in names:
+        headers.append((b"cache-control", b"private, no-cache"))
+    headers.append((b"vary", b"Authorization, Cookie"))
+    return headers
+
+
+async def _send_tagged(send: Send, start: Message, body: bytes, if_none_match: str) -> None:
+    etag = etag_for(body)
+    headers = _tagged_headers(start, etag)
+    if if_none_match and _matches(if_none_match, etag):
+        kept = [(n, v) for n, v in headers if n.lower() not in {b"content-length", b"content-type"}]
+        await send({**start, "status": 304, "headers": kept})
+        await send({"type": "http.response.body", "body": b""})
+        return
+    await send({**start, "headers": headers})
+    await send({"type": "http.response.body", "body": body})
+
+
+class _TaggingSend:
+    """Wraps `send` for one response: buffers an eligible JSON body, then emits it tagged (or
+    as a 304); anything else is forwarded untouched from the first message on."""
+
+    def __init__(self, send: Send, if_none_match: str) -> None:
+        self._send = send
+        self._if_none_match = if_none_match
+        self._start: Message | None = None
+        self._chunks: list[bytes] = []
+        self._passthrough = False
+
+    async def __call__(self, message: Message) -> None:
+        if self._passthrough:
+            await self._send(message)
+        elif message["type"] == "http.response.start":
+            await self._on_start(message)
+        else:
+            await self._on_body(message)
+
+    async def _on_start(self, message: Message) -> None:
+        if _is_taggable(message):
+            self._start = message
+            return
+        self._passthrough = True
+        await self._send(message)
+
+    async def _on_body(self, message: Message) -> None:
+        # http.response.body for a buffered response
+        self._chunks.append(message.get("body", b""))
+        if message.get("more_body", False):
+            return
+        if self._start is None:  # a body with no start: not a well-formed response, leave it be
+            await self._send(message)
+            return
+        await _send_tagged(self._send, self._start, b"".join(self._chunks), self._if_none_match)
+
+
 class ConditionalGetMiddleware:
     def __init__(self, app: ASGIApp) -> None:
         self._app = app
@@ -42,65 +123,7 @@ class ConditionalGetMiddleware:
         if scope["type"] != "http" or scope["method"] != "GET":
             await self._app(scope, receive, send)
             return
-
-        if_none_match = ""
-        for name, value in scope["headers"]:
-            if name == b"if-none-match":
-                if_none_match = value.decode("latin-1")
-
-        start: Message | None = None
-        chunks: list[bytes] = []
-        passthrough = False
-
-        async def intercept(message: Message) -> None:
-            nonlocal start, passthrough
-            if passthrough:
-                await send(message)
-                return
-            if message["type"] == "http.response.start":
-                headers: list[tuple[bytes, bytes]] = list(message.get("headers", []))
-                names = {name.lower() for name, _ in headers}
-                content_type = next((v for n, v in headers if n.lower() == b"content-type"), b"")
-                eligible = (
-                    message["status"] == 200  # noqa: PLR2004
-                    and content_type.startswith(_JSON)
-                    and not names & _SKIP_HEADERS
-                    and b"etag" not in names
-                )
-                if not eligible:
-                    passthrough = True
-                    await send(message)
-                    return
-                start = message
-                return
-            # http.response.body for a buffered response
-            chunks.append(message.get("body", b""))
-            if message.get("more_body", False):
-                return
-            if start is None:  # a body with no start: not a well-formed response, leave it be
-                await send(message)
-                return
-            body = b"".join(chunks)
-            etag = etag_for(body)
-            headers = list(start.get("headers", []))
-            headers.append((b"etag", etag.encode("latin-1")))
-            names = {name.lower() for name, _ in headers}
-            if b"cache-control" not in names:
-                headers.append((b"cache-control", b"private, no-cache"))
-            headers.append((b"vary", b"Authorization, Cookie"))
-            if if_none_match and _matches(if_none_match, etag):
-                kept = [
-                    (n, v)
-                    for n, v in headers
-                    if n.lower() not in {b"content-length", b"content-type"}
-                ]
-                await send({**start, "status": 304, "headers": kept})
-                await send({"type": "http.response.body", "body": b""})
-                return
-            await send({**start, "headers": headers})
-            await send({"type": "http.response.body", "body": body})
-
-        await self._app(scope, receive, intercept)
+        await self._app(scope, receive, _TaggingSend(send, _request_if_none_match(scope)))
 
 
 __all__ = ["ConditionalGetMiddleware", "etag_for"]
