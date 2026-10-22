@@ -762,6 +762,93 @@ async def _matched_symbols_for_bulk_source(  # noqa: PLR0913, PLR0917 — one ar
     }
 
 
+class _TwSetup:
+    """One request's stage-ⓑ state for TW: the inputs every condition source reads plus the lazy
+    per-request caches (each whole-market read happens at most once, on first use)."""
+
+    def __init__(
+        self,
+        gated_universe: set[str],
+        tag_reader: ParquetMarketDataReader,
+        session_factory: async_sessionmaker[AsyncSession],
+        parquet_store: ParquetStore,
+    ) -> None:
+        self._gated = gated_universe
+        self._tag_reader = tag_reader
+        self._session_factory = session_factory
+        self._store = parquet_store
+        self._scores_cache: tuple[ScoreResult, ...] | None = None
+        self._bulk_cache: dict[str, dict[str, dict[str, float]] | None] = {}
+
+    def tag_matches(self, condition: ScreenerConditionInput) -> set[str]:
+        partition_date = _latest_tw_flag_date(self._tag_reader)
+        if partition_date is None:
+            return set()
+        rows = self._tag_reader.read_partition(
+            SCREENER_FLAGS_DATASET, Market.TW.value, partition_date
+        )
+        by_tag, _universe = _flag_symbols_by_tag(rows)
+        return by_tag.get(condition.factor, set()) & self._gated
+
+    def _bulk_loader(self, kind: str) -> Callable[[], Awaitable[dict[str, dict[str, float]]]]:
+        store = self._store
+        if kind == "valuation":
+            return lambda: anyio.to_thread.run_sync(
+                _latest_valuation_ratios_by_symbol, store, Market.TW.value
+            )
+        if kind == "fundamentals":
+            return lambda: _bulk_by_day(
+                "fundamentals",
+                Market.TW.value,
+                _fundamentals_as_of(store, Market.TW.value),
+                lambda: _latest_fundamentals_by_symbol(store, Market.TW.value),
+            )
+        return lambda: _bulk_by_day(
+            "technical",
+            Market.TW.value,
+            _latest_price_partition_date(store, Market.TW.value),
+            lambda: _latest_technical_indicators_by_symbol(store, Market.TW.value),
+        )
+
+    @staticmethod
+    def _bulk_kind(source_field: str) -> str | None:
+        if source_field in _VALUATION_RATIO_SOURCE_FIELDS:
+            return "valuation"
+        if source_field in _FUNDAMENTALS_BATCH_SOURCE_FIELDS:
+            return "fundamentals"
+        if source_field in _TECHNICAL_INDICATOR_SOURCE_FIELDS:
+            return "technical"
+        return None
+
+    async def _score_matches(
+        self, condition: ScreenerConditionInput, field: FactorField
+    ) -> set[str]:
+        if self._scores_cache is None:
+            async with self._session_factory() as session:
+                self._scores_cache = await get_all_scores_for_date(
+                    session, market=Market.TW, profile=ScoreProfile.SWING
+                )
+        source_field = field.source_field
+        return {
+            result.symbol
+            for result in self._scores_cache
+            if result.symbol in self._gated
+            and _condition_holds(
+                _score_field_value(result, source_field), condition.op, condition.value
+            )
+        }
+
+    async def numeric_matches(
+        self, condition: ScreenerConditionInput, field: FactorField
+    ) -> set[str]:
+        kind = self._bulk_kind(field.source_field)
+        if kind is None:
+            return await self._score_matches(condition, field)
+        return await _matched_symbols_for_bulk_source(
+            condition, field, self._gated, self._bulk_cache, kind, self._bulk_loader(kind)
+        )
+
+
 async def _setup_tw(  # noqa: PLR0913 — one arg per real input this stage genuinely reads
     *,
     conditions: tuple[ScreenerConditionInput, ...],
@@ -779,97 +866,22 @@ async def _setup_tw(  # noqa: PLR0913 — one arg per real input this stage genu
     catalog = get_factor_catalog(Market.TW.value)
     numeric_by_key = {field.key: field for field in catalog.fields}
     known_tags = tag_keys()
+    setup = _TwSetup(gated_universe, tag_reader, session_factory, parquet_store)
 
     per_condition: list[set[str]] = []
     labels: list[str] = []
     degraded: list[str] = []
 
-    scores_cache: tuple[ScoreResult, ...] | None = None
-    bulk_cache: dict[str, dict[str, dict[str, float]] | None] = {}
-
     for condition in conditions:
         field = numeric_by_key.get(condition.factor)
         if condition.factor in known_tags:
-            partition_date = _latest_tw_flag_date(tag_reader)
-            if partition_date is None:
-                per_condition.append(set())
-                labels.append(condition.factor)
-                continue
-            rows = tag_reader.read_partition(
-                SCREENER_FLAGS_DATASET, Market.TW.value, partition_date
-            )
-            by_tag, _universe = _flag_symbols_by_tag(rows)
-            per_condition.append(by_tag.get(condition.factor, set()) & gated_universe)
-            labels.append(condition.factor)
-        elif field is not None and field.source_field in _VALUATION_RATIO_SOURCE_FIELDS:
-            per_condition.append(
-                await _matched_symbols_for_bulk_source(
-                    condition,
-                    field,
-                    gated_universe,
-                    bulk_cache,
-                    "valuation",
-                    lambda: anyio.to_thread.run_sync(
-                        _latest_valuation_ratios_by_symbol, parquet_store, Market.TW.value
-                    ),
-                )
-            )
-            labels.append(condition.factor)
-        elif field is not None and field.source_field in _FUNDAMENTALS_BATCH_SOURCE_FIELDS:
-            per_condition.append(
-                await _matched_symbols_for_bulk_source(
-                    condition,
-                    field,
-                    gated_universe,
-                    bulk_cache,
-                    "fundamentals",
-                    lambda: _bulk_by_day(
-                        "fundamentals",
-                        Market.TW.value,
-                        _fundamentals_as_of(parquet_store, Market.TW.value),
-                        lambda: _latest_fundamentals_by_symbol(parquet_store, Market.TW.value),
-                    ),
-                )
-            )
-            labels.append(condition.factor)
-        elif field is not None and field.source_field in _TECHNICAL_INDICATOR_SOURCE_FIELDS:
-            per_condition.append(
-                await _matched_symbols_for_bulk_source(
-                    condition,
-                    field,
-                    gated_universe,
-                    bulk_cache,
-                    "technical",
-                    lambda: _bulk_by_day(
-                        "technical",
-                        Market.TW.value,
-                        _latest_price_partition_date(parquet_store, Market.TW.value),
-                        lambda: _latest_technical_indicators_by_symbol(
-                            parquet_store, Market.TW.value
-                        ),
-                    ),
-                )
-            )
-            labels.append(condition.factor)
+            per_condition.append(setup.tag_matches(condition))
         elif field is not None:
-            if scores_cache is None:
-                async with session_factory() as session:
-                    scores_cache = await get_all_scores_for_date(
-                        session, market=Market.TW, profile=ScoreProfile.SWING
-                    )
-            source_field = field.source_field
-            matched = {
-                result.symbol
-                for result in scores_cache
-                if result.symbol in gated_universe
-                and _condition_holds(
-                    _score_field_value(result, source_field), condition.op, condition.value
-                )
-            }
-            per_condition.append(matched)
-            labels.append(condition.factor)
+            per_condition.append(await setup.numeric_matches(condition, field))
         else:
             degraded.append(f"unknown TW factor key: {condition.factor}")
+            continue
+        labels.append(condition.factor)
 
     matches_by_symbol = _combine(per_condition, labels, match)
     return matches_by_symbol, degraded
