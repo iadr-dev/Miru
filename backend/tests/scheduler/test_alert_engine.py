@@ -1133,3 +1133,47 @@ async def test_a_rule_that_fails_does_not_stop_the_rest_of_its_group(
     assert fired == [healthy.id]
     assert len(await notifications(session_factory, other_user)) == 1
     assert await notifications(session_factory, broken_user) == []
+
+
+async def test_rule_whose_owner_is_missing_is_paused_not_fired(
+    session_factory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    user = await insert_user(session_factory, tier=Tier.FREE)
+    rule = await create_rule(session_factory, user, ClosePrice(comparator="above", value=600))
+    reader = FakeReader()
+    reader.put(PRICE, day(0), [bar("2330", 612.0)])
+
+    async def no_user(self, session, user_id):  # type: ignore[no-untyped-def]
+        return None
+
+    monkeypatch.setattr(SchedulerWorker, "_load_user", no_user)
+
+    assert await signal(make_worker(session_factory, reader), Capability.PRICE_EOD, day(0)) == []
+    stored = await get_rule(session_factory, user, rule.id)
+    assert stored.enabled is False
+    assert stored.auto_paused_reason == "owner_missing"
+    assert await notifications(session_factory, user) == []
+
+
+async def test_rule_state_records_met_map_fire_count_and_last_fired(session_factory) -> None:
+    user = await insert_user(session_factory, tier=Tier.FREE)
+    rule = await create_rule(session_factory, user, ClosePrice(comparator="above", value=600))
+    reader = FakeReader()
+    reader.put(PRICE, day(0), [bar("2330", 612.0)])
+    reader.put(PRICE, day(1), [bar("2330", 500.0)])
+    worker = make_worker(session_factory, reader)
+    now = datetime.now(UTC)
+
+    assert await signal(worker, Capability.PRICE_EOD, day(0), now=now) == [rule.id]
+    stored = await get_rule(session_factory, user, rule.id)
+    assert stored.state["met"] == {"2330": True}
+    assert stored.state["fire_count"] == 1
+    assert stored.state["last_fired_at"] == now.isoformat()
+    assert stored.enabled is True
+    assert stored.last_triggered is not None
+
+    assert await signal(worker, Capability.PRICE_EOD, day(1), now=now) == []
+    stored = await get_rule(session_factory, user, rule.id)
+    assert stored.state["met"] == {"2330": False}
+    assert stored.state["fire_count"] == 1
+    assert stored.state["last_fired_at"] == now.isoformat()
