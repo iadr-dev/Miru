@@ -84,13 +84,14 @@ def _build_openai_compat_client(
         if provider_id == "openrouter"
         else None
     )
-    return OpenAICompatClient(
+    client: LLMClient = OpenAICompatClient(
         provider_id=provider_id,
         model_id=model_id,
         base_url=_OPENAI_COMPAT_BASE_URLS[provider_id],
         api_key=key,
         capabilities=capabilities,
     )
+    return client
 
 
 def build_client(
@@ -111,29 +112,33 @@ def build_client(
     settings = settings or get_settings()
 
     if provider_id == "ollama":
-        return LocalOllamaClient(model_id=model_id, base_url=settings.ollama_base_url)
+        ollama: LLMClient = LocalOllamaClient(model_id=model_id, base_url=settings.ollama_base_url)
+        return ollama
 
     if provider_id == "anthropic":
-        return AnthropicClient(
+        anthropic_llm: LLMClient = AnthropicClient(
             model_id=model_id,
             api_key=_require_api_key(provider_id, settings, api_key),
             max_tokens=settings.llm_max_output_tokens,
             cache_diagnostics=settings.llm_cache_diagnostics,
         )
+        return anthropic_llm
 
     if provider_id == "openai":
-        return OpenAIClient(
+        openai_llm: LLMClient = OpenAIClient(
             model_id=model_id,
             api_key=_require_api_key(provider_id, settings, api_key),
             max_tokens=settings.llm_max_output_tokens,
         )
+        return openai_llm
 
     if provider_id == "gemini":
-        return GeminiClient(
+        gemini_llm: LLMClient = GeminiClient(
             model_id=model_id,
             api_key=_require_api_key(provider_id, settings, api_key),
             max_output_tokens=settings.llm_max_output_tokens,
         )
+        return gemini_llm
 
     if provider_id in _OPENAI_COMPAT_BASE_URLS:
         return _build_openai_compat_client(provider_id, model_id, settings, api_key)
