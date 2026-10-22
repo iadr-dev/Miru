@@ -2111,9 +2111,6 @@
         }
       }
     },
-    "caveat": {
-      "nonTrading": "Miru 提供的分析為資料觀察，不構成投資建議。"
-    },
     "composer": {
       "placeholder": "問我任何台股問題…",
       "label": "向 Miru 提問",

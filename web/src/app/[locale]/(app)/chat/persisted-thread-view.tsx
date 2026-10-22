@@ -9,7 +9,6 @@ import {
   UserBubble,
 } from "@/app/[locale]/(app)/chat/active-turn-view";
 import { AnswerMarkdown } from "@/app/[locale]/(app)/chat/answer-markdown";
-import { Caveat } from "@/app/[locale]/(app)/chat/caveat";
 import { MemoryUsedChip } from "@/app/[locale]/(app)/chat/memory-used-chip";
 import { PersonalityChip } from "@/app/[locale]/(app)/chat/personality-chip";
 import { RichCardView } from "@/app/[locale]/(app)/chat/rich-card";
@@ -261,7 +260,6 @@ export function PersistedThreadView({
   onAskUserPick?: ((prompt: string) => void) | undefined;
 }>): ReactNode {
   const t = useTranslations("chat.turn");
-  const tCaveat = useTranslations("chat.caveat");
 
   return (
     <div className="flex flex-col gap-6">
@@ -281,7 +279,6 @@ export function PersistedThreadView({
             {!isUser ? <PersistedProcessDisclosure messages={turn.messages} t={t} /> : null}
             {!isUser ? (
               <>
-                <Caveat text={tCaveat("nonTrading")} />
                 <MemoryUsedChip memories={turn.usage?.memories_used ?? []} />
                 <PersonalityChip presetId={turn.usage?.personality ?? null} />
                 <TokenUsageChip usage={turn.usage} />

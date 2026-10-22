@@ -1,6 +1,5 @@
-import { getTranslations, setRequestLocale } from "next-intl/server";
+import { setRequestLocale } from "next-intl/server";
 import type { ReactNode } from "react";
-import { Caveat } from "@/app/[locale]/(app)/chat/caveat";
 import { ThemePage } from "@/components/themes/theme-page";
 
 function decodeKey(raw: string): string {
@@ -20,14 +19,10 @@ export default async function ThemeRoutePage({
 }>): Promise<ReactNode> {
   const { locale, key } = await params;
   setRequestLocale(locale);
-  const tCaveat = await getTranslations({ locale, namespace: "chat.caveat" });
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-3 p-4 sm:p-6">
       <ThemePage themeKey={decodeKey(key)} />
-      <div>
-        <Caveat text={tCaveat("nonTrading")} />
-      </div>
     </div>
   );
 }

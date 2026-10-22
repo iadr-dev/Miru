@@ -4,7 +4,6 @@ import { WaveformIcon, XIcon } from "@phosphor-icons/react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
-import { Caveat } from "@/app/[locale]/(app)/chat/caveat";
 import { audioBase64ToObjectUrl, speakText, transcribeAudio } from "@/lib/api/voice";
 import { cn } from "@/lib/cn";
 import { markdownToSpeech } from "@/lib/markdown-to-speech";
@@ -53,7 +52,6 @@ export function VoiceModeOverlay({
   runTurn: (message: string) => Promise<string | null>;
 }>): ReactNode {
   const t = useTranslations("chat.voiceMode");
-  const tCaveat = useTranslations("chat.caveat");
   const locale = useLocale();
   const reduceMotion = useReducedMotion();
 
@@ -351,8 +349,6 @@ export function VoiceModeOverlay({
           {caption}
         </p>
       ) : null}
-
-      {phase === "speaking" ? <Caveat text={tCaveat("nonTrading")} /> : null}
 
       {error ? (
         <p role="alert" className="text-[13px] text-[var(--warn)]">
