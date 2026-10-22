@@ -29,7 +29,7 @@ from __future__ import annotations
 import asyncio
 import functools
 from calendar.trading_days import TradingDayCalendar
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Iterable, Sequence
 from datetime import date as date_
 from datetime import timedelta
 from typing import Literal, cast
@@ -158,6 +158,36 @@ def _latest_price_partition_date(store: ParquetStore, market: str) -> date_ | No
     return max(dates) if dates else None
 
 
+def _passes_tw_stock_gates(row: dict[str, object], gates: GateDefaults) -> str | None:
+    """The symbol of a price row if it is a scoreable plain TW stock above the price/volume
+    floors, else None. A missing (non-numeric) close or volume is not gated on."""
+    symbol = row.get("symbol")
+    close = row.get("close")
+    volume = row.get("volume")
+    if not isinstance(symbol, str) or not symbol:
+        return None
+    # TW tab is stocks-only — TW-listed ETFs have their own "ETF" market tab
+    # (`SCREENER_MARKETS`), and warrants/derivatives are never scoreable at all.
+    if not is_scoreable_symbol(symbol, Market.TW):
+        return None
+    if classify_symbol_type(symbol, Market.TW) is not SymbolType.STOCK:
+        return None
+    if isinstance(close, int | float) and close < gates.min_price:
+        return None
+    if isinstance(volume, int | float) and volume < gates.min_avg_volume:
+        return None
+    return symbol
+
+
+def _latest_flagged_symbols(store: ParquetStore, dataset: str) -> set[str]:
+    """Symbols in the latest partition of a forward-only flag feed (empty without a partition)."""
+    dates = store.list_partition_dates(dataset, Market.TW.value)
+    if not dates:
+        return set()
+    rows = store.read_partition(dataset, Market.TW.value, max(dates))
+    return {s for s in (row.get("symbol") for row in rows) if isinstance(s, str)}
+
+
 def _gated_tw_universe(store: ParquetStore, gates: GateDefaults) -> tuple[set[str], date_ | None]:
     """The set of TW symbols surviving stage ⓐ, read from the latest already-ingested price
     partition plus the current day's attention/disposition feeds (forward-only feeds — see
@@ -167,47 +197,12 @@ def _gated_tw_universe(store: ParquetStore, gates: GateDefaults) -> tuple[set[st
     if as_of is None:
         return set(), None
     price_rows = store.read_partition(_PRICE_EOD_DATASET, Market.TW.value, as_of)
-    survivors: set[str] = set()
-    for row in price_rows:
-        symbol = row.get("symbol")
-        close = row.get("close")
-        volume = row.get("volume")
-        if not isinstance(symbol, str) or not symbol:
-            continue
-        # TW tab is stocks-only — TW-listed ETFs have their own "ETF" market tab
-        # (`SCREENER_MARKETS`), and warrants/derivatives are never scoreable at all.
-        if not is_scoreable_symbol(symbol, Market.TW):
-            continue
-        if classify_symbol_type(symbol, Market.TW) is not SymbolType.STOCK:
-            continue
-        if isinstance(close, int | float) and close < gates.min_price:
-            continue
-        if isinstance(volume, int | float) and volume < gates.min_avg_volume:
-            continue
-        survivors.add(symbol)
-
+    passed = (_passes_tw_stock_gates(row, gates) for row in price_rows)
+    survivors = {symbol for symbol in passed if symbol is not None}
     if gates.exclude_attention:
-        attention_dates = store.list_partition_dates(_ATTENTION_STOCKS_DATASET, Market.TW.value)
-        if attention_dates:
-            flagged = {
-                row.get("symbol")
-                for row in store.read_partition(
-                    _ATTENTION_STOCKS_DATASET, Market.TW.value, max(attention_dates)
-                )
-            }
-            survivors -= {s for s in flagged if isinstance(s, str)}
-
+        survivors -= _latest_flagged_symbols(store, _ATTENTION_STOCKS_DATASET)
     if gates.exclude_disposition:
-        disposition_dates = store.list_partition_dates(_DISPOSITION_EVENTS_DATASET, Market.TW.value)
-        if disposition_dates:
-            flagged = {
-                row.get("symbol")
-                for row in store.read_partition(
-                    _DISPOSITION_EVENTS_DATASET, Market.TW.value, max(disposition_dates)
-                )
-            }
-            survivors -= {s for s in flagged if isinstance(s, str)}
-
+        survivors -= _latest_flagged_symbols(store, _DISPOSITION_EVENTS_DATASET)
     return survivors, as_of
 
 
@@ -278,6 +273,52 @@ _ETF_RETURN_WINDOWS_TRADING_DAYS: dict[str, int] = {
 }
 
 
+def _closes_by_symbol(
+    raw_rows: Iterable[dict[str, object]],
+) -> dict[str, list[tuple[date_, float]]]:
+    """(date, close) points per symbol; rows lacking a str symbol, numeric close or date skipped."""
+    by_symbol: dict[str, list[tuple[date_, float]]] = {}
+    for row in raw_rows:
+        symbol = row.get("symbol")
+        close = row.get("close")
+        row_date = row.get("date")
+        if not (isinstance(symbol, str) and isinstance(close, int | float)):
+            continue
+        if not isinstance(row_date, date_):
+            continue
+        by_symbol.setdefault(symbol, []).append((row_date, float(close)))
+    return by_symbol
+
+
+def _window_returns(ordered: list[tuple[date_, float]]) -> dict[str, float]:
+    """Return (%) over each `_ETF_RETURN_WINDOWS_TRADING_DAYS` window of one date-ordered series;
+    a window too short for a return, or starting on a zero close, is omitted."""
+    last_close = ordered[-1][1]
+    windows: dict[str, float] = {}
+    for field_key, trading_days in _ETF_RETURN_WINDOWS_TRADING_DAYS.items():
+        window_slice = ordered[-(trading_days + 1) :]
+        if len(window_slice) < _MIN_RETURN_SERIES_LENGTH:
+            continue
+        first_close = window_slice[0][1]
+        if first_close:
+            windows[field_key] = (last_close / first_close - 1) * 100
+    return windows
+
+
+def _window_returns_by_symbol(
+    by_symbol: dict[str, list[tuple[date_, float]]],
+) -> dict[str, dict[str, float]]:
+    returns_by_symbol: dict[str, dict[str, float]] = {}
+    for symbol, series in by_symbol.items():
+        ordered = sorted(series)
+        if len(ordered) < _MIN_RETURN_SERIES_LENGTH:
+            continue
+        windows = _window_returns(ordered)
+        if windows:
+            returns_by_symbol[symbol] = windows
+    return returns_by_symbol
+
+
 def _etf_trailing_returns_by_symbol(
     store: ParquetStore, market: str, as_of: date_, etf_symbols: set[str]
 ) -> dict[str, dict[str, float]]:
@@ -296,35 +337,7 @@ def _etf_trailing_returns_by_symbol(
     year_start = calendar.shift_business_days(as_of, -longest_window)
     year_dates = calendar.business_days_between(year_start, as_of)
     raw_rows = store.read_range(_PRICE_EOD_DATASET, market, year_dates, symbols=tuple(etf_symbols))
-    by_symbol: dict[str, list[tuple[date_, float]]] = {}
-    for row in raw_rows:
-        symbol = row.get("symbol")
-        close = row.get("close")
-        row_date_raw = row.get("date")
-        if not (isinstance(symbol, str) and isinstance(close, int | float)):
-            continue
-        row_date = row_date_raw if isinstance(row_date_raw, date_) else None
-        if row_date is None:
-            continue
-        by_symbol.setdefault(symbol, []).append((row_date, float(close)))
-
-    returns_by_symbol: dict[str, dict[str, float]] = {}
-    for symbol, series in by_symbol.items():
-        ordered = sorted(series)
-        if len(ordered) < _MIN_RETURN_SERIES_LENGTH:
-            continue
-        last_close = ordered[-1][1]
-        windows: dict[str, float] = {}
-        for field_key, trading_days in _ETF_RETURN_WINDOWS_TRADING_DAYS.items():
-            window_slice = ordered[-(trading_days + 1) :]
-            if len(window_slice) < _MIN_RETURN_SERIES_LENGTH:
-                continue
-            first_close = window_slice[0][1]
-            if first_close:
-                windows[field_key] = (last_close / first_close - 1) * 100
-        if windows:
-            returns_by_symbol[symbol] = windows
-    return returns_by_symbol
+    return _window_returns_by_symbol(_closes_by_symbol(raw_rows))
 
 
 def _etf_aum_by_symbol(store: ParquetStore) -> dict[str, float]:
