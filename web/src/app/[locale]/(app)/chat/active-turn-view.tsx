@@ -18,7 +18,6 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { AnswerMarkdown } from "@/app/[locale]/(app)/chat/answer-markdown";
-import { Caveat } from "@/app/[locale]/(app)/chat/caveat";
 import { MemoryUsedChip } from "@/app/[locale]/(app)/chat/memory-used-chip";
 import { PersonalityChip } from "@/app/[locale]/(app)/chat/personality-chip";
 import { RichCardView } from "@/app/[locale]/(app)/chat/rich-card";
@@ -62,7 +61,6 @@ export function ActiveTurnView({
   onAskUserPick: (prompt: string) => void;
 }>): ReactNode {
   const t = useTranslations("chat.turn");
-  const tCaveat = useTranslations("chat.caveat");
   const reduceMotion = useReducedMotion();
   const typedStreamingAnswer = useTypewriter(turn.streamingAnswerText ?? "", reduceMotion ?? false);
 
@@ -113,7 +111,6 @@ export function ActiveTurnView({
           <div className="mt-1" aria-live="polite">
             <AnswerMarkdown text={turn.answerText} />
             <WebSearchSources sources={turn.webSearchSources} />
-            <Caveat text={tCaveat("nonTrading")} />
             <MemoryUsedChip memories={turn.memoriesUsed} />
             <PersonalityChip presetId={turn.personality} />
             <TokenUsageChip usage={turn.usage} />

@@ -134,7 +134,7 @@ build a result without a staleness statement, and `dataaccess/router.py` builds 
 never drops it) and `context/source_health.py` carries it -> tool output models declare their own
 non-empty `currentness_caveat` (e.g. `tools/analyst_tools.py`) -> the model sees it in the rendered
 tool result -> cards are stamped with `non_trading_caveat` -> `check_output` appends the standard
-caveat when the prose has none -> the web may render `<Caveat>` (§7). See [01](01-sources.md),
+caveat when the prose has none -> the web shows the footer disclaimer (§7). See [01](01-sources.md),
 [19](19-data-access-router.md).
 
 ## 5. Untrusted external content
@@ -174,6 +174,6 @@ values. `tests/payments/test_no_secret_logging.py` pins the payments path. See
   `tests/context/test_conversation.py`, `tests/research/*`, `tests/personality/test_registry.py`,
   `tests/pets/test_persona.py`, `tests/payments/test_no_secret_logging.py`.
 - **Web side** ([web/OVERVIEW.md](../../../web/OVERVIEW.md) §4): 紅漲綠跌 as a token (`--up`/`--down`,
-  always paired with ▲/▼, sign and an `aria-label`, never color alone); an optional
-  `<Caveat>` where a surface wants it (`components/ui/caveat.tsx`; not required everywhere); the 馬賽克 teaser for
+  always paired with ▲/▼, sign and an `aria-label`, never color alone); no per-surface
+  caveat chip (removed from the web app; the backend guardrail and the chat footer text remain); the 馬賽克 teaser for
   `tool.locked` handled as HTTP 200; no trading words in copy; analyst targets always attributed.

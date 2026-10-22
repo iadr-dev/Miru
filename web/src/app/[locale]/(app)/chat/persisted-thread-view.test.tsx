@@ -92,9 +92,9 @@ describe("PersistedThreadView", () => {
     expect(screen.getByText(ANSWER)).toBeTruthy();
   });
 
-  it("always pins the non-trading caveat under an assistant answer", () => {
+  it("shows no caveat chip under an assistant answer", () => {
     renderWithIntl(<PersistedThreadView thread={conversation} />);
-    expect(screen.getAllByText(messages.chat.caveat.nonTrading)).toHaveLength(1);
+    expect(screen.queryByText(messages.disclaimer.text)).toBeNull();
   });
 
   it("keeps the tool process collapsed until asked, then shows it", () => {

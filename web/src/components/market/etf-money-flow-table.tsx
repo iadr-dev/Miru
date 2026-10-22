@@ -21,7 +21,7 @@ const ROW_GRID_COLS = "grid-cols-[1.3fr_0.9fr_1fr_0.8fr_0.9fr_28px]";
  * Price/change% comes from `useSymbolQuotes` (the same batched `symbol-info`+`price-history`
  * hook `LeaderboardCard` already uses) since `EtfMoneyFlowRow` itself carries no price field —
  * this tool is a holdings/flow aggregation, not a quote source. The caller (`EtfMoneyFlowPanel`)
- * owns the section title/toggle/`<Caveat>` — this component is the table body only.
+ * owns the section title/toggle — this component is the table body only.
  */
 export function EtfMoneyFlowTable({
   rows,

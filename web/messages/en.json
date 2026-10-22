@@ -2111,9 +2111,6 @@
         }
       }
     },
-    "caveat": {
-      "nonTrading": "Miru's analysis is a reading of the data and does not constitute investment advice."
-    },
     "composer": {
       "placeholder": "Ask me anything about Taiwan stocks…",
       "label": "Message Miru",

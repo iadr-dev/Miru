@@ -145,12 +145,11 @@ All are errors, not warnings.
   (`SignedChange`, helpers in `lib/signed.ts`) instead of hand-rolling the glyph and colour; `0`
   renders neutral. `--accent` (teal) is chrome only — never a price. Categorical series use
   `--chart-1..6`, never the signed tokens.
-- **`<Caveat>` is optional** (`components/ui/caveat.tsx`, re-exported from `app/[locale]/(app)/chat/caveat.tsx`):
-  a surface may show the non-trading caveat (analytical surfaces) or a currentness caveat (quote/market
-  surfaces) where it helps the reader, and may leave it out; the compare view and the AI 盯盤 page
-  (`components/watch/`, which states it in its subtitle) do. Where it is shown, pair it with a
-  data-freshness badge on cached, possibly-stale surfaces. Never-trading *copy* (below) is unaffected:
-  the backend output guardrail still blocks buy/sell/target/sizing language in every answer.
+- **No caveat chip.** The web app renders no per-surface "analysis is not investment advice" badge
+  (the old `<Caveat>` component is gone). Wording is still never trading advice (below), the page
+  footer under the chat input keeps its plain disclaimer text, and the backend output guardrail still
+  blocks buy/sell/target/sizing language in every answer. Pair cached, possibly-stale surfaces with a
+  data-freshness badge.
 - **馬賽克 teaser for sponsor data:** frame / headline / label columns stay sharp, the value layer
   sits under `backdrop-blur` + diagonal texture + a centred lock chip + **one calm CTA**. Never a
   wall or interstitial; the answer proceeds around it. A teaser envelope
