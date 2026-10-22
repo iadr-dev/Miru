@@ -171,7 +171,7 @@ export function ScreenerWorkbench(): ReactNode {
 
               {runQuery.isLoading ? <ScreenerLoading /> : null}
               {runQuery.isError ? <ScreenerError onRetry={() => runQuery.refetch()} /> : null}
-              {runQuery.data && runQuery.data.survivors.length === 0 ? (
+              {runQuery.data?.survivors.length === 0 ? (
                 <ScreenerEmptyState onRelaxGates={handleRelaxGates} />
               ) : null}
               {runQuery.data && runQuery.data.survivors.length > 0 ? (

@@ -26,7 +26,7 @@ export const RANGE_KEYS = ["1Y", "3Y", "5Y", "10Y"] as const satisfies readonly 
 
 /** ISO date `years` before `from` (UTC). */
 export function yearsBefore(from: Date, years: number): string {
-  const date = new Date(from.getTime());
+  const date = new Date(from);
   date.setUTCFullYear(date.getUTCFullYear() - years);
   return date.toISOString().slice(0, 10);
 }

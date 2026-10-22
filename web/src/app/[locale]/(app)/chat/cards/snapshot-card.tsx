@@ -45,8 +45,8 @@ type DepthTier = { price: number; volume: number };
  * `b:"2345.0000_2340.0000_..."` paired tier-for-tier with `g:"363_747_..."`). Pairs price+volume
  * per tier, keeping only tiers with a real (positive) price — never renders a placeholder tier. */
 function parseDepthTiers(rawPrice: string, rawVolume: string): DepthTier[] {
-  const prices = rawPrice.split("_").map((part) => Number(part));
-  const volumes = rawVolume.split("_").map((part) => Number(part));
+  const prices = rawPrice.split("_").map(Number);
+  const volumes = rawVolume.split("_").map(Number);
   const tiers: DepthTier[] = [];
   for (let i = 0; i < prices.length; i++) {
     const price = prices[i];

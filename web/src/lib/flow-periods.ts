@@ -47,7 +47,7 @@ export function groupFlowByPeriod(
   for (const point of points) {
     const label = groupKey(point.trade_date, period);
     const last = bars.at(-1);
-    if (last && last.label === label) {
+    if (last?.label === label) {
       bars[bars.length - 1] = {
         label,
         foreign: last.foreign + point.foreign,

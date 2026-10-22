@@ -86,7 +86,7 @@ export function ThemePage({ themeKey }: { readonly themeKey: string }): ReactNod
     return <QueryFailure query={membersQuery} />;
   }
   const data = membersQuery.data;
-  if (!data || !data.found) {
+  if (!data?.found) {
     return (
       <Card as="section">
         <EmptyState

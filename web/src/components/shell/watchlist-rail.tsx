@@ -255,7 +255,7 @@ function WatchlistTabPanel({
     if (!activeItem) return;
 
     // Dropped on another item within the SAME group → local reorder via move-to-self-with-after.
-    const overInSameGroup = sourceItems.find((item) => item.id === over.id);
+    const overInSameGroup = sourceItems.some((item) => item.id === over.id);
     if (overInSameGroup && active.id !== over.id) {
       const overIndex = sourceItems.findIndex((item) => item.id === over.id);
       const afterId = overIndex > 0 ? (sourceItems[overIndex - 1]?.id ?? null) : null;

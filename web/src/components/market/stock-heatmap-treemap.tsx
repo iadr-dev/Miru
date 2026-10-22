@@ -151,7 +151,7 @@ function sizeMetricLabel(
     return (
       <p className="mt-1.5 font-num text-[10.5px] text-[var(--text-muted)] tabular-nums">
         {t("marketValue", {
-          value: formatNumber(row.market_value / 1_0000_0000, locale, { decimals: 1 }),
+          value: formatNumber(row.market_value / 100_000_000, locale, { decimals: 1 }),
         })}
       </p>
     );
@@ -159,7 +159,7 @@ function sizeMetricLabel(
   if (row.turnover === null) return null;
   return (
     <p className="mt-1.5 font-num text-[10.5px] text-[var(--text-muted)] tabular-nums">
-      {t("turnover", { value: formatNumber(row.turnover / 1_0000_0000, locale, { decimals: 1 }) })}
+      {t("turnover", { value: formatNumber(row.turnover / 100_000_000, locale, { decimals: 1 }) })}
     </p>
   );
 }

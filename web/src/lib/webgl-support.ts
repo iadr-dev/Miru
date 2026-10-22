@@ -4,7 +4,7 @@
  * used and its context released at once.
  */
 export function isWebGLAvailable(): boolean {
-  if (typeof window === "undefined" || typeof window.WebGLRenderingContext === "undefined") {
+  if (typeof window === "undefined" || window.WebGLRenderingContext === undefined) {
     return false;
   }
   try {
