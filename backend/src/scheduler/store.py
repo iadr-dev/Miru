@@ -103,6 +103,44 @@ def _quiet(start: str | None, end: str | None) -> QuietHours | None:
     return QuietHours(start=start, end=end)
 
 
+def _apply_job_target(row: ScheduleJobRow, patch: SchedulePatch, given: set[str]) -> None:
+    """The trigger and action parts of a user edit, when they were sent."""
+    if "trigger" in given and patch.trigger is not None:
+        row.trigger_type = patch.trigger.type.value
+        row.trigger_spec = patch.trigger.spec
+        row.trigger_market = patch.trigger.market.value
+    if "action" in given and patch.action is not None:
+        row.skill_ref = patch.action.skill_ref
+        row.skill_inputs = dict(patch.action.inputs)
+
+
+def _apply_alert_rule_fields(row: AlertRuleRow, patch: AlertPatch, given: set[str]) -> None:
+    """The rule-defining parts of a user edit. A new condition resets the edge-trigger memory."""
+    if "enabled" in given and patch.enabled is not None:
+        row.enabled = patch.enabled
+    if "condition" in given and patch.condition is not None:
+        row.condition = patch.condition.model_dump(mode="json")
+        row.state = {}
+    if "trigger_mode" in given and patch.trigger_mode is not None:
+        row.trigger_mode = patch.trigger_mode.value
+    if "cooldown_seconds" in given:
+        row.cooldown_seconds = patch.cooldown_seconds
+    if "expires_at" in given:
+        row.expires_at = patch.expires_at
+
+
+def _apply_quiet_and_limit(
+    row: ScheduleJobRow | AlertRuleRow, patch: SchedulePatch | AlertPatch, given: set[str]
+) -> None:
+    """Quiet hours and the daily limit are nullable: sending `None` clears them."""
+    if "quiet_hours" in given:
+        quiet = patch.quiet_hours
+        row.quiet_start = quiet.start if quiet else None
+        row.quiet_end = quiet.end if quiet else None
+    if "daily_limit" in given:
+        row.daily_limit = patch.daily_limit
+
+
 def _job_to_model(row: ScheduleJobRow) -> ScheduleJob:
     return ScheduleJob(
         id=row.id,
@@ -517,20 +555,10 @@ class SqlAlchemySchedulerStore:
         given = patch.model_fields_set
         if "enabled" in given and patch.enabled is not None:
             row.enabled = patch.enabled
-        if "trigger" in given and patch.trigger is not None:
-            row.trigger_type = patch.trigger.type.value
-            row.trigger_spec = patch.trigger.spec
-            row.trigger_market = patch.trigger.market.value
-        if "action" in given and patch.action is not None:
-            row.skill_ref = patch.action.skill_ref
-            row.skill_inputs = dict(patch.action.inputs)
+        _apply_job_target(row, patch, given)
         if "delivery_channels" in given and patch.delivery_channels is not None:
             row.delivery_channels = [c.value for c in patch.delivery_channels]
-        if "quiet_hours" in given:
-            row.quiet_start = patch.quiet_hours.start if patch.quiet_hours else None
-            row.quiet_end = patch.quiet_hours.end if patch.quiet_hours else None
-        if "daily_limit" in given:
-            row.daily_limit = patch.daily_limit
+        _apply_quiet_and_limit(row, patch, given)
         if next_run is not None:
             row.next_run = next_run
         if given & {"enabled", "trigger"}:
@@ -717,26 +745,12 @@ class SqlAlchemySchedulerStore:
         if expected_version is not None and row.version != expected_version:
             raise StaleVersionError(alert_id)
         given = patch.model_fields_set
-        if "enabled" in given and patch.enabled is not None:
-            row.enabled = patch.enabled
-        if "condition" in given and patch.condition is not None:
-            row.condition = patch.condition.model_dump(mode="json")
-            row.state = {}
-        if "trigger_mode" in given and patch.trigger_mode is not None:
-            row.trigger_mode = patch.trigger_mode.value
-        if "cooldown_seconds" in given:
-            row.cooldown_seconds = patch.cooldown_seconds
-        if "expires_at" in given:
-            row.expires_at = patch.expires_at
+        _apply_alert_rule_fields(row, patch, given)
         if "explain" in given and patch.explain is not None:
             row.explain = patch.explain
         if "channels" in given and patch.channels is not None:
             row.channels = [c.value for c in patch.channels]
-        if "quiet_hours" in given:
-            row.quiet_start = patch.quiet_hours.start if patch.quiet_hours else None
-            row.quiet_end = patch.quiet_hours.end if patch.quiet_hours else None
-        if "daily_limit" in given:
-            row.daily_limit = patch.daily_limit
+        _apply_quiet_and_limit(row, patch, given)
         if given & {"enabled", "condition", "expires_at"}:
             row.auto_paused_reason = None
         row.version += 1
