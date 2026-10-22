@@ -305,6 +305,53 @@ def _dividend_yield_rows(
     )
 
 
+def _year_ago_targets(
+    latest_by_symbol: dict[str, dict[str, object]],
+) -> dict[str, tuple[int, int]]:
+    """Each symbol's own latest (revenue_month, revenue_year - 1) — the filing its YoY uses."""
+    targets: dict[str, tuple[int, int]] = {}
+    for symbol, row in latest_by_symbol.items():
+        month = row.get("revenue_month")
+        year = row.get("revenue_year")
+        if isinstance(month, int) and isinstance(year, int):
+            targets[symbol] = (month, year - 1)
+    return targets
+
+
+def _find_year_ago_rows(
+    store: ParquetStore,
+    known_dates: list[date_],
+    target_by_symbol: dict[str, tuple[int, int]],
+) -> dict[str, dict[str, object]]:
+    """First row (in partition-date order) matching each symbol's target month and year."""
+    found: dict[str, dict[str, object]] = {}
+    for scan_date in known_dates:
+        for row in store.read_partition(MONTH_REVENUE_JOB.dataset, "TW", scan_date):
+            row_symbol = row.get("symbol")
+            if (
+                not isinstance(row_symbol, str)
+                or row_symbol in found
+                or row_symbol not in target_by_symbol
+            ):
+                continue
+            target_month, target_year = target_by_symbol[row_symbol]
+            if row.get("revenue_month") == target_month and row.get("revenue_year") == target_year:
+                found[row_symbol] = row
+    return found
+
+
+def _yoy_pct(latest_row: dict[str, object], year_ago_row: dict[str, object] | None) -> float | None:
+    latest_revenue = latest_row.get("revenue")
+    year_ago_revenue = year_ago_row.get("revenue") if year_ago_row else None
+    if (
+        not isinstance(latest_revenue, int | float)
+        or not isinstance(year_ago_revenue, int | float)
+        or year_ago_revenue == 0
+    ):
+        return None
+    return (float(latest_revenue) - float(year_ago_revenue)) / float(year_ago_revenue) * 100
+
+
 def _revenue_growth_rows(
     store: ParquetStore,
     names_by_symbol: dict[str, str],
@@ -335,39 +382,14 @@ def _revenue_growth_rows(
     # irregular per-company dates so not every symbol's latest filing is for the same month. A
     # given symbol's year-ago filing may also live under a different partition date than
     # `latest_date`, so every known date is scanned rather than assuming a fixed offset.
-    target_by_symbol: dict[str, tuple[int, int]] = {}
-    for symbol, row in latest_by_symbol.items():
-        month = row.get("revenue_month")
-        year = row.get("revenue_year")
-        if isinstance(month, int) and isinstance(year, int):
-            target_by_symbol[symbol] = (month, year - 1)
-
-    year_ago_by_symbol: dict[str, dict[str, object]] = {}
-    for scan_date in known_dates:
-        for row in store.read_partition(MONTH_REVENUE_JOB.dataset, "TW", scan_date):
-            row_symbol = row.get("symbol")
-            if (
-                not isinstance(row_symbol, str)
-                or row_symbol in year_ago_by_symbol
-                or row_symbol not in target_by_symbol
-            ):
-                continue
-            target_month, target_year = target_by_symbol[row_symbol]
-            if row.get("revenue_month") == target_month and row.get("revenue_year") == target_year:
-                year_ago_by_symbol[row_symbol] = row
-
+    year_ago_by_symbol = _find_year_ago_rows(
+        store, known_dates, _year_ago_targets(latest_by_symbol)
+    )
     ranked: list[TwRankingRow] = []
     for symbol, latest_row in latest_by_symbol.items():
-        year_ago_row = year_ago_by_symbol.get(symbol)
-        latest_revenue = latest_row.get("revenue")
-        year_ago_revenue = year_ago_row.get("revenue") if year_ago_row else None
-        if (
-            not isinstance(latest_revenue, int | float)
-            or not isinstance(year_ago_revenue, int | float)
-            or year_ago_revenue == 0
-        ):
+        yoy_pct = _yoy_pct(latest_row, year_ago_by_symbol.get(symbol))
+        if yoy_pct is None:
             continue
-        yoy_pct = (float(latest_revenue) - float(year_ago_revenue)) / float(year_ago_revenue) * 100
         ranked.append(
             TwRankingRow(
                 symbol=symbol,
