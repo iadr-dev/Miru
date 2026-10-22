@@ -30,12 +30,14 @@ import {
   type ScheduleTemplate,
   type ScheduleTemplateId,
   supportsWatchlist,
+  type TargetCheck,
   targetsOfJob,
   templateOfJob,
   watchlistOfJob,
 } from "@/lib/schedules/templates";
 import { groupNameStyle } from "@/lib/watchlist-color";
 import type { ScheduleJob } from "@/types/settings";
+import type { WatchlistGroupView } from "@/types/watchlist";
 
 /** Schedules — scheduled briefings (docs/backend/modules/14 §4). Template-first, like alerts: the
  * user picks a briefing (盤前簡報, 收盤籌碼…) and the stock(s); the trigger and skill come from the
@@ -248,6 +250,65 @@ function errorKeyFor(error: unknown): "errorCap" | "errorStale" | "errorGeneric"
   return "errorGeneric";
 }
 
+/** The form's starting values: the job's own when editing, the first template and blanks when not. */
+function initialFormState(job: ScheduleJob | undefined): {
+  templateId: ScheduleTemplateId;
+  targetsText: string;
+  followList: boolean;
+  watchlistId: string;
+} {
+  const jobTemplate = job ? templateOfJob(job) : null;
+  const watchlist = job ? watchlistOfJob(job) : null;
+  return {
+    templateId: jobTemplate?.id ?? SCHEDULE_TEMPLATE_IDS[0],
+    targetsText: job && jobTemplate ? targetsOfJob(job, jobTemplate).join(", ") : "",
+    followList: watchlist !== null,
+    watchlistId: watchlist ?? "",
+  };
+}
+
+/** Create the schedule, or update `job` (with its version) when editing. */
+function saveSchedule({
+  job,
+  template,
+  following,
+  watchlistId,
+  targets,
+}: Readonly<{
+  job: ScheduleJob | undefined;
+  template: ScheduleTemplate;
+  following: boolean;
+  watchlistId: string;
+  targets: string[];
+}>): Promise<ScheduleJob> {
+  const action = following
+    ? buildWatchlistAction(template, watchlistId)
+    : buildScheduleAction(template, targets);
+  if (job) {
+    return updateSchedule(job.id, { action, expected_version: job.version });
+  }
+  return createSchedule({
+    trigger: template.trigger,
+    action,
+    delivery_channels: ["in_app"],
+  });
+}
+
+function isStaleVersion(error: unknown): boolean {
+  return error instanceof SettingsApiError && error.code === "stale_version";
+}
+
+/** What to save on submit — the typed targets, `[]` for a followed group — or null while the
+ * form is not valid yet. */
+function targetsToSave(
+  following: boolean,
+  watchlistId: string,
+  check: TargetCheck,
+): string[] | null {
+  if (following) return watchlistId === "" ? null : [];
+  return check.ok ? check.targets : null;
+}
+
 /** Create or edit a schedule. Editing keeps the briefing type (changing it is delete + re-create,
  * like an alert's symbol) and lets the user change the stock(s). A 409 means another device saved
  * first: the list is refreshed and the user is told to reopen — the edit is a single field. */
@@ -256,22 +317,17 @@ function ScheduleForm({
   job,
 }: Readonly<{ onDone: () => void; job?: ScheduleJob }>): ReactNode {
   const t = useTranslations("settings.alerts.schedules.form");
-  const tt = useTranslations("settings.alerts.schedules.templates");
   const queryClient = useQueryClient();
 
   const editing = job !== undefined;
-  const jobTemplate = job ? templateOfJob(job) : null;
-  const [templateId, setTemplateId] = useState<ScheduleTemplateId>(
-    jobTemplate?.id ?? SCHEDULE_TEMPLATE_IDS[0],
-  );
+  const initial = initialFormState(job);
+  const [templateId, setTemplateId] = useState<ScheduleTemplateId>(initial.templateId);
   const template: ScheduleTemplate = SCHEDULE_TEMPLATES[templateId];
-  const [targetsText, setTargetsText] = useState(
-    job && jobTemplate ? targetsOfJob(job, jobTemplate).join(", ") : "",
-  );
+  const [targetsText, setTargetsText] = useState(initial.targetsText);
   // "my watchlist" instead of typed stocks (pre-open briefing only): the group is expanded at run
   // time, so the briefing tracks the list as it changes.
-  const [followList, setFollowList] = useState(job ? watchlistOfJob(job) !== null : false);
-  const [watchlistId, setWatchlistId] = useState(job ? (watchlistOfJob(job) ?? "") : "");
+  const [followList, setFollowList] = useState(initial.followList);
+  const [watchlistId, setWatchlistId] = useState(initial.watchlistId);
   const canFollow = supportsWatchlist(template);
   const following = canFollow && followList;
   const groups = useQuery({
@@ -282,25 +338,14 @@ function ScheduleForm({
   const [submitted, setSubmitted] = useState(false);
 
   const mutation = useMutation({
-    mutationFn: async (targets: string[]) => {
-      const action = following
-        ? buildWatchlistAction(template, watchlistId)
-        : buildScheduleAction(template, targets);
-      if (job) {
-        return updateSchedule(job.id, { action, expected_version: job.version });
-      }
-      return createSchedule({
-        trigger: template.trigger,
-        action,
-        delivery_channels: ["in_app"],
-      });
-    },
+    mutationFn: (targets: string[]) =>
+      saveSchedule({ job, template, following, watchlistId, targets }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.settings("schedules") });
       onDone();
     },
     onError: (error) => {
-      if (error instanceof SettingsApiError && error.code === "stale_version") {
+      if (isStaleVersion(error)) {
         void queryClient.invalidateQueries({ queryKey: queryKeys.settings("schedules") });
       }
     },
@@ -313,15 +358,8 @@ function ScheduleForm({
   const onSubmit = (e: FormEvent<HTMLFormElement>): void => {
     e.preventDefault();
     setSubmitted(true);
-    if (following) {
-      if (watchlistId !== "") {
-        mutation.mutate([]);
-      }
-      return;
-    }
-    if (check.ok) {
-      mutation.mutate(check.targets);
-    }
+    const targets = targetsToSave(following, watchlistId, check);
+    if (targets !== null) mutation.mutate(targets);
   };
 
   return (
@@ -337,97 +375,22 @@ function ScheduleForm({
       className="space-y-4 rounded-[var(--radius-input)] border border-[var(--border)] bg-[var(--surface-2)] p-4"
     >
       <fieldset className="grid gap-3 sm:grid-cols-2">
-        <div>
-          <label
-            className="mb-1 block text-[13px] text-[var(--text-muted)]"
-            htmlFor="schedule-template"
-          >
-            {t("template")}
-          </label>
-          <Select
-            id="schedule-template"
-            value={templateId}
-            disabled={editing}
-            onChange={(e) => setTemplateId(e.target.value as ScheduleTemplateId)}
-          >
-            {SCHEDULE_TEMPLATE_IDS.map((id) => (
-              <option key={id} value={id}>
-                {tt(`${id}.label`)}
-              </option>
-            ))}
-          </Select>
-          <p className="mt-1 text-[12px] text-[var(--text-muted)]">{tt(`${templateId}.cadence`)}</p>
-        </div>
-        {canFollow ? (
-          <div className="sm:col-span-2">
-            <label
-              className="mb-1 block text-[13px] text-[var(--text-muted)]"
-              htmlFor="schedule-scope"
-            >
-              {t("scope")}
-            </label>
-            <Select
-              id="schedule-scope"
-              value={followList ? "watchlist" : "stocks"}
-              onChange={(e) => setFollowList(e.target.value === "watchlist")}
-            >
-              <option value="stocks">{t("scopeStocks")}</option>
-              <option value="watchlist">{t("scopeWatchlist")}</option>
-            </Select>
-          </div>
-        ) : null}
+        <TemplateField templateId={templateId} disabled={editing} onChange={setTemplateId} />
+        {canFollow ? <ScopeField followList={followList} onChange={setFollowList} /> : null}
         {following ? (
-          <div className="sm:col-span-2">
-            <label
-              className="mb-1 block text-[13px] text-[var(--text-muted)]"
-              htmlFor="schedule-watchlist"
-            >
-              {t("watchlist")}
-            </label>
-            <Select
-              id="schedule-watchlist"
-              value={watchlistId}
-              onChange={(e) => setWatchlistId(e.target.value)}
-            >
-              <option value="">{t("watchlistPlaceholder")}</option>
-              {(groups.data ?? []).map((view) => (
-                <option
-                  key={view.group.id}
-                  value={view.group.id}
-                  style={groupNameStyle(view.group)}
-                >
-                  {view.group.name}
-                </option>
-              ))}
-            </Select>
-            <p className="mt-1 text-[12px] text-[var(--text-muted)]">{t("watchlistNote")}</p>
-            {watchlistError ? (
-              <p role="alert" className="mt-1 text-[12px] text-[var(--warn)]">
-                {t("errorWatchlistRequired")}
-              </p>
-            ) : null}
-          </div>
+          <WatchlistField
+            watchlistId={watchlistId}
+            onChange={setWatchlistId}
+            groups={groups.data ?? []}
+            showError={watchlistError}
+          />
         ) : (
-          <div>
-            <label
-              className="mb-1 block text-[13px] text-[var(--text-muted)]"
-              htmlFor="schedule-targets"
-            >
-              {template.multiple ? t("targetsMany", { max: MAX_TARGETS }) : t("targetsOne")}
-            </label>
-            <TextInput
-              id="schedule-targets"
-              value={targetsText}
-              onChange={(e) => setTargetsText(e.target.value)}
-              placeholder={template.targetMarket === "US" ? "AAPL" : "2330"}
-              aria-invalid={targetError !== null}
-            />
-            {targetError ? (
-              <p role="alert" className="mt-1 text-[12px] text-[var(--warn)]">
-                {t(`error.${targetError}`, { max: MAX_TARGETS })}
-              </p>
-            ) : null}
-          </div>
+          <TargetsField
+            template={template}
+            value={targetsText}
+            onChange={setTargetsText}
+            error={targetError}
+          />
         )}
       </fieldset>
       <p className="text-[12px] text-[var(--text-muted)]">{t("note")}</p>
@@ -445,5 +408,138 @@ function ScheduleForm({
         </Button>
       </div>
     </form>
+  );
+}
+
+function TemplateField({
+  templateId,
+  disabled,
+  onChange,
+}: Readonly<{
+  templateId: ScheduleTemplateId;
+  disabled: boolean;
+  onChange: (id: ScheduleTemplateId) => void;
+}>): ReactNode {
+  const t = useTranslations("settings.alerts.schedules.form");
+  const tt = useTranslations("settings.alerts.schedules.templates");
+  return (
+    <div>
+      <label
+        className="mb-1 block text-[13px] text-[var(--text-muted)]"
+        htmlFor="schedule-template"
+      >
+        {t("template")}
+      </label>
+      <Select
+        id="schedule-template"
+        value={templateId}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value as ScheduleTemplateId)}
+      >
+        {SCHEDULE_TEMPLATE_IDS.map((id) => (
+          <option key={id} value={id}>
+            {tt(`${id}.label`)}
+          </option>
+        ))}
+      </Select>
+      <p className="mt-1 text-[12px] text-[var(--text-muted)]">{tt(`${templateId}.cadence`)}</p>
+    </div>
+  );
+}
+
+function ScopeField({
+  followList,
+  onChange,
+}: Readonly<{ followList: boolean; onChange: (follow: boolean) => void }>): ReactNode {
+  const t = useTranslations("settings.alerts.schedules.form");
+  return (
+    <div className="sm:col-span-2">
+      <label className="mb-1 block text-[13px] text-[var(--text-muted)]" htmlFor="schedule-scope">
+        {t("scope")}
+      </label>
+      <Select
+        id="schedule-scope"
+        value={followList ? "watchlist" : "stocks"}
+        onChange={(e) => onChange(e.target.value === "watchlist")}
+      >
+        <option value="stocks">{t("scopeStocks")}</option>
+        <option value="watchlist">{t("scopeWatchlist")}</option>
+      </Select>
+    </div>
+  );
+}
+
+function WatchlistField({
+  watchlistId,
+  onChange,
+  groups,
+  showError,
+}: Readonly<{
+  watchlistId: string;
+  onChange: (id: string) => void;
+  groups: readonly WatchlistGroupView[];
+  showError: boolean;
+}>): ReactNode {
+  const t = useTranslations("settings.alerts.schedules.form");
+  return (
+    <div className="sm:col-span-2">
+      <label
+        className="mb-1 block text-[13px] text-[var(--text-muted)]"
+        htmlFor="schedule-watchlist"
+      >
+        {t("watchlist")}
+      </label>
+      <Select
+        id="schedule-watchlist"
+        value={watchlistId}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        <option value="">{t("watchlistPlaceholder")}</option>
+        {groups.map((view) => (
+          <option key={view.group.id} value={view.group.id} style={groupNameStyle(view.group)}>
+            {view.group.name}
+          </option>
+        ))}
+      </Select>
+      <p className="mt-1 text-[12px] text-[var(--text-muted)]">{t("watchlistNote")}</p>
+      {showError ? (
+        <p role="alert" className="mt-1 text-[12px] text-[var(--warn)]">
+          {t("errorWatchlistRequired")}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function TargetsField({
+  template,
+  value,
+  onChange,
+  error,
+}: Readonly<{
+  template: ScheduleTemplate;
+  value: string;
+  onChange: (value: string) => void;
+  error: Extract<TargetCheck, { ok: false }>["reason"] | null;
+}>): ReactNode {
+  const t = useTranslations("settings.alerts.schedules.form");
+  return (
+    <div>
+      <label className="mb-1 block text-[13px] text-[var(--text-muted)]" htmlFor="schedule-targets">
+        {template.multiple ? t("targetsMany", { max: MAX_TARGETS }) : t("targetsOne")}
+      </label>
+      <TextInput
+        id="schedule-targets"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={template.targetMarket === "US" ? "AAPL" : "2330"}
+        aria-invalid={error !== null}
+      />
+      {error ? (
+        <p role="alert" className="mt-1 text-[12px] text-[var(--warn)]">
+          {t(`error.${error}`, { max: MAX_TARGETS })}
+        </p>
+      ) : null}
+    </div>
   );
 }

@@ -161,6 +161,70 @@ function AttachmentChip({
   );
 }
 
+type MessageBlock = Turn["messages"][number];
+
+type BlockOpts = {
+  isUser: boolean;
+  youLabel: string;
+  onEditText?: ((newText: string) => void) | undefined;
+  onAskUserPick?: ((prompt: string) => void) | undefined;
+};
+
+function renderTextBlock(message: MessageBlock, opts: BlockOpts): ReactNode {
+  const { isUser, youLabel, onEditText } = opts;
+  const text = typeof message.content.text === "string" ? message.content.text : "";
+  if (!isUser) return <AnswerMarkdown key={message.id} text={text} />;
+  return (
+    <UserBubble
+      key={message.id}
+      text={text}
+      label={youLabel}
+      onEdit={onEditText}
+      onResend={onEditText ? () => onEditText(text) : undefined}
+    />
+  );
+}
+
+function renderAttachmentBlock(message: MessageBlock): ReactNode {
+  const parsed = attachmentBlockSchema.safeParse(message.content);
+  if (!parsed.success) {
+    return null;
+  }
+  // Attachment chips sit right-aligned above the user bubble they belong to, mirroring the
+  // composer's own staged-attachment row position (above the input, not inline in the text).
+  return (
+    <div key={message.id} className="flex justify-end">
+      <AttachmentChip filename={parsed.data.filename} isImage={parsed.data.is_image} />
+    </div>
+  );
+}
+
+function renderRichCardBlock(message: MessageBlock, opts: BlockOpts): ReactNode {
+  const parsed = richCardSchema.safeParse(message.content);
+  if (!parsed.success) return null;
+  return <RichCardView key={message.id} card={parsed.data} onAskUserPick={opts.onAskUserPick} />;
+}
+
+/** Positioned right below the answer text, above the caveat — mirrors `active-turn-view.tsx`'s
+ * live placement of the same component, so the pill doesn't jump position when a turn hands off
+ * from the live overlay to this persisted render on reload. */
+function renderWebSearchBlock(message: MessageBlock): ReactNode {
+  const parsed = webSearchSourcesBlockSchema.safeParse(message.content);
+  if (!parsed.success) return null;
+  return <WebSearchSources key={message.id} sources={parsed.data.sources} />;
+}
+
+/** Block types with an inline renderer. `thinking`/`tool_use`/`tool_result` are handled by
+ * `PersistedProcessDisclosure` (rendered once per turn, below); the rest have none. */
+const BLOCK_RENDERERS: Partial<
+  Record<MessageBlock["type"], (message: MessageBlock, opts: BlockOpts) => ReactNode>
+> = {
+  text: renderTextBlock,
+  attachment: renderAttachmentBlock,
+  rich_card: renderRichCardBlock,
+  web_search_sources: renderWebSearchBlock,
+};
+
 /** One turn's message blocks rendered per `type` — split out of `PersistedThreadView` purely to
  * keep that component's own branching shallow. `thinking`/`tool_use`/`tool_result` blocks are
  * rendered separately by `PersistedProcessDisclosure` (grouped by lane, not inline per-block,
@@ -168,66 +232,8 @@ function AttachmentChip({
  * by `agent_id` — see that component). `steering`/`branch_summary`/`compaction` blocks still have
  * no persisted-view renderer; the caveat is handled by the caller so it's always present on
  * assistant turns. */
-function renderMessageBlock(
-  message: Turn["messages"][number],
-  opts: {
-    isUser: boolean;
-    youLabel: string;
-    onEditText?: ((newText: string) => void) | undefined;
-    onAskUserPick?: ((prompt: string) => void) | undefined;
-  },
-): ReactNode {
-  const { isUser, youLabel, onEditText, onAskUserPick } = opts;
-  if (
-    message.type === "tool_use" ||
-    message.type === "tool_result" ||
-    message.type === "thinking"
-  ) {
-    return null; // handled by `PersistedProcessDisclosure`, rendered once per turn below
-  }
-  if (message.type === "text") {
-    const text = typeof message.content.text === "string" ? message.content.text : "";
-    return isUser ? (
-      <UserBubble
-        key={message.id}
-        text={text}
-        label={youLabel}
-        onEdit={onEditText}
-        onResend={onEditText ? () => onEditText(text) : undefined}
-      />
-    ) : (
-      <AnswerMarkdown key={message.id} text={text} />
-    );
-  }
-  if (message.type === "attachment") {
-    const parsed = attachmentBlockSchema.safeParse(message.content);
-    if (!parsed.success) {
-      return null;
-    }
-    // Attachment chips sit right-aligned above the user bubble they belong to, mirroring the
-    // composer's own staged-attachment row position (above the input, not inline in the text).
-    return (
-      <div key={message.id} className="flex justify-end">
-        <AttachmentChip filename={parsed.data.filename} isImage={parsed.data.is_image} />
-      </div>
-    );
-  }
-  if (message.type === "rich_card") {
-    const parsed = richCardSchema.safeParse(message.content);
-    return parsed.success ? (
-      <RichCardView key={message.id} card={parsed.data} onAskUserPick={onAskUserPick} />
-    ) : null;
-  }
-  if (message.type === "web_search_sources") {
-    // Positioned right below the answer text, above the caveat — mirrors
-    // `active-turn-view.tsx`'s live placement of the same component, so the pill doesn't jump
-    // position when a turn hands off from the live overlay to this persisted render on reload.
-    const parsed = webSearchSourcesBlockSchema.safeParse(message.content);
-    return parsed.success ? (
-      <WebSearchSources key={message.id} sources={parsed.data.sources} />
-    ) : null;
-  }
-  return null;
+function renderMessageBlock(message: MessageBlock, opts: BlockOpts): ReactNode {
+  return BLOCK_RENDERERS[message.type]?.(message, opts) ?? null;
 }
 
 /**

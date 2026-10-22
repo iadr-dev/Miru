@@ -188,6 +188,37 @@ function MarginShortChartShell<TRow extends { trade_date: string }>({
   );
 }
 
+function sortedByDate<T extends { trade_date: string }>(rows: readonly T[] | undefined): T[] {
+  return [...(rows ?? [])].sort((a, b) => a.trade_date.localeCompare(b.trade_date));
+}
+
+/** The loading / error / empty states every 融資券 sub-tab shares; once rows exist they are handed
+ * over sorted oldest-first. */
+function RowsGate<TRow extends { trade_date: string }>({
+  query,
+  children,
+}: {
+  readonly query: {
+    readonly isLoading: boolean;
+    readonly isError: boolean;
+    readonly error: unknown;
+    readonly refetch: () => void;
+    readonly data?: { readonly rows: readonly TRow[] } | undefined;
+  };
+  readonly children: (rows: TRow[]) => ReactNode;
+}): ReactNode {
+  const t = useTranslations("stock.chipAnalysis");
+  if (query.isLoading) return <CardSkeletonBody height={220} />;
+  if (query.isError) {
+    return <QueryFailure query={query} />;
+  }
+  const rows = sortedByDate(query.data?.rows);
+  if (rows.length === 0) {
+    return <p className="text-[13px] text-[var(--text-muted)]">{t("empty")}</p>;
+  }
+  return children(rows);
+}
+
 export function MarginShortBody({
   symbol,
   market,
@@ -220,36 +251,45 @@ export function MarginShortBody({
   }
 
   if (view === "dayTrading") {
-    if (dayTradingQuery.isLoading) return <CardSkeletonBody height={220} />;
-    if (dayTradingQuery.isError) {
-      return <QueryFailure query={dayTradingQuery} />;
-    }
-    const dayTradingRows = [...(dayTradingQuery.data?.rows ?? [])].sort((a, b) =>
-      a.trade_date.localeCompare(b.trade_date),
+    return (
+      <RowsGate query={dayTradingQuery}>
+        {(rows) => <DayTradingBody rows={rows} priceByDate={priceByDate} t={t} locale={locale} />}
+      </RowsGate>
     );
-    if (dayTradingRows.length === 0) {
-      return <p className="text-[13px] text-[var(--text-muted)]">{t("empty")}</p>;
-    }
-    return <DayTradingBody rows={dayTradingRows} priceByDate={priceByDate} t={t} locale={locale} />;
   }
 
-  if (marginShortQuery.isLoading) return <CardSkeletonBody height={220} />;
-  if (marginShortQuery.isError) {
-    return <QueryFailure query={marginShortQuery} />;
-  }
-  const rows = [...(marginShortQuery.data?.rows ?? [])].sort((a, b) =>
-    a.trade_date.localeCompare(b.trade_date),
+  return (
+    <RowsGate query={marginShortQuery}>
+      {(rows) =>
+        view === "ratio" ? (
+          <ShortToMarginRatioBody rows={rows} priceByDate={priceByDate} t={t} locale={locale} />
+        ) : (
+          <MarginBalanceBody
+            rows={rows}
+            isShort={view === "short"}
+            priceByDate={priceByDate}
+            t={t}
+            locale={locale}
+          />
+        )
+      }
+    </RowsGate>
   );
-  if (rows.length === 0) {
-    return <p className="text-[13px] text-[var(--text-muted)]">{t("empty")}</p>;
-  }
+}
 
-  if (view === "ratio") {
-    return <ShortToMarginRatioBody rows={rows} priceByDate={priceByDate} t={t} locale={locale} />;
-  }
-
-  const isShort = view === "short";
-  const points = rows.map((row) => {
+/** One day's balance, its change since yesterday, how much of the limit it uses and the cash
+ * repayment — for the 融資 side, or the 融券 side when `isShort`. */
+function marginPoints(
+  rows: readonly MarginShortRow[],
+  isShort: boolean,
+): {
+  trade_date: string;
+  balance: number;
+  change: number;
+  usage: number | null;
+  cashRepayment: number;
+}[] {
+  return rows.map((row) => {
     const balance = isShort ? row.short_sale_today_balance : row.margin_purchase_today_balance;
     const limit = isShort ? row.short_sale_limit : row.margin_purchase_limit;
     return {
@@ -262,10 +302,25 @@ export function MarginShortBody({
       cashRepayment: isShort ? row.short_sale_cash_repayment : row.margin_purchase_cash_repayment,
     };
   });
+}
 
+/** 融資券's 融資 and 融券 sub-tabs — the same chart and table over either side of the row. */
+function MarginBalanceBody({
+  rows,
+  isShort,
+  priceByDate,
+  t,
+  locale,
+}: {
+  readonly rows: readonly MarginShortRow[];
+  readonly isShort: boolean;
+  readonly priceByDate: ReadonlyMap<string, number>;
+  readonly t: ReturnType<typeof useTranslations>;
+  readonly locale: string;
+}): ReactNode {
   return (
     <MarginShortChartShell
-      rows={points}
+      rows={marginPoints(rows, isShort)}
       barKey="balance"
       barColor={isShort ? "var(--chart-4)" : "var(--chart-1)"}
       barName={isShort ? t("shortBalance") : t("marginBalance")}
