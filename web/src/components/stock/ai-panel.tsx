@@ -31,7 +31,7 @@ import { cn } from "@/lib/cn";
 import { formatNumber } from "@/lib/format-number";
 import type { SymbolType } from "@/types/market/shared";
 import type { Market } from "@/types/settings";
-import type { TrendScoreDimension } from "@/types/stock/ai";
+import type { TrendScoreData, TrendScoreDimension } from "@/types/stock/ai";
 
 type ScoreProfile = "swing" | "position";
 const PROFILES: readonly ScoreProfile[] = ["swing", "position"];
@@ -109,6 +109,33 @@ export function AiPanel({
 // 趨勢評分 — get_trend_score (public; broker_concentration sub-dimension locks for Free)
 // ---------------------------------------------------------------------------
 
+type TrendChartPoint = { date: string; composite: number; close: number | null };
+
+/** The history points that have a composite — the bars; `close` rides along for the price line. */
+function trendChartPoints(history: TrendScoreData["history"]): TrendChartPoint[] {
+  const points: TrendChartPoint[] = [];
+  for (const point of history) {
+    if (point.composite !== null) {
+      points.push({ date: point.trade_date, composite: point.composite, close: point.close });
+    }
+  }
+  return points;
+}
+
+/** `broker_concentration` renders a Sponsor-lock teaser even with `value: null` (a real product
+ * feature, not a missing dimension) — every other dimension the batch never computed for this row
+ * is skipped rather than shown as a bare "no data" placeholder. */
+function shownDimension(
+  dimensions: TrendScoreData["dimensions"],
+  name: string,
+): TrendScoreDimension | null {
+  const dimension = dimensions.find((d) => d.name === name);
+  if (!dimension) return null;
+  const isLockedTeaser = name === "broker_concentration";
+  if (dimension.value === null && !isLockedTeaser) return null;
+  return dimension;
+}
+
 function TrendScoreCard({
   symbol,
   market,
@@ -123,15 +150,6 @@ function TrendScoreCard({
     queryFn: () => getTrendScore(symbol, market),
   });
   const data = query.data;
-  const history = data?.history ?? [];
-  const chartData = history
-    .filter((point) => point.composite !== null)
-    .map((point) => ({
-      date: point.trade_date,
-      composite: point.composite as number,
-      close: point.close,
-    }));
-  const hasCloseSeries = chartData.some((point) => point.close !== null);
 
   if (query.isLoading) return <CardSkeletonBody height={420} />;
   if (query.isError) {
@@ -150,146 +168,181 @@ function TrendScoreCard({
         ) : null}
       </div>
 
-      {!data.found ? (
+      {data.found ? (
+        <TrendScoreBody data={data} market={market} locale={locale} />
+      ) : (
         <p className="mt-3 text-[13px] text-[var(--text-muted)]">
           {data.message || t("trendScoreUnavailable")}
         </p>
-      ) : (
-        <>
-          <div
-            className="my-2 font-num text-[28px] tabular-nums"
-            style={{
-              color: data.composite !== null ? bandColorFor(data.composite) : "var(--text)",
-            }}
-          >
-            {data.composite !== null ? (
-              <>
-                {formatNumber(data.composite, locale, { decimals: 1 })}
-                <span className="ml-1 text-[14px] text-[var(--text-muted)]">{t("scoreUnit")}</span>
-              </>
-            ) : (
-              "—"
-            )}
-          </div>
-          {chartData.length > 0 ? (
-            <div className="h-[200px] w-full">
-              <ResponsiveContainer>
-                <ComposedChart
-                  data={chartData}
-                  margin={{ left: 8, right: hasCloseSeries ? 8 : 24 }}
-                >
-                  <CartesianGrid stroke="var(--grid)" vertical={false} />
-                  <XAxis
-                    dataKey="date"
-                    tick={{ fill: "var(--text-muted)", fontSize: 11 }}
-                    stroke="var(--border)"
-                  />
-                  <YAxis
-                    yAxisId="score"
-                    domain={[0, 100]}
-                    tick={{ fill: "var(--text-muted)", fontSize: 11 }}
-                    width={32}
-                    stroke="var(--border)"
-                  />
-                  {hasCloseSeries ? (
-                    <YAxis
-                      yAxisId="price"
-                      orientation="right"
-                      domain={["auto", "auto"]}
-                      tick={{ fill: "var(--text-muted)", fontSize: 11 }}
-                      width={44}
-                      stroke="var(--border)"
-                    />
-                  ) : null}
-                  {/* Dotted reference lines at the same 40/60 band cutoffs the big number and
-                   * every bar are colored against — so a viewer can read a bar's zone from the
-                   * chart alone, without hovering for the tooltip. */}
-                  <ReferenceLine
-                    yAxisId="score"
-                    y={BEARISH_MAX}
-                    stroke="var(--down)"
-                    strokeDasharray="4 4"
-                    strokeOpacity={0.5}
-                  />
-                  <ReferenceLine
-                    yAxisId="score"
-                    y={BULLISH_MIN}
-                    stroke="var(--up)"
-                    strokeDasharray="4 4"
-                    strokeOpacity={0.5}
-                  />
-                  <Tooltip
-                    cursor={{ fill: "var(--text)", opacity: 0.08 }}
-                    contentStyle={{
-                      background: "var(--surface-2)",
-                      border: "1px solid var(--border)",
-                      borderRadius: "var(--radius-input)",
-                      color: "var(--text)",
-                    }}
-                    labelStyle={{ color: "var(--text)", fontWeight: 600 }}
-                    itemStyle={{ color: "var(--text)" }}
-                    formatter={(value, name) =>
-                      name === "close"
-                        ? [
-                            formatNumber(value as number, locale, { decimals: 2 }),
-                            t("priceSeriesLabel"),
-                          ]
-                        : [
-                            `${formatNumber(value as number, locale, { decimals: 1 })} ${t("scoreUnit")}`,
-                            t("trendScoreSeriesLabel"),
-                          ]
-                    }
-                  />
-                  <Bar yAxisId="score" dataKey="composite" radius={2}>
-                    {chartData.map((point) => (
-                      <Cell key={point.date} fill={bandColorFor(point.composite)} />
-                    ))}
-                  </Bar>
-                  {hasCloseSeries ? (
-                    <Line
-                      yAxisId="price"
-                      type="monotone"
-                      dataKey="close"
-                      name="close"
-                      stroke="var(--text)"
-                      strokeWidth={1.5}
-                      dot={false}
-                      connectNulls
-                    />
-                  ) : null}
-                </ComposedChart>
-              </ResponsiveContainer>
-            </div>
-          ) : (
-            <p className="text-[13px] text-[var(--text-muted)]">{t("noHistoryYet")}</p>
-          )}
-          <div className="mt-5 grid grid-cols-1 gap-x-8 gap-y-4 border-[var(--border)] border-t pt-4 sm:grid-cols-2">
-            {trendDimensionColumnsFor(market).map((column) => (
-              <div key={column.color} className="flex flex-col gap-4">
-                {column.names.map((name) => {
-                  const dimension = data.dimensions.find((d) => d.name === name);
-                  if (!dimension) return null;
-                  // `broker_concentration` renders a Sponsor-lock teaser even with `value: null`
-                  // (a real product feature, not a missing dimension) — every other dimension
-                  // the batch never computed for this row is skipped rather than shown as a bare
-                  // "no data" placeholder.
-                  const isLockedTeaser = name === "broker_concentration";
-                  if (dimension.value === null && !isLockedTeaser) return null;
-                  return (
-                    <TrendDimensionRow
-                      key={name}
-                      dimension={dimension}
-                      locale={locale}
-                      color={column.color}
-                    />
-                  );
-                })}
-              </div>
-            ))}
-          </div>
-        </>
       )}
     </section>
+  );
+}
+
+/** A found trend score: the big number, the history chart and the dimension bars. */
+function TrendScoreBody({
+  data,
+  market,
+  locale,
+}: {
+  readonly data: TrendScoreData;
+  readonly market: Market;
+  readonly locale: string;
+}): ReactNode {
+  const chartData = trendChartPoints(data.history);
+  return (
+    <>
+      <TrendComposite composite={data.composite} locale={locale} />
+      {chartData.length > 0 ? (
+        <TrendHistoryChart chartData={chartData} locale={locale} />
+      ) : (
+        <NoTrendHistory />
+      )}
+      <div className="mt-5 grid grid-cols-1 gap-x-8 gap-y-4 border-[var(--border)] border-t pt-4 sm:grid-cols-2">
+        {trendDimensionColumnsFor(market).map((column) => (
+          <div key={column.color} className="flex flex-col gap-4">
+            {column.names.map((name) => {
+              const dimension = shownDimension(data.dimensions, name);
+              return dimension ? (
+                <TrendDimensionRow
+                  key={name}
+                  dimension={dimension}
+                  locale={locale}
+                  color={column.color}
+                />
+              ) : null;
+            })}
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function NoTrendHistory(): ReactNode {
+  const t = useTranslations("stock.ai");
+  return <p className="text-[13px] text-[var(--text-muted)]">{t("noHistoryYet")}</p>;
+}
+
+function TrendComposite({
+  composite,
+  locale,
+}: {
+  readonly composite: number | null;
+  readonly locale: string;
+}): ReactNode {
+  const t = useTranslations("stock.ai");
+  return (
+    <div
+      className="my-2 font-num text-[28px] tabular-nums"
+      style={{
+        color: composite !== null ? bandColorFor(composite) : "var(--text)",
+      }}
+    >
+      {composite !== null ? (
+        <>
+          {formatNumber(composite, locale, { decimals: 1 })}
+          <span className="ml-1 text-[14px] text-[var(--text-muted)]">{t("scoreUnit")}</span>
+        </>
+      ) : (
+        "—"
+      )}
+    </div>
+  );
+}
+
+function TrendHistoryChart({
+  chartData,
+  locale,
+}: {
+  readonly chartData: readonly TrendChartPoint[];
+  readonly locale: string;
+}): ReactNode {
+  const t = useTranslations("stock.ai");
+  const hasCloseSeries = chartData.some((point) => point.close !== null);
+  return (
+    <div className="h-[200px] w-full">
+      <ResponsiveContainer>
+        <ComposedChart data={[...chartData]} margin={{ left: 8, right: hasCloseSeries ? 8 : 24 }}>
+          <CartesianGrid stroke="var(--grid)" vertical={false} />
+          <XAxis
+            dataKey="date"
+            tick={{ fill: "var(--text-muted)", fontSize: 11 }}
+            stroke="var(--border)"
+          />
+          <YAxis
+            yAxisId="score"
+            domain={[0, 100]}
+            tick={{ fill: "var(--text-muted)", fontSize: 11 }}
+            width={32}
+            stroke="var(--border)"
+          />
+          {hasCloseSeries ? (
+            <YAxis
+              yAxisId="price"
+              orientation="right"
+              domain={["auto", "auto"]}
+              tick={{ fill: "var(--text-muted)", fontSize: 11 }}
+              width={44}
+              stroke="var(--border)"
+            />
+          ) : null}
+          {/* Dotted reference lines at the same 40/60 band cutoffs the big number and
+           * every bar are colored against — so a viewer can read a bar's zone from the
+           * chart alone, without hovering for the tooltip. */}
+          <ReferenceLine
+            yAxisId="score"
+            y={BEARISH_MAX}
+            stroke="var(--down)"
+            strokeDasharray="4 4"
+            strokeOpacity={0.5}
+          />
+          <ReferenceLine
+            yAxisId="score"
+            y={BULLISH_MIN}
+            stroke="var(--up)"
+            strokeDasharray="4 4"
+            strokeOpacity={0.5}
+          />
+          <Tooltip
+            cursor={{ fill: "var(--text)", opacity: 0.08 }}
+            contentStyle={{
+              background: "var(--surface-2)",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-input)",
+              color: "var(--text)",
+            }}
+            labelStyle={{ color: "var(--text)", fontWeight: 600 }}
+            itemStyle={{ color: "var(--text)" }}
+            formatter={(value, name) =>
+              name === "close"
+                ? [formatNumber(value as number, locale, { decimals: 2 }), t("priceSeriesLabel")]
+                : [
+                    `${formatNumber(value as number, locale, { decimals: 1 })} ${t("scoreUnit")}`,
+                    t("trendScoreSeriesLabel"),
+                  ]
+            }
+          />
+          <Bar yAxisId="score" dataKey="composite" radius={2}>
+            {chartData.map((point) => (
+              <Cell key={point.date} fill={bandColorFor(point.composite)} />
+            ))}
+          </Bar>
+          {hasCloseSeries ? (
+            <Line
+              yAxisId="price"
+              type="monotone"
+              dataKey="close"
+              name="close"
+              stroke="var(--text)"
+              strokeWidth={1.5}
+              dot={false}
+              connectNulls
+            />
+          ) : null}
+        </ComposedChart>
+      </ResponsiveContainer>
+    </div>
   );
 }
 
