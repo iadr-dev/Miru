@@ -154,6 +154,37 @@ export function LeaderboardCard({
   );
 }
 
+/** The AI composite-score pill (band-coloured bar + number). */
+function ScorePill({ result }: { readonly result: ScoreResult }): ReactNode {
+  const locale = useLocale();
+  return (
+    <span
+      aria-hidden
+      className="relative flex h-5 items-center justify-center overflow-hidden rounded-[var(--radius-pill)] bg-[var(--surface-2)]"
+    >
+      <span
+        className="absolute inset-y-0 left-0 rounded-[var(--radius-pill)] opacity-25"
+        style={{
+          width: `${result.composite ?? 0}%`,
+          backgroundColor: BAND_TOKEN[result.band],
+        }}
+      />
+      <span
+        className="relative font-bold font-num text-[12px] tabular-nums"
+        style={{ color: BAND_TOKEN[result.band] }}
+      >
+        {result.composite !== null ? formatNumber(result.composite, locale) : "—"}
+      </span>
+    </span>
+  );
+}
+
+/** `SymbolQuoteRows` calls `extraCell(row)` inline (it is a render function, not a component
+ * type), so this stays a module-level function that hands the row to `ScorePill`. */
+function renderScoreCell(result: ScoreResult): ReactNode {
+  return <ScorePill result={result} />;
+}
+
 /** The header row + data rows, shared verbatim between the card's inline preview and the full
  * list inside `ExpandModal` — one render path, so the two never drift in columns/formatting.
  * Built on `SymbolQuoteRows`' shared 4-column base, adding only the one column this ranking
@@ -188,26 +219,7 @@ function LeaderboardRows({
           result.composite !== null ? formatNumber(result.composite, locale) : t("empty")
         }`
       }
-      extraCell={(result) => (
-        <span
-          aria-hidden
-          className="relative flex h-5 items-center justify-center overflow-hidden rounded-[var(--radius-pill)] bg-[var(--surface-2)]"
-        >
-          <span
-            className="absolute inset-y-0 left-0 rounded-[var(--radius-pill)] opacity-25"
-            style={{
-              width: `${result.composite ?? 0}%`,
-              backgroundColor: BAND_TOKEN[result.band],
-            }}
-          />
-          <span
-            className="relative font-bold font-num text-[12px] tabular-nums"
-            style={{ color: BAND_TOKEN[result.band] }}
-          >
-            {result.composite !== null ? formatNumber(result.composite, locale) : "—"}
-          </span>
-        </span>
-      )}
+      extraCell={renderScoreCell}
     />
   );
 }

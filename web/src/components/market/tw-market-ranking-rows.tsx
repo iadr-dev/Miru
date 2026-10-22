@@ -8,6 +8,20 @@ import type { Market } from "@/types/settings";
 
 const ROW_GRID_COLS = "grid-cols-[1.3fr_0.8fr_0.8fr_0.9fr_0.9fr_1fr_28px]";
 
+/** The trailing metric cell, coloured by the sign of `extra_value`. A plain module-level render
+ * function (`SymbolQuoteRows` calls `extraCell(row)` inline, it is not mounted as `<Component/>`). */
+function renderExtraCell(row: Pick<TwRankingRow, "extra_value" | "extra_label">): ReactNode {
+  return (
+    <span
+      aria-hidden
+      className="text-right font-num text-[11.5px] tabular-nums"
+      style={{ color: row.extra_value >= 0 ? "var(--up)" : "var(--down)" }}
+    >
+      {row.extra_label}
+    </span>
+  );
+}
+
 /** The 6 non-大戶買賣 TW-market 排行榜 tabs' shared row list (主力/投信/外資連買賣、融資增減、
  * 股息殖利率、月營收成長) — built on `SymbolQuoteRows`' shared 名稱/價格/漲跌%/走勢/成交量 base,
  * mirroring `UsMarketRankingRows`' own shape, plus one trailing extra column carrying each tab's
@@ -45,15 +59,7 @@ export function TwMarketRankingRows({
       gridCols={ROW_GRID_COLS}
       extraSortable={{ label: extraColumnLabel, valueFor: (row) => row.extra_value }}
       extraAriaLabel={(row) => row.extra_label}
-      extraCell={(row) => (
-        <span
-          aria-hidden
-          className="text-right font-num text-[11.5px] tabular-nums"
-          style={{ color: row.extra_value >= 0 ? "var(--up)" : "var(--down)" }}
-        >
-          {row.extra_label}
-        </span>
-      )}
+      extraCell={renderExtraCell}
     />
   );
 }

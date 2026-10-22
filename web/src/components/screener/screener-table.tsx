@@ -1,11 +1,6 @@
 "use client";
 
-import {
-  CaretDownIcon,
-  CaretUpIcon,
-  DownloadSimpleIcon,
-  StarIcon,
-} from "@phosphor-icons/react/dist/ssr";
+import { DownloadSimpleIcon } from "@phosphor-icons/react/dist/ssr";
 import {
   type ColumnDef,
   flexRender,
@@ -17,6 +12,22 @@ import {
 import { useTranslations } from "next-intl";
 import { type ReactNode, useCallback, useMemo, useState } from "react";
 import type { ScreenerColumn } from "@/components/screener/screener-market-config";
+import {
+  ChangePctCell,
+  type EnrichedRow,
+  MarketCapCell,
+  MatchedConditionsCell,
+  PctHeldInstitutionsCell,
+  PeRatioCell,
+  PriceCell,
+  ScreenerCellContext,
+  SectorCell,
+  ShortPctOfFloatCell,
+  SponsorLockedCell,
+  StarCell,
+  SymbolCell,
+  VolumeCell,
+} from "@/components/screener/screener-table-cells";
 import { useSymbolQuotes } from "@/hooks/use-symbol-quotes";
 import {
   groupsForAssetClass,
@@ -25,21 +36,8 @@ import {
   useWatchlists,
 } from "@/hooks/use-watchlists";
 import { useRouter } from "@/i18n/navigation";
-import { hashToChartToken } from "@/lib/chart-token-hash";
 import { cn } from "@/lib/cn";
 import type { FactorCatalog, ScreenerMarket, ScreenerSurvivor } from "@/types/screener";
-
-type EnrichedRow = ScreenerSurvivor & {
-  name: string | null;
-  price: number | null;
-  changePct: number | null;
-  volume: number | null;
-  industryCategory: string | null;
-  peRatio: number | null;
-  marketCap: number | null;
-  pctHeldInstitutions: number | null;
-  shortPctOfFloat: number | null;
-};
 
 function watchlistMarket(market: ScreenerMarket): "TW" | "US" {
   return market === "US" ? "US" : "TW";
@@ -282,22 +280,7 @@ export function ScreenerTable({
       id: "sector",
       header: t("sector"),
       accessorFn: (row) => row.industryCategory ?? "",
-      cell: (info) => {
-        const category = info.row.original.industryCategory;
-        if (!category) return null;
-        const token = hashToChartToken(category);
-        return (
-          <span
-            className="rounded-[var(--radius-pill)] px-2 py-0.5 text-[11px]"
-            style={{
-              backgroundColor: `color-mix(in srgb, ${token} 16%, transparent)`,
-              color: token,
-            }}
-          >
-            {category}
-          </span>
-        );
-      },
+      cell: SectorCell,
     }),
     [t],
   );
@@ -309,14 +292,7 @@ export function ScreenerTable({
         id: "market_cap",
         header: t("marketCap"),
         accessorFn: (row) => row.marketCap ?? 0,
-        cell: (info) =>
-          info.row.original.marketCap !== null ? (
-            <span className="font-num text-[var(--text-muted)] tabular-nums">
-              {(info.row.original.marketCap / 1_000_000_000).toFixed(1)}B
-            </span>
-          ) : (
-            <span className="text-[var(--text-muted)]">—</span>
-          ),
+        cell: MarketCapCell,
       });
     }
     if (hasAnyPeRatio) {
@@ -324,14 +300,7 @@ export function ScreenerTable({
         id: "pe_ratio",
         header: t("peRatio"),
         accessorFn: (row) => row.peRatio ?? Number.NEGATIVE_INFINITY,
-        cell: (info) =>
-          info.row.original.peRatio !== null ? (
-            <span className="font-num text-[var(--text-muted)] tabular-nums">
-              {info.row.original.peRatio.toFixed(1)}x
-            </span>
-          ) : (
-            <span className="text-[var(--text-muted)]">—</span>
-          ),
+        cell: PeRatioCell,
       });
     }
     if (hasAnyPctHeldInstitutions) {
@@ -339,14 +308,7 @@ export function ScreenerTable({
         id: "pct_held_institutions",
         header: t("pctHeldInstitutions"),
         accessorFn: (row) => row.pctHeldInstitutions ?? Number.NEGATIVE_INFINITY,
-        cell: (info) =>
-          info.row.original.pctHeldInstitutions !== null ? (
-            <span className="font-num text-[var(--text-muted)] tabular-nums">
-              {info.row.original.pctHeldInstitutions.toFixed(1)}%
-            </span>
-          ) : (
-            <span className="text-[var(--text-muted)]">—</span>
-          ),
+        cell: PctHeldInstitutionsCell,
       });
     }
     if (hasAnyShortPctOfFloat) {
@@ -354,14 +316,7 @@ export function ScreenerTable({
         id: "short_pct_of_float",
         header: t("shortPctOfFloat"),
         accessorFn: (row) => row.shortPctOfFloat ?? Number.NEGATIVE_INFINITY,
-        cell: (info) =>
-          info.row.original.shortPctOfFloat !== null ? (
-            <span className="font-num text-[var(--text-muted)] tabular-nums">
-              {info.row.original.shortPctOfFloat.toFixed(1)}%
-            </span>
-          ) : (
-            <span className="text-[var(--text-muted)]">—</span>
-          ),
+        cell: ShortPctOfFloatCell,
       });
     }
     return columns;
@@ -379,99 +334,33 @@ export function ScreenerTable({
     [starredSymbols, groups, defaultGroupId, unstarMutation, addMutation],
   );
 
+  const cellContext = useMemo(
+    () => ({ starredSymbols, toggleStar, conditionLabels }),
+    [starredSymbols, toggleStar, conditionLabels],
+  );
+
   const columnDefs: ColumnDef<EnrichedRow>[] = useMemo(
     () => [
-      {
-        id: "star",
-        header: "",
-        cell: (info) => {
-          const starred = starredSymbols.has(info.row.original.symbol);
-          return (
-            <button
-              type="button"
-              aria-pressed={starred}
-              aria-label={t("star")}
-              onClick={(event) => {
-                event.stopPropagation();
-                toggleStar(info.row.original.symbol);
-              }}
-              className="grid size-8 place-items-center rounded-[var(--radius-button)] text-[var(--text-muted)] hover:text-[var(--accent)]"
-            >
-              <StarIcon
-                size={16}
-                weight={starred ? "fill" : "regular"}
-                className={starred ? "text-[var(--accent)]" : undefined}
-              />
-            </button>
-          );
-        },
-        enableSorting: false,
-      },
-      {
-        accessorKey: "symbol",
-        header: t("symbol"),
-        cell: (info) => (
-          <div className="flex flex-col">
-            <span className="font-medium text-[var(--text)]">{info.getValue<string>()}</span>
-            {info.row.original.name ? (
-              <span className="text-[11px] text-[var(--text-muted)]">{info.row.original.name}</span>
-            ) : null}
-          </div>
-        ),
-      },
+      { id: "star", header: "", cell: StarCell, enableSorting: false },
+      { accessorKey: "symbol", header: t("symbol"), cell: SymbolCell },
       ...(hasAnySector ? [sectorColumn] : []),
       {
         id: "price",
         header: t("price"),
         accessorFn: (row) => row.price ?? Number.NEGATIVE_INFINITY,
-        cell: (info) =>
-          info.row.original.price !== null ? (
-            <span className="font-num text-[var(--text)] tabular-nums">
-              {info.row.original.price.toLocaleString()}
-            </span>
-          ) : (
-            <span className="text-[var(--text-muted)]">—</span>
-          ),
+        cell: PriceCell,
       },
       {
         id: "change_pct",
         header: t("changePct"),
         accessorFn: (row) => row.changePct ?? Number.NEGATIVE_INFINITY,
-        cell: (info) => {
-          const value = info.row.original.changePct;
-          if (value === null) return <span className="text-[var(--text-muted)]">—</span>;
-          const up = value >= 0;
-          return (
-            <span
-              role="group"
-              className={cn(
-                "inline-flex items-center gap-0.5 font-num tabular-nums",
-                up ? "text-[var(--up)]" : "text-[var(--down)]",
-              )}
-              aria-label={`${up ? "上漲" : "下跌"} ${Math.abs(value).toFixed(2)}%`}
-            >
-              {up ? (
-                <CaretUpIcon size={11} weight="fill" />
-              ) : (
-                <CaretDownIcon size={11} weight="fill" />
-              )}
-              {Math.abs(value).toFixed(2)}%
-            </span>
-          );
-        },
+        cell: ChangePctCell,
       },
       {
         id: "volume",
         header: t("volume"),
         accessorFn: (row) => row.volume ?? 0,
-        cell: (info) =>
-          info.row.original.volume !== null ? (
-            <span className="font-num text-[var(--text-muted)] tabular-nums">
-              {info.row.original.volume.toLocaleString()}
-            </span>
-          ) : (
-            <span className="text-[var(--text-muted)]">—</span>
-          ),
+        cell: VolumeCell,
       },
       ...(market === "US" ? usOnlyColumns : []),
       ...columns
@@ -479,42 +368,17 @@ export function ScreenerTable({
         .map<ColumnDef<EnrichedRow>>((column) => ({
           id: column.key,
           header: `🔒 ${column.labelZh}`,
-          cell: () => (
-            <span className="rounded-[var(--radius-pill)] bg-[var(--surface-2)] px-2 py-1 text-[11px] text-[var(--text-muted)] backdrop-blur-sm">
-              {t("sponsorLocked")}
-            </span>
-          ),
+          cell: SponsorLockedCell,
           enableSorting: false,
         })),
       {
         id: "matched_conditions",
         header: t("matchedConditions"),
-        cell: (info) => (
-          <div className="flex flex-wrap gap-1">
-            {info.row.original.matched_conditions.map((condition) => (
-              <span
-                key={condition}
-                className="rounded-[var(--radius-pill)] border border-[var(--accent)] px-2 py-0.5 text-[11px] text-[var(--accent)]"
-              >
-                {conditionLabels.get(condition) ?? condition}
-              </span>
-            ))}
-          </div>
-        ),
+        cell: MatchedConditionsCell,
         enableSorting: false,
       },
     ],
-    [
-      t,
-      columns,
-      starredSymbols,
-      toggleStar,
-      conditionLabels,
-      market,
-      usOnlyColumns,
-      hasAnySector,
-      sectorColumn,
-    ],
+    [t, columns, market, usOnlyColumns, hasAnySector, sectorColumn],
   );
 
   const table = useReactTable({
@@ -527,81 +391,83 @@ export function ScreenerTable({
   });
 
   return (
-    <div className="flex flex-col">
-      <div className="flex items-center justify-between px-3 py-2">
-        <span className="text-[12px] text-[var(--text-muted)]">
-          {t("resultCount", { count: survivors.length })}
-        </span>
-        <div className="flex items-center gap-2">
-          <PageNav page={clampedPage} pageCount={pageCount} onPageChange={setPage} />
-          <button
-            type="button"
-            onClick={() => downloadCsv(rows)}
-            className="inline-flex min-h-9 items-center gap-1.5 rounded-[var(--radius-pill)] border border-[var(--border)] px-3 text-[12px] text-[var(--text-muted)] hover:text-[var(--text)]"
-          >
-            <DownloadSimpleIcon size={13} weight="regular" />
-            {t("exportCsv")}
-          </button>
+    <ScreenerCellContext.Provider value={cellContext}>
+      <div className="flex flex-col">
+        <div className="flex items-center justify-between px-3 py-2">
+          <span className="text-[12px] text-[var(--text-muted)]">
+            {t("resultCount", { count: survivors.length })}
+          </span>
+          <div className="flex items-center gap-2">
+            <PageNav page={clampedPage} pageCount={pageCount} onPageChange={setPage} />
+            <button
+              type="button"
+              onClick={() => downloadCsv(rows)}
+              className="inline-flex min-h-9 items-center gap-1.5 rounded-[var(--radius-pill)] border border-[var(--border)] px-3 text-[12px] text-[var(--text-muted)] hover:text-[var(--text)]"
+            >
+              <DownloadSimpleIcon size={13} weight="regular" />
+              {t("exportCsv")}
+            </button>
+          </div>
         </div>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="sticky top-0 bg-[var(--surface-2)]">
-            {table.getHeaderGroups().map((headerGroup) => (
-              <tr key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                  <th
-                    key={header.id}
-                    scope="col"
-                    className="px-3 py-2 text-left font-medium text-[12px] text-[var(--text-muted)]"
-                  >
-                    {header.column.getCanSort() ? (
-                      <button
-                        type="button"
-                        onClick={header.column.getToggleSortingHandler()}
-                        className={cn(
-                          "flex min-h-9 items-center gap-1",
-                          header.column.getIsSorted() && "text-[var(--accent)]",
-                        )}
-                      >
-                        {flexRender(header.column.columnDef.header, header.getContext())}
-                        {header.column.getIsSorted() === "asc" ? "▲" : null}
-                        {header.column.getIsSorted() === "desc" ? "▼" : null}
-                      </button>
-                    ) : (
-                      flexRender(header.column.columnDef.header, header.getContext())
-                    )}
-                  </th>
-                ))}
-              </tr>
-            ))}
-          </thead>
-          <tbody className="divide-y divide-[var(--border)]">
-            {table.getRowModel().rows.map((row) => (
-              <tr
-                key={row.id}
-                tabIndex={0}
-                onClick={() => router.push(`/stock/${row.original.symbol}`)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") router.push(`/stock/${row.original.symbol}`);
-                }}
-                className="cursor-pointer transition-colors hover:bg-[var(--surface-2)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
-              >
-                {row.getVisibleCells().map((cell) => (
-                  <td key={cell.id} className="px-3 py-2">
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {pageCount > 1 ? (
-        <div className="flex justify-end px-3 py-2">
-          <PageNav page={clampedPage} pageCount={pageCount} onPageChange={setPage} />
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-[var(--surface-2)]">
+              {table.getHeaderGroups().map((headerGroup) => (
+                <tr key={headerGroup.id}>
+                  {headerGroup.headers.map((header) => (
+                    <th
+                      key={header.id}
+                      scope="col"
+                      className="px-3 py-2 text-left font-medium text-[12px] text-[var(--text-muted)]"
+                    >
+                      {header.column.getCanSort() ? (
+                        <button
+                          type="button"
+                          onClick={header.column.getToggleSortingHandler()}
+                          className={cn(
+                            "flex min-h-9 items-center gap-1",
+                            header.column.getIsSorted() && "text-[var(--accent)]",
+                          )}
+                        >
+                          {flexRender(header.column.columnDef.header, header.getContext())}
+                          {header.column.getIsSorted() === "asc" ? "▲" : null}
+                          {header.column.getIsSorted() === "desc" ? "▼" : null}
+                        </button>
+                      ) : (
+                        flexRender(header.column.columnDef.header, header.getContext())
+                      )}
+                    </th>
+                  ))}
+                </tr>
+              ))}
+            </thead>
+            <tbody className="divide-y divide-[var(--border)]">
+              {table.getRowModel().rows.map((row) => (
+                <tr
+                  key={row.id}
+                  tabIndex={0}
+                  onClick={() => router.push(`/stock/${row.original.symbol}`)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") router.push(`/stock/${row.original.symbol}`);
+                  }}
+                  className="cursor-pointer transition-colors hover:bg-[var(--surface-2)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
+                >
+                  {row.getVisibleCells().map((cell) => (
+                    <td key={cell.id} className="px-3 py-2">
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-      ) : null}
-    </div>
+        {pageCount > 1 ? (
+          <div className="flex justify-end px-3 py-2">
+            <PageNav page={clampedPage} pageCount={pageCount} onPageChange={setPage} />
+          </div>
+        ) : null}
+      </div>
+    </ScreenerCellContext.Provider>
   );
 }

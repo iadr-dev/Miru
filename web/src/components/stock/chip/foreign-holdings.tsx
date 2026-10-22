@@ -75,6 +75,25 @@ function holdingsSeriesLabel(
     : t("estimateLegend", { label: bucketLabel(t, bucket) });
 }
 
+/** `Legend`'s `formatter`: the series label, dimmed once the series is hidden (the legend entry is
+ * the toggle). Built at module scope so no render function is defined inside the component. */
+function holdingsLegendFormatter(
+  hiddenSeries: ReadonlySet<HoldingsSeries>,
+  t: ReturnType<typeof useTranslations>,
+  tFields: ReturnType<typeof useTranslations>,
+): (value: unknown) => ReactNode {
+  return (value) => (
+    <span
+      style={{
+        cursor: value === "price" ? "default" : "pointer",
+        opacity: isHoldingsSeries(value) && hiddenSeries.has(value) ? 0.4 : 1,
+      }}
+    >
+      {holdingsSeriesLabel(String(value), t, tFields)}
+    </span>
+  );
+}
+
 export function ForeignShareholdingBody({
   symbol,
   market,
@@ -215,16 +234,7 @@ export function ForeignShareholdingBody({
                 const key = entry.dataKey;
                 if (isHoldingsSeries(key)) toggleSeries(key);
               }}
-              formatter={(value) => (
-                <span
-                  style={{
-                    cursor: value === "price" ? "default" : "pointer",
-                    opacity: isHoldingsSeries(value) && hiddenSeries.has(value) ? 0.4 : 1,
-                  }}
-                >
-                  {seriesLabel(String(value))}
-                </span>
-              )}
+              formatter={holdingsLegendFormatter(hiddenSeries, t, tFields)}
               wrapperStyle={{ fontSize: 11, color: "var(--text-muted)" }}
             />
             <ReferenceLine yAxisId="holdings" y={0} stroke="var(--border-strong)" />
