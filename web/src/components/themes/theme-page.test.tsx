@@ -315,7 +315,7 @@ describe("ThemePage branches", () => {
     );
     renderPage();
     await screen.findByRole("region", { name: copy.boardAria });
-    const last = (market: string): string[] | undefined =>
+    const last = (market: string): readonly string[] | undefined =>
       vi
         .mocked(useSymbolQuotes)
         .mock.calls.filter(([, m]) => m === market)
