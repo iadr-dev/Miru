@@ -54,7 +54,7 @@ export function useFocusTrap(
           return;
         }
         const first = items[0];
-        const last = items[items.length - 1];
+        const last = items.at(-1);
         if (!first || !last) {
           return;
         }

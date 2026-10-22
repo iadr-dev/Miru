@@ -132,7 +132,7 @@ function TwRankingTabPanel({ kind }: { readonly kind: TwRankingKind }): ReactNod
   if (query.isLoading) {
     return <CardSkeletonBody height={360} />;
   }
-  if (query.isError || !query.data || !query.data.data_available || query.data.rows.length === 0) {
+  if (query.isError || !query.data?.data_available || query.data.rows.length === 0) {
     return <p className="text-[13px] text-[var(--text-muted)]">{t("unavailable")}</p>;
   }
 

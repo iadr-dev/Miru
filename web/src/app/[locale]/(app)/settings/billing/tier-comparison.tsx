@@ -54,7 +54,7 @@ export function TierComparison({
               </li>
               {tier.features.includes("deep_research") ? <li>{t("deepResearch")}</li> : null}
             </ul>
-            {tier.features.filter((f) => f !== "deep_research").length > 0 ? (
+            {tier.features.some((f) => f !== "deep_research") ? (
               <ul className="m-0 flex list-none flex-wrap gap-1.5 p-0">
                 {tier.features
                   .filter((f) => f !== "deep_research")

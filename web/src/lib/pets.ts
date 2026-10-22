@@ -47,5 +47,5 @@ export function xpFraction(
 export function shouldOfferWelcomePull(
   progress: Pick<PetProgress, "owned_count" | "available_pulls"> | undefined,
 ): boolean {
-  return progress !== undefined && progress.owned_count === 0 && progress.available_pulls > 0;
+  return progress?.owned_count === 0 && progress.available_pulls > 0;
 }

@@ -39,7 +39,7 @@ function readTableRows(table: HTMLTableElement): string[][] {
  * double quotes with internal quotes doubled; everything else is passed through bare. */
 function csvField(value: string): string {
   if (/[",\n\r]/.test(value)) {
-    return `"${value.replace(/"/g, '""')}"`;
+    return `"${value.replaceAll('"', '""')}"`;
   }
   return value;
 }
@@ -129,17 +129,15 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 let cjkFontBase64Promise: Promise<string> | null = null;
 
 function loadCjkFontBase64(): Promise<string> {
-  if (!cjkFontBase64Promise) {
-    cjkFontBase64Promise = fetch(CJK_FONT_URL)
-      .then((response) => response.arrayBuffer())
-      .then(arrayBufferToBase64)
-      .catch((error: unknown) => {
-        // Allow a subsequent export attempt to retry the fetch rather than being stuck with a
-        // permanently-rejected cached promise (e.g. transient network failure).
-        cjkFontBase64Promise = null;
-        throw error;
-      });
-  }
+  cjkFontBase64Promise ??= fetch(CJK_FONT_URL)
+    .then((response) => response.arrayBuffer())
+    .then(arrayBufferToBase64)
+    .catch((error: unknown) => {
+      // Allow a subsequent export attempt to retry the fetch rather than being stuck with a
+      // permanently-rejected cached promise (e.g. transient network failure).
+      cjkFontBase64Promise = null;
+      throw error;
+    });
   return cjkFontBase64Promise;
 }
 

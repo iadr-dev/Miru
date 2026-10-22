@@ -229,11 +229,9 @@ async function requestRefresh(): Promise<boolean> {
  * otherwise the second caller's request looks like reuse and logs out a session that was actually
  * fine. */
 export function refreshSession(): Promise<boolean> {
-  if (!inFlightRefresh) {
-    inFlightRefresh = requestRefresh().finally(() => {
-      inFlightRefresh = null;
-    });
-  }
+  inFlightRefresh ??= requestRefresh().finally(() => {
+    inFlightRefresh = null;
+  });
   return inFlightRefresh;
 }
 

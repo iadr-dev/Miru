@@ -228,8 +228,10 @@ export function rrgRange(sectors: readonly WeeklySeries[]): number {
   const deviations: number[] = [];
   for (const sector of sectors) {
     for (const point of sector.points) {
-      deviations.push(Math.abs(point.rs_ratio - RRG_AXIS_CENTER));
-      deviations.push(Math.abs(point.rs_momentum - RRG_AXIS_CENTER));
+      deviations.push(
+        Math.abs(point.rs_ratio - RRG_AXIS_CENTER),
+        Math.abs(point.rs_momentum - RRG_AXIS_CENTER),
+      );
     }
   }
   if (deviations.length === 0) return MIN_RANGE;
