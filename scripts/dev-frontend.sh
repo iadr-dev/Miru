@@ -9,12 +9,12 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/../web"
 
-if [ ! -f .env.local ] && [ ! -f .env ]; then
+if [[ ! -f .env.local ]] && [[ ! -f .env ]]; then
   echo "web/.env.local not found — copying web/.env.example (safe defaults, no secrets)." >&2
   cp .env.example .env.local
 fi
 
-if [ ! -d node_modules ]; then
+if [[ ! -d node_modules ]]; then
   # NOSONAR (S6505) — --ignore-scripts would break the native builds (sharp, @swc/core,
   # @parcel/watcher) explicitly allowlisted in web/pnpm-workspace.yaml's allowBuilds.
   pnpm install

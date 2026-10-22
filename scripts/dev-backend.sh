@@ -25,7 +25,7 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/../backend"
 
-if [ ! -f .env ]; then
+if [[ ! -f .env ]]; then
   echo "backend/.env not found — copy backend/.env.example to backend/.env and fill in secrets first." >&2
   exit 1
 fi
@@ -37,19 +37,19 @@ env_value() {
 
 BACKFILL=0
 WEBHOOK_URL=""
-while [ $# -gt 0 ]; do
+while [[ $# -gt 0 ]]; do
   case "$1" in
     --backfill) BACKFILL=1; shift ;;
     --webhook)
       # `--webhook` alone uses WEBHOOK_BASE_URL from backend/.env (your ngrok / public URL).
-      if [ -n "${2:-}" ] && [ "${2#-}" = "$2" ]; then
+      if [[ -n "${2:-}" ]] && [[ "${2#-}" = "$2" ]]; then
         WEBHOOK_URL="$2"
         shift 2
       else
         WEBHOOK_URL="$(env_value WEBHOOK_BASE_URL)"
         shift
       fi
-      if [ -z "$WEBHOOK_URL" ]; then
+      if [[ -z "$WEBHOOK_URL" ]]; then
         echo "--webhook needs a public https URL (or WEBHOOK_BASE_URL in backend/.env)" >&2
         exit 1
       fi ;;
@@ -57,14 +57,14 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-if [ -n "$WEBHOOK_URL" ]; then
+if [[ -n "$WEBHOOK_URL" ]]; then
   case "$WEBHOOK_URL" in
     https://*) ;;
     *) echo "--webhook URL must start with https:// (Telegram only calls HTTPS)" >&2; exit 1 ;;
   esac
   BOT_TOKEN="$(env_value TELEGRAM_BOT_TOKEN)"
   HOOK_SECRET="$(env_value TELEGRAM_WEBHOOK_SECRET)"
-  if [ -z "$BOT_TOKEN" ] || [ -z "$HOOK_SECRET" ]; then
+  if [[ -z "$BOT_TOKEN" ]] || [[ -z "$HOOK_SECRET" ]]; then
     echo "TELEGRAM_BOT_TOKEN and TELEGRAM_WEBHOOK_SECRET must be set in backend/.env" >&2
     exit 1
   fi
@@ -80,7 +80,7 @@ if [ -n "$WEBHOOK_URL" ]; then
   fi
 fi
 
-if [ "$BACKFILL" = "1" ]; then
+if [[ "$BACKFILL" = "1" ]]; then
   # No separate migrate step: every process creates the schema at its own startup
   # (backend/CLAUDE.md §6), the one-off backfill container included.
   docker compose build ingest
@@ -96,7 +96,7 @@ if [ "$BACKFILL" = "1" ]; then
       FAILED_MARKETS="$FAILED_MARKETS $market"
     fi
   done
-  if [ -n "$FAILED_MARKETS" ]; then
+  if [[ -n "$FAILED_MARKETS" ]]; then
     # Usually one source refusing one symbol or one day; the rest of that market was still written,
     # and the daemon's gap-fill retries what is missing. Exit status 3 means another backfill holds
     # the lease.
