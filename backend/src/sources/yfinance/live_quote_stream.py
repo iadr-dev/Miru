@@ -137,7 +137,7 @@ class YFinanceLiveQuoteManager:
                 now = time.monotonic()
                 idle = [
                     symbol
-                    for symbol, last in list(self._last_access.items())
+                    for symbol, last in self._last_access.items()
                     if now - last >= _IDLE_UNSUBSCRIBE_AFTER_SECONDS
                 ]
                 for symbol in idle:
