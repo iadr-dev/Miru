@@ -9,6 +9,7 @@ Step C re-checks every claim with the deterministic quote guard.
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Final, cast
 
@@ -22,7 +23,7 @@ from analytics.supply_chain.theme_research.models import (
 from analytics.supply_chain.verification import guards
 from analytics.supply_chain.verification.directory import CompanyDirectory
 from analytics.supply_chain.verification.judge import extract_json, page_block
-from analytics.supply_chain.verification.models import Page
+from analytics.supply_chain.verification.models import Company, Page
 from llm.base import Message, MessageRole
 
 MAX_ITEMS_PER_PAGE: Final = 40
@@ -82,6 +83,61 @@ class PageClaims:
     parsed: bool
 
 
+@dataclass(frozen=True)
+class _ItemContext:
+    target: ThemeTarget
+    page: Page
+    directory: CompanyDirectory
+    retrieved_at: str
+    published_on: str | None
+    publisher: str
+
+
+def _text(item: Mapping[str, object], key: str) -> str:
+    return str(item.get(key) or "").strip()
+
+
+def _check_company(resolved: Company | None, excerpt: str, ctx: _ItemContext) -> Company | str:
+    """The resolved company when the item may become a claim, else the reason it is dropped."""
+    if resolved is None:
+        return DROP_UNRESOLVED
+    if resolved.market != "TW":
+        return DROP_NOT_LISTED
+    if resolved.symbol in ctx.target.members:
+        return DROP_ALREADY_MEMBER
+    if not guards.excerpt_in_page(excerpt, ctx.page.text):
+        return DROP_NOT_IN_PAGE
+    return resolved
+
+
+def _convert_item(raw: object, ctx: _ItemContext) -> ThemeClaim | str:
+    """One reply item as a claim, or the reason it is dropped."""
+    if not isinstance(raw, dict):
+        return DROP_BAD_ITEM
+    item = cast("dict[str, object]", raw)
+    company, excerpt, code = _text(item, "company"), _text(item, "excerpt"), _text(item, "symbol")
+    if not company or not excerpt:
+        return DROP_BAD_ITEM
+    resolved = ctx.directory.resolve_name(company) or (
+        ctx.directory.get("TW", code) if code else None
+    )
+    checked = _check_company(resolved, excerpt, ctx)
+    if isinstance(checked, str):
+        return checked
+    return ThemeClaim(
+        theme=ctx.target.target_id,
+        kind=ctx.target.kind,
+        label=ctx.target.label,
+        symbol=checked.symbol,
+        excerpt=excerpt,
+        url=ctx.page.url,
+        publisher=ctx.publisher,
+        retrieved_at=ctx.retrieved_at,
+        position=_position(item.get("position")),
+        published_on=ctx.published_on,
+    )
+
+
 def claims_from_reply(  # noqa: PLR0913 - one value per input of the conversion
     reply: str,
     *,
@@ -96,45 +152,14 @@ def claims_from_reply(  # noqa: PLR0913 - one value per input of the conversion
     parsed = extract_json(reply)
     if not isinstance(parsed, list):
         return PageClaims([], dropped, parsed=False)
+    ctx = _ItemContext(target, page, directory, retrieved_at, published_on, publisher)
     claims: list[ThemeClaim] = []
     for raw in cast("list[object]", parsed)[:MAX_ITEMS_PER_PAGE]:
-        if not isinstance(raw, dict):
-            dropped[DROP_BAD_ITEM] += 1
-            continue
-        item = cast("dict[str, object]", raw)
-        company = str(item.get("company") or "").strip()
-        excerpt = str(item.get("excerpt") or "").strip()
-        code = str(item.get("symbol") or "").strip()
-        if not company or not excerpt:
-            dropped[DROP_BAD_ITEM] += 1
-            continue
-        resolved = directory.resolve_name(company) or (directory.get("TW", code) if code else None)
-        if resolved is None:
-            dropped[DROP_UNRESOLVED] += 1
-            continue
-        if resolved.market != "TW":
-            dropped[DROP_NOT_LISTED] += 1
-            continue
-        if resolved.symbol in target.members:
-            dropped[DROP_ALREADY_MEMBER] += 1
-            continue
-        if not guards.excerpt_in_page(excerpt, page.text):
-            dropped[DROP_NOT_IN_PAGE] += 1
-            continue
-        claims.append(
-            ThemeClaim(
-                theme=target.target_id,
-                kind=target.kind,
-                label=target.label,
-                symbol=resolved.symbol,
-                excerpt=excerpt,
-                url=page.url,
-                publisher=publisher,
-                retrieved_at=retrieved_at,
-                position=_position(item.get("position")),
-                published_on=published_on,
-            )
-        )
+        converted = _convert_item(raw, ctx)
+        if isinstance(converted, str):
+            dropped[converted] += 1
+        else:
+            claims.append(converted)
     return PageClaims(claims, dropped, parsed=True)
 
 
