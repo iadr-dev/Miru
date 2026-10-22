@@ -138,7 +138,7 @@ class SharedDataUpdateFeed:
                 await pump
 
     def _deliver(self, event: Event) -> None:
-        for queue in list(self._queues):
+        for queue in self._queues:
             if queue.full():  # a reader that stopped reading loses its oldest, never grows memory
                 with contextlib.suppress(asyncio.QueueEmpty):
                     queue.get_nowait()

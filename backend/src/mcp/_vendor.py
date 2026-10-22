@@ -64,7 +64,7 @@ def bootstrap_vendor_sdk() -> None:
 
     ours = sys.modules.pop("mcp", None)
     our_submodules = {
-        name: module for name, module in list(sys.modules.items()) if name.startswith("mcp.")
+        name: module for name, module in sys.modules.items() if name.startswith("mcp.")
     }
     for name in our_submodules:
         del sys.modules[name]
@@ -76,7 +76,7 @@ def bootstrap_vendor_sdk() -> None:
     # cached under it afterwards.
     saved_calendar = sys.modules.pop("calendar", None)
     saved_calendar_submodules = {
-        name: module for name, module in list(sys.modules.items()) if name.startswith("calendar.")
+        name: module for name, module in sys.modules.items() if name.startswith("calendar.")
     }
     for name in saved_calendar_submodules:
         del sys.modules[name]
