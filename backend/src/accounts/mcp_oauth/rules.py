@@ -69,16 +69,8 @@ def _parts(uri: str) -> SplitResult | None:
         return None
 
 
-def validate_redirect_uri(  # noqa: PLR0912 - one early exit per rejected form is the point
-    uri: str, *, extra_schemes: Collection[str]
-) -> str:
-    """Return `uri` if it is an acceptable redirect URI, else raise `RedirectUriError`.
-
-    The same checks run on a registration AND on the URI a client presents at /authorize, because
-    parsers disagree about malformed URLs: Python reads `http://evil.com\\@localhost/cb` as host
-    `localhost` with userinfo, a browser follows the backslash as a slash and goes to `evil.com`.
-    So anything unusual - backslash, whitespace or control characters, userinfo, a fragment, a
-    percent-encoded or upper-case loopback host, port 0 - is refused outright, not interpreted."""
+def _reject_unsafe_text(uri: str) -> None:
+    """The checks on the raw text, before any parser looks at it."""
     if (
         not uri
         or len(uri) > MAX_REDIRECT_URI_LENGTH
@@ -89,9 +81,10 @@ def validate_redirect_uri(  # noqa: PLR0912 - one early exit per rejected form i
         raise RedirectUriError("redirect URI must not contain a backslash")
     if "*" in uri:
         raise RedirectUriError("redirect URI must not contain a wildcard")
-    parts = _parts(uri)
-    if parts is None:
-        raise RedirectUriError("redirect URI is not a valid URL")
+
+
+def _reject_unsafe_parts(uri: str, parts: SplitResult) -> None:
+    """Scheme spelling, fragment, credentials and forbidden schemes, in that order."""
     scheme = parts.scheme  # urlsplit lower-cases it, so look at the text itself
     if not uri.startswith(f"{scheme}:"):
         raise RedirectUriError("redirect URI scheme must be lower case")
@@ -101,24 +94,49 @@ def validate_redirect_uri(  # noqa: PLR0912 - one early exit per rejected form i
         raise RedirectUriError("redirect URI must not contain credentials")
     if scheme in _FORBIDDEN_SCHEMES or _SCHEME.fullmatch(scheme) is None:
         raise RedirectUriError(f"redirect URI scheme {scheme!r} is not allowed")
+
+
+def _host_and_port(parts: SplitResult) -> tuple[str | None, int | None]:
     try:
-        host = parts.hostname
-        port = parts.port
+        return parts.hostname, parts.port
     except ValueError as exc:
         raise RedirectUriError("redirect URI has an invalid host or port") from exc
-    if port == 0:
-        raise RedirectUriError("redirect URI port 0 is not allowed")
+
+
+def _check_scheme_target(
+    scheme: str, host: str | None, netloc: str, extra_schemes: Collection[str]
+) -> None:
+    """Whether this scheme may point here: https needs a host, http only a loopback authority,
+    anything else must be on the operator's allow-list."""
     if scheme == "https":
         if not host:
             raise RedirectUriError("redirect URI has no host")
-        return uri
-    if scheme == "http":
-        if _LOOPBACK_NETLOC.fullmatch(parts.netloc) is None:
+    elif scheme == "http":
+        if _LOOPBACK_NETLOC.fullmatch(netloc) is None:
             raise RedirectUriError("http redirect URIs are only allowed for localhost")
-        return uri
-    if scheme in {s.lower() for s in extra_schemes}:
-        return uri
-    raise RedirectUriError(f"redirect URI scheme {scheme!r} is not allowed")
+    elif scheme not in {s.lower() for s in extra_schemes}:
+        raise RedirectUriError(f"redirect URI scheme {scheme!r} is not allowed")
+
+
+def validate_redirect_uri(uri: str, *, extra_schemes: Collection[str]) -> str:
+    r"""Return `uri` if it is an acceptable redirect URI, else raise `RedirectUriError`.
+
+    The same checks run on a registration AND on the URI a client presents at /authorize, because
+    parsers disagree about malformed URLs: Python reads `http://evil.com\\@localhost/cb` as host
+    `localhost` with userinfo, a browser follows the backslash as a slash and goes to `evil.com`.
+    So anything unusual - backslash, whitespace or control characters, userinfo, a fragment, a
+    percent-encoded or upper-case loopback host, port 0 - is refused outright, not interpreted.
+    The checks run in a fixed order, so the reason reported is the first one that fails."""
+    _reject_unsafe_text(uri)
+    parts = _parts(uri)
+    if parts is None:
+        raise RedirectUriError("redirect URI is not a valid URL")
+    _reject_unsafe_parts(uri, parts)
+    host, port = _host_and_port(parts)
+    if port == 0:
+        raise RedirectUriError("redirect URI port 0 is not allowed")
+    _check_scheme_target(parts.scheme, host, parts.netloc, extra_schemes)
+    return uri
 
 
 def validate_redirect_uris(uris: Iterable[str], *, extra_schemes: Collection[str]) -> list[str]:

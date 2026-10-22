@@ -216,6 +216,76 @@ def _extract_post_tag(title: str) -> str | None:
     return None
 
 
+@dataclass(frozen=True)
+class _IndexWalk:
+    posts: list[PttPost]
+    deleted: int
+    error: httpx.HTTPError | None  # the transport failure that ended the walk, if any
+
+
+def _in_lookback_window(post: PttPost, cutoff: str) -> bool:
+    return post.posted_date is None or post.posted_date >= cutoff
+
+
+def _older_page_url(prev_page_href: str | None) -> str | None:
+    return (
+        f"{_BASE_URL}{prev_page_href}"
+        if prev_page_href and prev_page_href.startswith("/")
+        else prev_page_href
+    )
+
+
+def _walk_is_done(
+    page_posts: list[PttPost],
+    *,
+    total_posts: int,
+    page_number: int,
+    lookback_days: int,
+    cutoff: str,
+) -> bool:
+    if lookback_days <= 1:
+        return total_posts >= SINGLE_PAGE_MIN_POSTS or page_number >= SINGLE_PAGE_TOP_UP_MAX_PAGES
+    return any(not _in_lookback_window(p, cutoff) for p in page_posts)
+
+
+async def _get_index_html(url: str, *, tls_policy: TLSPolicy) -> str:
+    async with build_async_client(tls_policy=tls_policy) as client:
+        response = await client.get(url)
+        response.raise_for_status()
+        return response.text
+
+
+async def _walk_index_pages(
+    board: str, *, tls_policy: TLSPolicy, lookback_days: int, now: datetime, cutoff: str
+) -> _IndexWalk:
+    """Pages of one board's index, newest first, following each page's "上頁" link until the
+    walk is done. A transport failure ends the walk and is carried in `error`; the caller
+    only reports it when no earlier page produced a post (never discards earlier pages)."""
+    all_posts: list[PttPost] = []
+    deleted_total = 0
+    next_url: str | None = f"{_BASE_URL}/bbs/{board}/index.html"
+    for page_number in range(1, MAX_INDEX_PAGES_PER_FETCH + 1):
+        if next_url is None:
+            break
+        try:
+            html = await _get_index_html(next_url, tls_policy=tls_policy)
+        except httpx.HTTPError as exc:
+            return _IndexWalk(posts=all_posts, deleted=deleted_total, error=exc)
+        parsed = _parse_index_html(board, html, now=now)
+        deleted_total += parsed.deleted_count
+        all_posts.extend(parsed.posts)
+        if _walk_is_done(
+            parsed.posts,
+            total_posts=len(all_posts),
+            page_number=page_number,
+            lookback_days=lookback_days,
+            cutoff=cutoff,
+        ):
+            break
+        next_url = _older_page_url(parsed.prev_page_href)
+    return _IndexWalk(posts=all_posts, deleted=deleted_total, error=None)
+
+
 class PttAdapter:
     """The `PTT` source adapter — board-index scrape."""
 
@@ -278,62 +348,26 @@ class PttAdapter:
 
         now = datetime.now(UTC)
         cutoff = (now - timedelta(days=lookback_days)).date().isoformat()
-        all_posts: list[PttPost] = []
-        deleted_total = 0
-        next_url: str | None = f"{_BASE_URL}/bbs/{board}/index.html"
-
-        for page_number in range(1, MAX_INDEX_PAGES_PER_FETCH + 1):
-            if next_url is None:
-                break
-            try:
-                async with build_async_client(tls_policy=tls_policy) as client:
-                    response = await client.get(next_url)
-                    response.raise_for_status()
-                    html = response.text
-            except httpx.HTTPError as exc:
-                if all_posts:
-                    # Already have at least one page's worth — a later page failing mid-walk
-                    # degrades to "here's what we got," never discards the earlier pages.
-                    break
+        walk = await _walk_index_pages(
+            board, tls_policy=tls_policy, lookback_days=lookback_days, now=now, cutoff=cutoff
+        )
+        all_posts = walk.posts
+        if not all_posts:
+            if walk.error is not None:
                 return _result(
                     board_tag=tag,
                     payload={},
                     health=SourceHealth(
                         status=HealthStatus.UNREACHABLE,
-                        detail=f"transport error: {type(exc).__name__}",
+                        detail=f"transport error: {type(walk.error).__name__}",
                     ),
                 )
-
-            parsed = _parse_index_html(board, html, now=now)
-            deleted_total += parsed.deleted_count
-            all_posts.extend(parsed.posts)
-
-            in_window = [
-                p for p in parsed.posts if p.posted_date is None or p.posted_date >= cutoff
-            ]
-            reached_cutoff = len(in_window) < len(parsed.posts)
-            if lookback_days <= 1:
-                topped_up = (
-                    len(all_posts) >= SINGLE_PAGE_MIN_POSTS
-                    or page_number >= SINGLE_PAGE_TOP_UP_MAX_PAGES
-                )
-                if topped_up:
-                    break
-            elif reached_cutoff:
-                break
-            next_url = (
-                f"{_BASE_URL}{parsed.prev_page_href}"
-                if parsed.prev_page_href and parsed.prev_page_href.startswith("/")
-                else parsed.prev_page_href
-            )
-
-        if not all_posts:
             return _result(
                 board_tag=tag,
                 payload={},
                 health=SourceHealth(
                     status=HealthStatus.STALE,
-                    detail=f"no posts parsed from {board} index (deleted={deleted_total})",
+                    detail=f"no posts parsed from {board} index (deleted={walk.deleted})",
                 ),
             )
         # `lookback_days<=1` is the original single-page behavior verbatim — no date filter at
@@ -343,7 +377,7 @@ class PttAdapter:
         out_posts = (
             all_posts
             if lookback_days <= 1
-            else [p for p in all_posts if p.posted_date is None or p.posted_date >= cutoff]
+            else [p for p in all_posts if _in_lookback_window(p, cutoff)]
         )
         return _result(
             board_tag=tag,
