@@ -71,7 +71,8 @@ async def test_a_fully_covered_candidate_proposes_nothing_and_is_recorded(tmp_pa
         0,
         0,
     )
-    assert new_theme_rows(root) == [] and members_rows(root) == []
+    assert new_theme_rows(root) == []
+    assert members_rows(root) == []
     [entry] = covered_lines(root)
     assert (entry["candidate"], entry["covering"]) == (CANDIDATE_ID, THEME_KEY)
     assert (entry["containment"], entry["verified"], entry["new"]) == (1.0, 7, 0)
@@ -112,7 +113,8 @@ async def test_the_intermediate_band_still_proposes_the_theme_with_a_related_key
     summary = await verify(root, tmp_path)
     assert (summary.covered, summary.new_themes, summary.member_rows) == (0, 1, 8)
     [theme] = new_theme_rows(root)
-    assert theme["related"] == [THEME_KEY] and len(theme["members"]) == 8
+    assert theme["related"] == [THEME_KEY]
+    assert len(theme["members"]) == 8
     assert summary.notes == [f"candidate {CANDIDATE_ID}: partly covered by {THEME_KEY} (5/8)"]
     assert covered_lines(root) == []
 
@@ -159,7 +161,9 @@ async def test_a_rerun_changes_nothing_and_a_covered_candidate_is_not_judged_aga
         covered_path(root).read_text(encoding="utf-8"),
     )
     again = await verify(root, tmp_path)
-    assert again.groups == 0 and again.covered == 0 and again.member_rows == 0
+    assert again.groups == 0
+    assert again.covered == 0
+    assert again.member_rows == 0
     assert again.reasons == {"already_covered": 12}
     assert (
         paths.members.read_text(encoding="utf-8"),
@@ -180,7 +184,8 @@ async def test_a_covered_candidate_stays_covered_when_one_more_member_arrives(
     summary = await verify(root, tmp_path)
     assert (summary.groups, summary.covered, summary.new_themes) == (1, 1, 0)
     assert [r["symbol"] for r in members_rows(root)] == ["9112"]
-    assert covered_lines(root)[-1]["verified"] == 8 and covered_lines(root)[-1]["new"] == 1
+    assert covered_lines(root)[-1]["verified"] == 8
+    assert covered_lines(root)[-1]["new"] == 1
 
 
 async def test_a_candidate_that_gains_outside_members_is_proposed_again(tmp_path: Path) -> None:
@@ -207,7 +212,8 @@ async def test_console_output_names_the_candidate_and_theme_by_id_only(tmp_path:
     assert "http" not in out
     for zh, en in COMPANIES.values():
         text = covered_path(root).read_text(encoding="utf-8")
-        assert zh not in text and en not in text
+        assert zh not in text
+        assert en not in text
 
 
 async def test_dry_run_records_nothing(tmp_path: Path) -> None:
@@ -215,7 +221,8 @@ async def test_dry_run_records_nothing(tmp_path: Path) -> None:
     hold(root, ALL[:7])
     candidates(root, ALL[:7])
     summary: VerifySummary = await verify(root, tmp_path, dry_run=True)
-    assert summary.covered == 1 and not covered_path(root).exists()
+    assert summary.covered == 1
+    assert not covered_path(root).exists()
 
 
 async def test_promote_accepts_the_member_rows_of_a_covered_candidate(tmp_path: Path) -> None:
@@ -227,4 +234,5 @@ async def test_promote_accepts_the_member_rows_of_a_covered_candidate(tmp_path: 
     paths = proposal_paths(root, TODAY)
     report = run_promote(root, [paths.members], dry_run=True, industry=IndustryRoster())
     assert report.added == {THEME_KEY: 2}
-    assert dict(report.rejects) == {} and not report.written
+    assert dict(report.rejects) == {}
+    assert not report.written
