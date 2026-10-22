@@ -364,6 +364,15 @@ SCHEDULED_JOBS: tuple[ScheduledIngestJob, ...] = (
 )
 
 
+class _Outcome(StrEnum):
+    """How one job's attempt ended: it ran, it errored (the pass carries on), or the pass must
+    stop (lease lost, or FinMind refusing every call)."""
+
+    RAN = "ran"
+    FAILED = "failed"
+    STOP = "stop"
+
+
 class IngestDaemon:
     """The leader-gated, wall-clock scheduling core. `run_due_jobs()` is one pass — directly
     callable with an injected clock so the schedule is testable without a real loop or a sleep."""
@@ -538,6 +547,77 @@ class IngestDaemon:
             return (today - last).days >= _WEEKLY_MIN_GAP_DAYS
         return last != today
 
+    def _run_date(self, job: ScheduledIngestJob, fire_day: date_, local: datetime) -> date_ | None:
+        """The date `job` runs for, or `None` when a US daily job has no new session to pull."""
+        if not self._is_us_daily(job):
+            return fire_day
+        # US daily jobs run for the last completed US session, not the Taipei date: at
+        # 06:00 Taipei the Taipei date's session has not opened yet (it asked Yahoo for
+        # data that did not exist), and a Taipei Saturday/Sunday morning is exactly when
+        # Friday's session lands, which the Taipei weekday gate below would have skipped.
+        run_date = last_completed_us_session(self._ctx.us_calendar, now=local)
+        if self._last_session.get(job.name) == run_date:
+            return None
+        self._last_session[job.name] = run_date
+        return run_date
+
+    def _runnable_date(
+        self, job: ScheduledIngestJob, fire_day: date_, local: datetime
+    ) -> date_ | None:
+        """The date `job` runs for in this pass, or `None` when it must not run: a US daily job
+        with no new session since it last ran (e.g. Sunday, Monday a.m.), or a trading-gated job on
+        a non-trading day."""
+        run_date = self._run_date(job, fire_day, local)
+        if run_date is None or self._skip_non_trading_day(job, run_date):
+            return None
+        return run_date
+
+    def _skip_non_trading_day(self, job: ScheduledIngestJob, run_date: date_) -> bool:
+        # Monthly reference-data jobs are not tied to the market calendar (the classification
+        # roster is published independent of trading sessions), so only daily market pulls are
+        # trading-day-gated. Uses the extrapolating check (not the strict allow-list one) —
+        # `today` is always beyond the calendar's known range until today's own job writes
+        # its partition, so the strict check would skip every job every day forever; see
+        # `TradingDayCalendar.is_trading_day_extrapolating`'s own docstring. Gates against
+        # `job.market`'s own calendar (`ctx.us_calendar` for a US-scoped job, `ctx.calendar`
+        # otherwise) — see `ScheduledIngestJob.market`'s own field comment for why this must
+        # not default to the TW calendar for every job regardless of which market it serves.
+        calendar = self._ctx.us_calendar if job.market is Market.US else self._ctx.calendar
+        trading_gated = job.cadence in (Cadence.DAILY, Cadence.INTRADAY)
+        if trading_gated and not calendar.is_trading_day_extrapolating(run_date):
+            logger.info(
+                "ingest_job_skipped_non_trading_day", job=job.name, run_date=run_date.isoformat()
+            )
+            return True
+        return False
+
+    async def _run_one(self, job: ScheduledIngestJob, run_date: date_) -> _Outcome:
+        # The lease can drop mid-pass (the Postgres connection behind it breaks and the lock is
+        # freed); re-check it before every job so a standby that took over is the only writer.
+        if not await refresh_leadership(self._ctx.leader):
+            logger.warning("ingest_pass_stopped_lease_lost", job=job.name)
+            return _Outcome.STOP
+        try:
+            result = await job.run(run_date, self._ctx)
+        except FinMindQuotaRefusedError:
+            # FinMind refused again after its quota window reset (a lapsed plan or token):
+            # every later job in this pass would wait out the window and be refused too.
+            logger.exception("ingest_pass_stopped_finmind_refused", job=job.name)
+            return _Outcome.STOP
+        except Exception:
+            # Isolate a job's failure so one bad pull never blocks the others in this pass;
+            # already marked handled, so it retries next day rather than looping now.
+            logger.exception("ingest_job_errored", job=job.name, run_date=run_date.isoformat())
+            return _Outcome.FAILED
+        logger.info(
+            "ingest_job_fired",
+            job=job.name,
+            run_date=run_date.isoformat(),
+            status=result.status.value,
+            rows_written=result.rows_written,
+        )
+        return _Outcome.RAN
+
     async def run_due_jobs(self, *, now: datetime | None = None) -> list[str]:
         """Fire every job that has become due since the last pass. Returns the names of jobs that
         actually ran (a non-trading-day skip does not count as run). A non-leader pass returns an
@@ -554,59 +634,14 @@ class IngestDaemon:
             fire_day = self._claim(job, local, previous_pass)
             if fire_day is None:
                 continue
-            run_date = fire_day
-            if self._is_us_daily(job):
-                # US daily jobs run for the last completed US session, not the Taipei date: at
-                # 06:00 Taipei the Taipei date's session has not opened yet (it asked Yahoo for
-                # data that did not exist), and a Taipei Saturday/Sunday morning is exactly when
-                # Friday's session lands, which the Taipei weekday gate below would have skipped.
-                run_date = last_completed_us_session(self._ctx.us_calendar, now=local)
-                if self._last_session.get(job.name) == run_date:
-                    continue  # no new session since this job last ran (e.g. Sunday, Monday a.m.)
-                self._last_session[job.name] = run_date
-            # Monthly reference-data jobs are not tied to the market calendar (the classification
-            # roster is published independent of trading sessions), so only daily market pulls are
-            # trading-day-gated. Uses the extrapolating check (not the strict allow-list one) —
-            # `today` is always beyond the calendar's known range until today's own job writes
-            # its partition, so the strict check would skip every job every day forever; see
-            # `TradingDayCalendar.is_trading_day_extrapolating`'s own docstring. Gates against
-            # `job.market`'s own calendar (`ctx.us_calendar` for a US-scoped job, `ctx.calendar`
-            # otherwise) — see `ScheduledIngestJob.market`'s own field comment for why this must
-            # not default to the TW calendar for every job regardless of which market it serves.
-            calendar = self._ctx.us_calendar if job.market is Market.US else self._ctx.calendar
-            trading_gated = job.cadence in (Cadence.DAILY, Cadence.INTRADAY)
-            if trading_gated and not calendar.is_trading_day_extrapolating(run_date):
-                logger.info(
-                    "ingest_job_skipped_non_trading_day",
-                    job=job.name,
-                    run_date=run_date.isoformat(),
-                )
+            run_date = self._runnable_date(job, fire_day, local)
+            if run_date is None:
                 continue
-            # The lease can drop mid-pass (the Postgres connection behind it breaks and the lock is
-            # freed); re-check it before every job so a standby that took over is the only writer.
-            if not await refresh_leadership(self._ctx.leader):
-                logger.warning("ingest_pass_stopped_lease_lost", job=job.name)
+            outcome = await self._run_one(job, run_date)
+            if outcome is _Outcome.STOP:
                 break
-            try:
-                result = await job.run(run_date, self._ctx)
-            except FinMindQuotaRefusedError:
-                # FinMind refused again after its quota window reset (a lapsed plan or token):
-                # every later job in this pass would wait out the window and be refused too.
-                logger.exception("ingest_pass_stopped_finmind_refused", job=job.name)
-                break
-            except Exception:
-                # Isolate a job's failure so one bad pull never blocks the others in this pass;
-                # already marked handled, so it retries next day rather than looping now.
-                logger.exception("ingest_job_errored", job=job.name, run_date=run_date.isoformat())
-                continue
-            logger.info(
-                "ingest_job_fired",
-                job=job.name,
-                run_date=run_date.isoformat(),
-                status=result.status.value,
-                rows_written=result.rows_written,
-            )
-            ran.append(job.name)
+            if outcome is _Outcome.RAN:
+                ran.append(job.name)
         await self._catch_up_derived(local)
         return ran
 
