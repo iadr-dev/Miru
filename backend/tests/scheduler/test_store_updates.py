@@ -156,12 +156,11 @@ async def test_job_edit_isolation_and_version_guard(session_factory) -> None:
     other = await insert_user(session_factory, tier=Tier.PRO)
     async with session_factory() as session:
         store = SqlAlchemySchedulerStore(session)
+        patch = SchedulePatch()
         with pytest.raises(ScheduleJobNotFoundError):
-            await store.update_job(user_id=other, job_id=job.id, patch=SchedulePatch())
+            await store.update_job(user_id=other, job_id=job.id, patch=patch)
         with pytest.raises(StaleVersionError):
-            await store.update_job(
-                user_id=user, job_id=job.id, patch=SchedulePatch(), expected_version=7
-            )
+            await store.update_job(user_id=user, job_id=job.id, patch=patch, expected_version=7)
         ok = await store.update_job(
             user_id=user, job_id=job.id, patch=SchedulePatch(), expected_version=job.version
         )
@@ -316,11 +315,12 @@ async def test_alert_edit_isolation_and_version_guard(session_factory) -> None:
     other = await insert_user(session_factory, tier=Tier.PRO)
     async with session_factory() as session:
         store = SqlAlchemySchedulerStore(session)
+        patch = AlertPatch()
         with pytest.raises(AlertRuleNotFoundError):
-            await store.update_alert(user_id=other, alert_id=rule.id, patch=AlertPatch())
+            await store.update_alert(user_id=other, alert_id=rule.id, patch=patch)
         with pytest.raises(StaleVersionError):
             await store.update_alert(
-                user_id=user, alert_id=rule.id, patch=AlertPatch(), expected_version=7
+                user_id=user, alert_id=rule.id, patch=patch, expected_version=7
             )
         ok = await store.update_alert(
             user_id=user, alert_id=rule.id, patch=AlertPatch(), expected_version=rule.version

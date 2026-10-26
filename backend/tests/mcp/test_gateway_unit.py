@@ -654,8 +654,9 @@ async def test_the_slot_is_released_when_the_app_raises() -> None:
         raise BoomError
 
     h = Harness(app=inner, config=anon())
+    scope = make_scope()
     with pytest.raises(BoomError):
-        await h.call(make_scope())
+        await h.call(scope)
 
     assert h.gateway._in_flight == 0
 
