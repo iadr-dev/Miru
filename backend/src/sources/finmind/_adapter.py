@@ -69,19 +69,25 @@ def _build_query(
     if config.no_start_date_param:
         return query
     start_date = params.get("start_date")
-    end_date = params.get("end_date")
     if config.date_param == "date":
         date_value = params.get("date") or start_date
         query["date"] = str(date_value) if date_value is not None else _default_single_date()
     else:
-        if start_date is None:
-            start_date, default_end = _default_date_range(config)
-            if end_date is None and not config.no_end_date_param:
-                end_date = default_end
-        query["start_date"] = str(start_date)
-        if end_date is not None and not config.no_end_date_param:
-            query["end_date"] = str(end_date)
+        query.update(_range_query(config, start_date, params.get("end_date")))
     return query
+
+
+def _range_query(config: _DatasetConfig, start_date: object, end_date: object) -> dict[str, str]:
+    """The `start_date`/`end_date` pair, defaulting an omitted start to the dataset's lookback
+    (and, then, an omitted end to today unless the dataset rejects `end_date`)."""
+    if start_date is None:
+        start_date, default_end = _default_date_range(config)
+        if end_date is None and not config.no_end_date_param:
+            end_date = default_end
+    range_query = {"start_date": str(start_date)}
+    if end_date is not None and not config.no_end_date_param:
+        range_query["end_date"] = str(end_date)
+    return range_query
 
 
 class FinMindAdapter:
