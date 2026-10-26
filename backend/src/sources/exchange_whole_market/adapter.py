@@ -26,7 +26,7 @@ from sources.base import NO_DATA_PUBLISHED
 
 from . import tpex, twse
 from ._client import ThrottledJsonClient
-from ._common import Endpoint, ExchangeFetchError, NoDataPublished, Row
+from ._common import Endpoint, ExchangeFetchError, NoDataPublishedError, Row
 
 logger = structlog.get_logger(__name__)
 
@@ -117,7 +117,7 @@ class ExchangeWholeMarketAdapter:
                 endpoint.url, endpoint.query(run_date), label=endpoint.label, tls_policy=tls_policy
             )
             return _Outcome(rows=endpoint.parse(body, run_date))
-        except NoDataPublished:
+        except NoDataPublishedError:
             return _Outcome(rows=[], no_data=True)
         except ExchangeFetchError as exc:
             return _Outcome(error=exc.detail)
