@@ -43,7 +43,7 @@ _WINDOW: Final = 500
 _MAX_PROMPT_CHARS: Final = 9000
 _FALLBACK_HEAD: Final = 6000
 _KNOWN_KEYS: Final = frozenset(Judgement.model_fields)
-_FENCE: Final = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
+_FENCE: Final = re.compile(r"```(?:json)?(.*?)```", re.DOTALL)
 
 REASON_LLM_ERROR: Final = "llm_error"
 REASON_BAD_JSON: Final = "bad_json"

@@ -156,7 +156,7 @@ def _extract_json_block(text: str) -> object | None:
     ```json code block, wrapped in prose, or returned bare. Returns None if nothing parses."""
     if not text:
         return None
-    fence = re.search(r"```(?:json)?\s*(.*?)```", text, re.DOTALL)
+    fence = re.search(r"```(?:json)?(.*?)```", text, re.DOTALL)
     candidate = fence.group(1) if fence else text
     for opener, closer in (("[", "]"), ("{", "}")):
         start = candidate.find(opener)
