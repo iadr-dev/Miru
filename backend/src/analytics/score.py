@@ -723,7 +723,8 @@ def _momentum_factor(inputs: FactorInputs) -> tuple[FactorScore, float | None]:
         FactorScore(
             name="momentum",
             percentile=momentum_percentile,
-            description="12-1 動能（排除最近一個月的trailing 12個月報酬），對當日全市場排名" + cap_note,
+            description="12-1 動能（排除最近一個月的trailing 12個月報酬），對當日全市場排名"
+            + cap_note,
         )
         if momentum_percentile is not None
         else unavailable_factor("momentum", "此標的已收錄的價格歷史不足12個月")
