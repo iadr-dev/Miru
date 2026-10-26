@@ -92,7 +92,21 @@ export function RichCardView({
   if (shape && usable) {
     return renderShaped(shape, card);
   }
+  // A row-based card whose source is down or tier-gated came back empty: its remaining scalars are
+  // the tool's zero defaults (total volume 0, net 0), not measurements. The answer text already
+  // says the data is unavailable, so show nothing rather than a card of invented zeros.
+  if (shape && sourceUnavailable(card.data)) {
+    return null;
+  }
   return <FlatCard card={card} />;
+}
+
+/** Health statuses meaning the source served nothing (as opposed to `ok`/`stale`, which carry data). */
+const UNAVAILABLE_HEALTH = new Set(["unreachable", "unavailable-tier", "unavailable"]);
+
+function sourceUnavailable(data: Record<string, unknown>): boolean {
+  const status = data.health_status;
+  return typeof status === "string" && UNAVAILABLE_HEALTH.has(status);
 }
 
 function renderShaped(
