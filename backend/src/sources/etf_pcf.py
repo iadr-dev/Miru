@@ -187,9 +187,8 @@ def _build_fund_info(
     be `None` (already checked by the caller that at least one is not) — into one `EtfFundInfo`.
     Pulled out of `EtfPcfAdapter.fetch` purely to keep that method's branching shallow; no
     behavior of its own beyond the field-by-field fallback each line already documents."""
-    fund_name = (
-        str(fund_info.get("基金簡稱", "")) if fund_info else (listing.name if listing else "")
-    )
+    listing_name = listing.name if listing else ""
+    fund_name = str(fund_info.get("基金簡稱", "")) if fund_info else listing_name
     fund_type = str(fund_info.get("基金類型", "")) if fund_info else "unknown"
     units = _as_int_or_none(fund_info.get("發行單位數/轉換數")) if fund_info else None
     # `基金經理人` is the manager PERSON (e.g. 梁恩溢), not the investment-trust company — a real

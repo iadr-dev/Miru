@@ -281,7 +281,7 @@ async def _form(request: Request) -> dict[str, str] | JSONResponse:
         return _error("invalid_request", "Request body is too large.", status_code=413)
     try:
         parsed = parse_qs(raw.decode("utf-8"), keep_blank_values=True, max_num_fields=50)
-    except (UnicodeDecodeError, ValueError):
+    except ValueError:
         return _error("invalid_request", "Malformed form body.")
     if any(len(values) != 1 for values in parsed.values()):
         return _error("invalid_request", "A parameter was repeated.")

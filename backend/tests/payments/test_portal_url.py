@@ -245,8 +245,9 @@ async def test_a_failing_subscription_read_propagates_for_the_route_to_map() -> 
 async def test_a_failing_subscription_read_propagates_without_a_customer_too() -> None:
     stub = StubPaddle(subscription=PaddleApiError("down"))
 
+    rec = record(None)
     with pytest.raises(PaddleApiError):
-        await resolve(stub, "payment", record(None))
+        await resolve(stub, "payment", rec)
 
 
 async def test_only_a_paddle_api_error_is_swallowed_from_the_portal_session() -> None:

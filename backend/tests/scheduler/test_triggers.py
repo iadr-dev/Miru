@@ -132,8 +132,9 @@ def test_unknown_market_event_is_unresolvable() -> None:
 
 def test_no_trading_day_within_horizon_is_unresolvable() -> None:
     after = datetime(2026, 9, 30, 10, 0, tzinfo=TPE)
+    trigger = _event("pre_open")
     with pytest.raises(UnresolvableTriggerError, match="no trading day found"):
-        next_run_after(_event("pre_open"), after, is_trading_day=lambda _d, _m: False)
+        next_run_after(trigger, after, is_trading_day=lambda _d, _m: False)
 
 
 def test_trading_check_receives_local_day_and_market_in_order() -> None:
@@ -155,15 +156,17 @@ def test_trading_check_receives_local_day_and_market_in_order() -> None:
 
 def test_unknown_market_event_message_and_cause() -> None:
     after = datetime(2026, 9, 30, 10, 0, tzinfo=TPE)
+    trigger = _event("midnight")
     with pytest.raises(UnresolvableTriggerError, match="unknown market event 'midnight'") as info:
-        next_run_after(_event("midnight"), after)
+        next_run_after(trigger, after)
     assert isinstance(info.value.__cause__, ValueError)
 
 
 def test_cron_never_fires_message() -> None:
     after = datetime(2026, 9, 30, 10, 0, tzinfo=TPE)
+    trigger = _cron("0 8 30 2 *")
     with pytest.raises(UnresolvableTriggerError, match="never fires within a year"):
-        next_run_after(_cron("0 8 30 2 *"), after)
+        next_run_after(trigger, after)
 
 
 def test_cron_ignores_trading_day_check() -> None:

@@ -17,7 +17,7 @@ from __future__ import annotations
 import contextlib
 from collections.abc import Callable, Generator
 from datetime import UTC, datetime
-from typing import Final
+from typing import Final, Literal
 
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -260,11 +260,14 @@ class SqlAccountDataReader:
         tier_limit = TIER_LIMITS[tier].chat_limit_per_day
         limit = None if own_key else tier_limit
         used = counts.get("chats", 0)
+        unlimited_because: Literal["tier", "own_key"] | None = None
+        if limit is None:
+            unlimited_because = "own_key" if own_key else "tier"
         chat = ChatQuota(
             used_today=used,
             limit_per_day=limit,
             remaining_today=None if limit is None else max(limit - used, 0),
-            unlimited_because=("own_key" if own_key else "tier") if limit is None else None,
+            unlimited_because=unlimited_because,
         )
         if llm is None:
             return UsageSnapshot(chat=chat)

@@ -156,7 +156,7 @@ _EN_DATE = re.compile(
     r"(20\d{2}|19\d{2})\b",
     re.IGNORECASE,
 )
-_RELATIVE = re.compile(r"(\d+)\s*(day|week|month|year)s?\s+ago", re.IGNORECASE)
+_RELATIVE = re.compile(r"(?<!\d)(\d+)\s*(day|week|month|year)s?\s+ago", re.IGNORECASE)
 _MONTHS: Final = {
     m: i
     for i, m in enumerate(

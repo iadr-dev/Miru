@@ -10,7 +10,7 @@ from typing import cast
 # A line that opens with "TL;DR" (optionally bold/bulleted, ASCII or fullwidth colon): the model
 # restating its own answer as a closing summary. Governance rule 13 asks it not to; some models do
 # it anyway, so the final answer drops the line.
-_TLDR_LINE = re.compile(r"^\s*(?:[-*>]\s*)?(?:\*\*|__)?\s*TL\s*;?\s*DR\b.*$", re.IGNORECASE)
+_TLDR_LINE = re.compile(r"^\s*(?:[-*>]\s*)?(?:(?:\*\*|__)\s*)?TL\s*;?\s*DR\b.*$", re.IGNORECASE)
 
 
 def strip_tldr(text: str) -> str:
@@ -23,7 +23,7 @@ def strip_tldr(text: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", cleaned).strip()
 
 
-_FENCE = re.compile(r"^```(?:json)?\s*(.*?)\s*```$", re.DOTALL)
+_FENCE = re.compile(r"^```(?:json)?(.*?)```$", re.DOTALL)
 
 
 def recover_textual_tool_call(
@@ -55,7 +55,7 @@ def _json_object(text: str) -> dict[str, object] | None:
     candidate = text.strip()
     fenced = _FENCE.match(candidate)
     if fenced:
-        candidate = fenced.group(1)
+        candidate = fenced.group(1).strip()
     if not (candidate.startswith("{") and candidate.endswith("}")):
         return None
     try:
