@@ -128,7 +128,7 @@ const FINANCIAL_STATEMENT_LABELS: Record<string, string> = {
 function humanizeCode(code: string): string {
   return code
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
-    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .replace(/([A-Z])(?=[A-Z][a-z])/g, "$1 ")
     .trim();
 }
 

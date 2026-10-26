@@ -75,7 +75,7 @@ function tableFilenameBase(rows: string[][]): string {
     const slug = firstHeader
       .toLowerCase()
       .replace(/[^\p{L}\p{N}]+/gu, "-")
-      .replace(/^-+|-+$/g, "")
+      .replace(/^-|-$/g, "")
       .slice(0, 40);
     if (slug) {
       return `${slug}-${stamp}`;
@@ -119,7 +119,7 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const chunks: string[] = [];
   for (let offset = 0; offset < bytes.length; offset += chunkSize) {
     const chunk = bytes.subarray(offset, offset + chunkSize);
-    chunks.push(String.fromCharCode(...chunk));
+    chunks.push(String.fromCodePoint(...chunk));
   }
   return btoa(chunks.join(""));
 }
