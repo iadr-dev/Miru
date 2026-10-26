@@ -13,6 +13,7 @@ upgrades/downgrades history that day), never withheld market-wide.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, date, datetime
 from typing import Any, cast
 
@@ -55,6 +56,38 @@ def _analyst_consensus(sym: Symbol, info: dict[str, Any], frames: dict[str, Any]
     )
 
 
+type _Convert = Callable[[object], object]
+
+# (frame, row label, ((output key, column, converter), ...)) for the frames whose wanted figures
+# sit on one labelled row; the tuple order is the output key order.
+_INDEXED_FIELDS: tuple[tuple[str, str, tuple[tuple[str, str, _Convert], ...]], ...] = (
+    ("earnings_estimate", "0y", (("forward_eps_estimate", "avg", _as_float),)),
+    ("revenue_estimate", "0y", (("forward_revenue_estimate", "avg", _as_float),)),
+    ("growth_estimates", "LTG", (("long_term_growth_estimate", "stockTrend", _as_float),)),
+    ("growth_estimates", "0y", (("current_year_growth_estimate", "stockTrend", _as_float),)),
+    ("growth_estimates", "+1y", (("next_year_growth_estimate", "stockTrend", _as_float),)),
+    (
+        "eps_trend",
+        "0y",
+        (
+            ("eps_trend_current", "current", _as_float),
+            ("eps_trend_7_days_ago", "7daysAgo", _as_float),
+            ("eps_trend_30_days_ago", "30daysAgo", _as_float),
+            ("eps_trend_60_days_ago", "60daysAgo", _as_float),
+            ("eps_trend_90_days_ago", "90daysAgo", _as_float),
+        ),
+    ),
+    (
+        "eps_revisions",
+        "0y",
+        (
+            ("eps_revisions_up_last_30_days", "upLast30days", _as_int),
+            ("eps_revisions_down_last_30_days", "downLast30days", _as_int),
+        ),
+    ),
+)
+
+
 def _analyst_consensus_extended(frames: dict[str, Any]) -> dict[str, object]:
     """Non-TW-only richer analyst fields — recommendations tally, latest rating action,
     forward EPS/revenue estimate, long-term growth. Any individually-missing sub-frame
@@ -76,44 +109,12 @@ def _analyst_consensus_extended(frames: dict[str, Any]) -> dict[str, object]:
         extended["latest_upgrade_downgrade_firm"] = _as_str(_get(latest, "Firm"))
         extended["latest_upgrade_downgrade_action"] = _as_str(_get(latest, "Action"))
 
-    earnings_est = frames.get("earnings_estimate")
-    if isinstance(earnings_est, pd.DataFrame) and "0y" in earnings_est.index:
-        eps_row = cast(_Series, earnings_est.loc["0y"])
-        extended["forward_eps_estimate"] = _as_float(_get(eps_row, "avg"))
-
-    revenue_est = frames.get("revenue_estimate")
-    if isinstance(revenue_est, pd.DataFrame) and "0y" in revenue_est.index:
-        revenue_row = cast(_Series, revenue_est.loc["0y"])
-        extended["forward_revenue_estimate"] = _as_float(_get(revenue_row, "avg"))
-
-    growth_est = frames.get("growth_estimates")
-    if isinstance(growth_est, pd.DataFrame) and "LTG" in growth_est.index:
-        growth_row = cast(_Series, growth_est.loc["LTG"])
-        extended["long_term_growth_estimate"] = _as_float(_get(growth_row, "stockTrend"))
-    if isinstance(growth_est, pd.DataFrame):
-        if "0y" in growth_est.index:
-            current_year_row = cast(_Series, growth_est.loc["0y"])
-            extended["current_year_growth_estimate"] = _as_float(
-                _get(current_year_row, "stockTrend")
-            )
-        if "+1y" in growth_est.index:
-            next_year_row = cast(_Series, growth_est.loc["+1y"])
-            extended["next_year_growth_estimate"] = _as_float(_get(next_year_row, "stockTrend"))
-
-    eps_trend = frames.get("eps_trend")
-    if isinstance(eps_trend, pd.DataFrame) and "0y" in eps_trend.index:
-        trend_row = cast(_Series, eps_trend.loc["0y"])
-        extended["eps_trend_current"] = _as_float(_get(trend_row, "current"))
-        extended["eps_trend_7_days_ago"] = _as_float(_get(trend_row, "7daysAgo"))
-        extended["eps_trend_30_days_ago"] = _as_float(_get(trend_row, "30daysAgo"))
-        extended["eps_trend_60_days_ago"] = _as_float(_get(trend_row, "60daysAgo"))
-        extended["eps_trend_90_days_ago"] = _as_float(_get(trend_row, "90daysAgo"))
-
-    eps_revisions = frames.get("eps_revisions")
-    if isinstance(eps_revisions, pd.DataFrame) and "0y" in eps_revisions.index:
-        revisions_row = cast(_Series, eps_revisions.loc["0y"])
-        extended["eps_revisions_up_last_30_days"] = _as_int(_get(revisions_row, "upLast30days"))
-        extended["eps_revisions_down_last_30_days"] = _as_int(_get(revisions_row, "downLast30days"))
+    for frame_key, row_label, fields in _INDEXED_FIELDS:
+        frame = frames.get(frame_key)
+        if isinstance(frame, pd.DataFrame) and row_label in frame.index:
+            row = cast(_Series, frame.loc[row_label])
+            for out_key, column, convert in fields:
+                extended[out_key] = convert(_get(row, column))
     return extended
 
 

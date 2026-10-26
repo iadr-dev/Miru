@@ -36,6 +36,8 @@ from sources.tls import build_async_client
 
 logger = structlog.get_logger(__name__)
 
+type _RawObject = dict[str, object]
+
 _NAV_URL = "https://mis.twse.com.tw/stock/data/all_etf.txt"
 
 _CAVEAT = (
@@ -91,6 +93,25 @@ def _row_from_raw(raw: dict[str, object]) -> dict[str, object] | None:
     }
 
 
+def _flatten_rows(groups: list[object]) -> list[dict[str, object]]:
+    """Every parseable ETF row across the issuer groups; malformed groups/rows are skipped."""
+    rows: list[dict[str, object]] = []
+    for group in groups:
+        if not isinstance(group, dict):
+            continue
+        typed_group = cast(_RawObject, group)
+        msg_array = typed_group.get("msgArray")
+        if not isinstance(msg_array, list):
+            continue
+        for raw_row in cast("list[object]", msg_array):
+            if not isinstance(raw_row, dict):
+                continue
+            parsed = _row_from_raw(cast(_RawObject, raw_row))
+            if parsed is not None:
+                rows.append(parsed)
+    return rows
+
+
 async def fetch_whole_market_etf_nav(*, tls_policy: TLSPolicy) -> SourceResult:
     """One whole-market call, every listed ETF's premium/discount row in one response — the
     ingest layer's sole legitimate caller of this function (mirrors
@@ -115,7 +136,7 @@ async def fetch_whole_market_etf_nav(*, tls_policy: TLSPolicy) -> SourceResult:
                 status=HealthStatus.UNREACHABLE, detail="TWSE all_etf.txt response missing 'a1'"
             ),
         )
-    typed_body = cast("dict[str, object]", body)
+    typed_body = cast(_RawObject, body)
 
     groups_field = typed_body["a1"]
     if not isinstance(groups_field, list):
@@ -126,20 +147,7 @@ async def fetch_whole_market_etf_nav(*, tls_policy: TLSPolicy) -> SourceResult:
             ),
         )
 
-    rows: list[dict[str, object]] = []
-    for group in cast("list[object]", groups_field):
-        if not isinstance(group, dict):
-            continue
-        typed_group = cast("dict[str, object]", group)
-        msg_array = typed_group.get("msgArray")
-        if not isinstance(msg_array, list):
-            continue
-        for raw_row in cast("list[object]", msg_array):
-            if not isinstance(raw_row, dict):
-                continue
-            parsed = _row_from_raw(cast("dict[str, object]", raw_row))
-            if parsed is not None:
-                rows.append(parsed)
+    rows = _flatten_rows(cast("list[object]", groups_field))
 
     if not rows:
         return _result(

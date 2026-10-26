@@ -86,15 +86,20 @@ _LINK = {
 }
 
 
-def _drivers(brief: GetMorningBriefOutput) -> list[str]:
+def _us_drivers(rows: tuple[BriefRow, ...]) -> list[_Driver]:
     found: list[_Driver] = []
-    for r in brief.us_overnight:
+    for r in rows:
         kind = _kind(r.label)
         if kind is None or r.change_pct is None:
             continue
         line = f"{r.label} {_signed(r.change_pct)}（{r.text}） → {_LINK[kind]}"
         found.append(_Driver(abs(r.change_pct) / _UNIT[kind], line))
-    for r in brief.tw_market:
+    return found
+
+
+def _tw_drivers(rows: tuple[BriefRow, ...]) -> list[_Driver]:
+    found: list[_Driver] = []
+    for r in rows:
         if r.change_pct is None:
             continue
         if "ADR" in r.label:
@@ -109,7 +114,12 @@ def _drivers(brief: GetMorningBriefOutput) -> list[str]:
                 "相關：台股現貨與大盤 ETF"
             )
             found.append(_Driver(abs(r.change_pct) / _UNIT["index"], line))
-    for r in brief.institutions:
+    return found
+
+
+def _institution_drivers(rows: tuple[BriefRow, ...]) -> list[_Driver]:
+    found: list[_Driver] = []
+    for r in rows:
         amount = _yi(r.text)
         if amount is not None:
             direction = "買超" if amount >= 0 else "賣超"
@@ -118,6 +128,15 @@ def _drivers(brief: GetMorningBriefOutput) -> list[str]:
                 "三大法人單日買賣超 → 相關：台股現貨"
             )
             found.append(_Driver(abs(amount) / _UNIT["flow"], line))
+    return found
+
+
+def _drivers(brief: GetMorningBriefOutput) -> list[str]:
+    found = [
+        *_us_drivers(brief.us_overnight),
+        *_tw_drivers(brief.tw_market),
+        *_institution_drivers(brief.institutions),
+    ]
     ranked = sorted(found, key=lambda d: d.score, reverse=True)[:_MAX_DRIVERS]
     return [d.line for d in ranked]
 
