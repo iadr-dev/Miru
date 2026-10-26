@@ -7,7 +7,7 @@
 # Source ids (resolved in ingest/jobs/source_chain.py):
 #   exchange_official  free TWSE + TPEx daily reports (sources/exchange_whole_market)
 #   filings_official   free company filings republished by MOPS (sources/company_filings): the
-#                      period-keyed datasets (monthly revenue, ...), reachable for any past period
+#                      period-keyed datasets (monthly revenue, financial statements), reachable for any past period
 #   finmind            FinMind whole-table form (metered; the free tier is 600 requests/hour)
 #
 #
@@ -22,3 +22,6 @@ TW:
   margin_short: [exchange_official, finmind]
   valuation_ratios: [exchange_official, finmind]
   month_revenue: [filings_official, finmind]
+  financials: [filings_official, finmind]
+  balance_sheet: [filings_official, finmind]
+  cash_flow_statement: [filings_official, finmind]
