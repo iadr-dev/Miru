@@ -25,7 +25,9 @@ separate quota buckets** so a backfill can never starve live Pro users ([16](16-
 
 - **Gov OpenAPIs (TWSE/TPEX/TAIFEX) are latest-snapshot-only** — no params, no date range, no
   backfill. To have *history* we must poll daily and store.
-- **FinMind is the only date-range/backfill engine.** So ingest's primary writer is **FinMind
+- **FinMind is the only date-range/backfill engine for most datasets** (for the four dated
+  price/flow/margin/valuation datasets the exchanges' own date-parameterised reports are asked
+  first, §1b). So ingest's primary writer is **FinMind
   whole-market-by-date** (omit `data_id` → one call returns the whole market for a date); gov
   OpenAPI is used **only** where it's same-day-authoritative and FinMind lags (處置/注意股, ETF
   NAV/折溢價, sub-indices).
@@ -55,6 +57,56 @@ The fetch→store path is fixed for speed and correctness:
   pipeline. (DuckDB `read_csv` is fine for ad-hoc imports; it is not the ingest path.)
 - **Readers** then `read_parquet(glob, hive_partitioning=true)` read-only (§7) — they never touch
   the writer's process or a `.duckdb` file.
+
+## 1b. Source order for the dated whole-market datasets — official exchange reports first
+
+FinMind's free tier (600 requests/hour) 403s the whole-market pulls, so for the four date-keyed
+datasets the exchanges publish themselves the runner asks the **free official reports first** and
+FinMind only when they fail or return nothing. The order is data, in
+`config/whole_market_source_priority.yaml` (a capability not listed there is FinMind alone):
+
+| Capability (job) | 1st: `exchange_official` (`sources/exchange_whole_market/`) | 2nd |
+|---|---|---|
+| `price_eod` | TWSE `afterTrading/MI_INDEX` (`ALLBUT0999`, the `每日收盤行情` table) + TPEx `afterTrading/otc` (`EW`) | `finmind` |
+| `institutional_flow` | TWSE `fund/T86` (`ALLBUT0999`) + TPEx `insti/dailyTrade` (`EW`) | `finmind` |
+| `margin_short` | TWSE `marginTrading/MI_MARGN` (`ALL`: stocks + ETFs) + TPEx `margin/balance` | `finmind` |
+| `valuation_ratios` | TWSE `afterTrading/BWIBBU_d` (`ALL`) + TPEx `afterTrading/peQryDate` | `finmind` |
+
+Everything else (fundamentals, 分點, rosters, ...) stays FinMind-only. Per-symbol routing
+(`source_priority.yaml`: `price_eod: [finmind, twse_openapi]`) is unchanged: the exchange reports
+have no per-symbol form, and `twse_openapi` is latest-only, so it must not outrank FinMind for a
+symbol's date range.
+
+- **One runner.** `ingest/jobs/source_chain.py::walk_chain` is called by `run_whole_market_job`
+  (cron, gap-fill and the backfill CLI all share it) and by the trend-score batch's margin read.
+  The first source that is healthy **and** has rows wins; a healthy-but-empty answer or an error
+  hands over to the next. Calendar gate, leader gate, row validation, the atomic partition write
+  and the `data.updated` publish are unchanged. If no source serves and any failed, the day is
+  journaled `FAILED` with every source's reason; if every source is healthy and empty it is a
+  legitimate empty trading day (SUCCESS, 0 rows), as before.
+- **Provenance** is the journal detail: `served by exchange_official: TWSE 1368 + TPEx 990 rows`,
+  or `served by finmind: ok (after exchange_official: <why>)`. The Parquet layout is unchanged.
+- **Same row shapes.** The parsers emit exactly FinMind's row dicts (names, units, signs, ISO
+  `trade_date`, `market="TW"`), so readers and derived jobs are source-agnostic. Institutional flow
+  stays the long shape: five rows per stock (`Foreign_Investor`, `Foreign_Dealer_Self`,
+  `Investment_Trust`, `Dealer_self`, `Dealer_Hedging`). A missing PER/PBR/yield (`-`) is `0.0`, as
+  FinMind; a stock that did not trade (prices `--`) has no price row.
+- **Never half a market.** TWSE and TPEx are fetched together; one failing, or one empty while
+  the other has rows, makes the whole answer UNREACHABLE (so FinMind is tried) instead of
+  overwriting a date partition with one exchange only. A response dated differently from the
+  request, an unexpected `stat`, or a changed column layout is an error, never an empty day.
+- **Politeness.** TWSE bans an IP above about 3 requests / 5 s: each host has a minimum gap
+  between request starts (TWSE 2.5 s, TPEx 2.0 s; `asyncio.Lock` + monotonic clock, never
+  blocking the loop), a hard 20 s timeout, at most 3 tries with a doubling backoff on 429 / 5xx /
+  timeout / non-JSON (the block page), a descriptive `User-Agent`, TLS strict. A dataset-date
+  costs one request per exchange.
+- **Known differences from FinMind** (accepted, measured on 2026-06-16 and 2026-09-24 against
+  stored FinMind rows: open/high/low/close, every margin column, institutional buy/sell and
+  PER/PBR/yield match 100% on the symbols both have): warrants and CBBC are not ingested (about 21k
+  rows/day; every reader already filters them, `analytics/symbol_universe.py`); 興櫃 (emerging)
+  stocks (~350 price rows, ~140 institutional symbols) are not in the exchanges' bulk reports;
+  TPEx volume/turnover are round-lot only (FinMind adds odd lots: median -2%, up to -40% for
+  illiquid names; TWSE matches exactly); margin `note` is whitespace-trimmed.
 
 ## 2. Cadence — what is scheduled today
 
@@ -568,8 +620,8 @@ DuckDB/Parquet is correct; ClickHouse would be premature ops + cost.
 
 `backend/src/ingest/jobs/` is a package; `ingest.jobs` re-exports every public name, so
 `from ingest.jobs import job_price_eod, ALL_WHOLE_MARKET_JOBS` is unchanged. `specs` holds
-`WholeMarketJobSpec` and the dataset table; `whole_market` the shared runner and the one-line
-whole-market job functions; `shareholding`, `etf`, `disclosures` (MOPS) and `risk_lists` (attention
+`WholeMarketJobSpec` and the dataset table; `source_chain` the ordered source list (§1b);
+`whole_market` the shared runner and the one-line whole-market job functions; `shareholding`, `etf`, `disclosures` (MOPS) and `risk_lists` (attention
 stocks, disposition events) the jobs with their own fetch logic. Modules import only downward
 (`specs` <- `whole_market` <- the rest). A test that stubs a fetcher patches it on the module that
 calls it (for example `ingest.jobs.risk_lists`), not on the package.
