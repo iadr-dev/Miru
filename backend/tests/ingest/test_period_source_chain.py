@@ -8,7 +8,13 @@ from calendar.trading_days import TradingDayCalendar
 from datetime import UTC, date, datetime
 
 from ingest.context import IngestContext
-from ingest.jobs import MONTH_REVENUE_JOB, run_whole_market_job
+from ingest.jobs import (
+    BALANCE_SHEET_JOB,
+    CASH_FLOW_JOB,
+    FINANCIALS_JOB,
+    MONTH_REVENUE_JOB,
+    run_whole_market_job,
+)
 from ingest.jobs.source_chain import (
     FILINGS_ID,
     FINMIND_ID,
@@ -98,7 +104,14 @@ def _symbols(ctx: IngestContext, run_date: date = FIRST) -> list[str]:
 
 
 def test_the_configured_chain_asks_the_filings_before_finmind() -> None:
-    assert load_whole_market_priority()["TW"]["month_revenue"] == [FILINGS_ID, FINMIND_ID]
+    priority = load_whole_market_priority()["TW"]
+    for capability in (
+        Capability.MONTH_REVENUE,
+        Capability.FINANCIALS,
+        Capability.BALANCE_SHEET,
+        Capability.CASH_FLOW_STATEMENT,
+    ):
+        assert priority[capability.value] == [FILINGS_ID, FINMIND_ID]
 
 
 def test_a_context_without_filings_is_finmind_alone() -> None:
@@ -224,3 +237,19 @@ async def test_rows_after_a_placeholder_are_written_and_signalled(tmp_path: obje
     assert run.rows_written == 1
     assert _symbols(ctx) == ["1101"]
     assert len(publisher.signals) == 2
+
+
+async def test_a_statement_job_on_a_date_that_is_not_a_quarter_end_asks_nobody_else(
+    tmp_path: object,
+) -> None:
+    for job in (FINANCIALS_JOB, BALANCE_SHEET_JOB, CASH_FLOW_JOB):
+        finmind = _finmind([], HealthStatus.UNREACHABLE, "FinMind HTTP 403")
+        filings = _filings([], HealthStatus.OK, "2024-01-02 is not a quarter end")
+        ctx = _ctx(tmp_path, finmind, filings)
+
+        run = await run_whole_market_job(job, SECOND, ctx)
+
+        assert run.status is RunStatus.SUCCESS
+        assert run.detail == f"served by {FILINGS_ID}: 2024-01-02 is not a quarter end"
+        assert filings.calls[0][0] is job.capability
+        assert finmind.calls == []

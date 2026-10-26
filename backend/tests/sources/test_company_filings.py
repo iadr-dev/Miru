@@ -317,7 +317,7 @@ async def test_a_month_nobody_filed_for_is_empty_not_failed(
 
     assert result.health.status is HealthStatus.STALE
     assert _rows(result) == []
-    assert "no revenue published" in result.health.detail
+    assert "nothing published" in result.health.detail
 
 
 async def test_one_failing_market_makes_the_whole_answer_unreachable(
@@ -387,8 +387,13 @@ async def test_unsupported_capability_and_missing_date(mops: FakeMops) -> None:
     assert mops.requests == []
 
 
-def test_the_adapter_covers_month_revenue_and_the_job_validates_its_rows() -> None:
-    assert CompanyFilingsAdapter.supported_capabilities() == {Capability.MONTH_REVENUE}
+def test_the_adapter_covers_month_revenue_and_the_statements() -> None:
+    assert CompanyFilingsAdapter.supported_capabilities() == {
+        Capability.MONTH_REVENUE,
+        Capability.FINANCIALS,
+        Capability.BALANCE_SHEET,
+        Capability.CASH_FLOW_STATEMENT,
+    }
     assert MONTH_REVENUE_JOB.row_model is MonthRevenueRow
 
 
