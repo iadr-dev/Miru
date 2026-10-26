@@ -243,6 +243,45 @@ def _chunk_stop_reason(
     return _FINISH_REASON_MAP.get(candidate.finish_reason, StopReason.END_TURN)
 
 
+def _answer_parts(parts: list[genai_types.Part]) -> tuple[list[str], list[ToolCall]]:
+    """A non-streaming response's answer text pieces and tool calls (a call is numbered by its
+    position among all parts). Reasoning text is not the answer: `stream()` surfaces it as a
+    thinking event, and here it must stay out of `text` or a JSON-only caller (deep research, the
+    classifier) gets prose with the object buried in it."""
+    text_parts: list[str] = []
+    tool_calls: list[ToolCall] = []
+    for index, part in enumerate(parts):
+        if part.text and part.thought:
+            continue
+        if part.text:
+            text_parts.append(part.text)
+        elif part.function_call is not None:
+            tool_calls.append(_function_call_to_tool_call(part.function_call, index))
+    return text_parts, tool_calls
+
+
+def _response_stop_reason(
+    candidate: genai_types.Candidate | None, *, has_tool_calls: bool
+) -> StopReason:
+    if has_tool_calls:
+        return StopReason.TOOL_USE
+    if candidate is None or candidate.finish_reason is None:
+        return StopReason.END_TURN
+    return _FINISH_REASON_MAP.get(candidate.finish_reason, StopReason.END_TURN)
+
+
+def _llm_response(response: genai_types.GenerateContentResponse) -> LLMResponse:
+    candidate = response.candidates[0] if response.candidates else None
+    parts = candidate.content.parts if candidate and candidate.content else None
+    text_parts, tool_calls = _answer_parts(parts or [])
+    return LLMResponse(
+        text="".join(text_parts) or None,
+        tool_calls=tuple(tool_calls),
+        stop_reason=_response_stop_reason(candidate, has_tool_calls=bool(tool_calls)),
+        usage=_usage_from_metadata(response.usage_metadata),
+    )
+
+
 _ChunkEvent = (
     TextDeltaEvent | ThinkingDeltaEvent | ToolCallDeltaEvent | ToolCallEvent | WebSearchResultEvent
 )
@@ -357,34 +396,7 @@ class GeminiClient:
             logger.warning("llm_gemini_chat_failed", model=self.model_id, error=type(exc).__name__)
             raise
 
-        candidate = response.candidates[0] if response.candidates else None
-        parts = candidate.content.parts if candidate and candidate.content else None
-        text_parts: list[str] = []
-        tool_calls: list[ToolCall] = []
-        for index, part in enumerate(parts or []):
-            if part.text and part.thought:
-                # Reasoning text, not the answer: `stream()` surfaces it as a thinking event, and
-                # here it must stay out of `text` or a JSON-only caller (deep research, the
-                # classifier) gets prose with the object buried in it.
-                continue
-            if part.text:
-                text_parts.append(part.text)
-            elif part.function_call is not None:
-                tool_calls.append(_function_call_to_tool_call(part.function_call, index))
-
-        finish_reason = candidate.finish_reason if candidate else None
-        stop_reason = StopReason.END_TURN
-        if tool_calls:
-            stop_reason = StopReason.TOOL_USE
-        elif finish_reason is not None:
-            stop_reason = _FINISH_REASON_MAP.get(finish_reason, StopReason.END_TURN)
-
-        return LLMResponse(
-            text="".join(text_parts) or None,
-            tool_calls=tuple(tool_calls),
-            stop_reason=stop_reason,
-            usage=_usage_from_metadata(response.usage_metadata),
-        )
+        return _llm_response(response)
 
     async def stream(
         self,
