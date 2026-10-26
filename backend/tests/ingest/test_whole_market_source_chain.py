@@ -11,15 +11,18 @@ from ingest.jobs import FINANCIALS_JOB, PRICE_EOD_JOB, run_whole_market_job
 from ingest.jobs.source_chain import (
     EXCHANGE_ID,
     FINMIND_ID,
+    MARKET_CLOSED_DETAIL,
     fetch_whole_market_chained,
     load_whole_market_priority,
     resolve_chain,
+    taipei_today,
 )
 from ingest.journal import RunStatus
 from ingest.leader import AlwaysLeader, NeverLeader
 from ingest.store import ParquetStore
 from schemas.enums import Capability, Market, TLSPolicy
 from schemas.source import HealthStatus
+from sources.base import NO_DATA_PUBLISHED
 from tests.ingest.test_whole_market_runner import (
     TRADING_DAY,
     RecordingPublisher,
@@ -270,3 +273,82 @@ async def test_derived_batches_see_the_last_failure_when_nothing_serves(tmp_path
 
     assert result.health.status is HealthStatus.UNREACHABLE
     assert result.health.detail == "FinMind HTTP 403"
+
+
+# ---------------------------------------------------------------- exchange-confirmed closures
+
+
+def _closed() -> StubSource:
+    return _official([], status=HealthStatus.STALE, detail=NO_DATA_PUBLISHED)
+
+
+async def test_both_exchanges_explicitly_empty_on_a_past_date_is_a_skipped_closure(
+    tmp_path: object,
+) -> None:
+    finmind = _finmind([], status=HealthStatus.UNREACHABLE, detail="HTTP 400")
+    ctx = _ctx(tmp_path, finmind, _closed())
+
+    run = await run_whole_market_job(PRICE_EOD_JOB, TRADING_DAY, ctx)
+
+    assert run.status is RunStatus.SKIPPED
+    assert run.detail == MARKET_CLOSED_DETAIL
+    assert run.rows_written == 0
+    assert finmind.calls == []  # FinMind is never asked
+    assert not ctx.store.has_partition(PRICE_EOD_JOB.dataset, "TW", TRADING_DAY)
+    assert ctx.store.is_closed(PRICE_EOD_JOB.dataset, "TW", TRADING_DAY)
+    # per dataset: another dataset's gap check is not suppressed
+    assert not ctx.store.is_closed(FINANCIALS_JOB.dataset, "TW", TRADING_DAY)
+
+
+async def test_an_explicit_empty_plus_an_exchange_error_still_falls_back(tmp_path: object) -> None:
+    official = _official([], status=HealthStatus.UNREACHABLE, detail="TPEx: HTTP 503")
+    finmind = _finmind()
+    ctx = _ctx(tmp_path, finmind, official)
+
+    run = await run_whole_market_job(PRICE_EOD_JOB, TRADING_DAY, ctx)
+
+    assert run.status is RunStatus.SUCCESS
+    assert len(finmind.calls) == 1
+    assert not ctx.store.is_closed(PRICE_EOD_JOB.dataset, "TW", TRADING_DAY)
+
+
+async def test_an_empty_answer_that_is_not_explicit_falls_back(tmp_path: object) -> None:
+    official = _official([], status=HealthStatus.STALE, detail="no rows published (other)")
+    finmind = _finmind()
+    ctx = _ctx(tmp_path, finmind, official)
+
+    run = await run_whole_market_job(PRICE_EOD_JOB, TRADING_DAY, ctx)
+
+    assert run.status is RunStatus.SUCCESS
+    assert len(finmind.calls) == 1
+
+
+async def test_explicit_empty_today_is_not_a_closure_yet(tmp_path: object) -> None:
+    finmind = _finmind([], status=HealthStatus.UNREACHABLE, detail="HTTP 400")
+    ctx = _ctx(tmp_path, finmind, _closed())
+
+    run = await run_whole_market_job(PRICE_EOD_JOB, taipei_today(), ctx)
+
+    assert run.status is RunStatus.FAILED  # not published yet: retried later
+    assert len(finmind.calls) == 1
+    assert not ctx.store.is_closed(PRICE_EOD_JOB.dataset, "TW", taipei_today())
+
+
+async def test_finmind_alone_never_declares_a_closure(tmp_path: object) -> None:
+    finmind = _finmind([], status=HealthStatus.STALE, detail=NO_DATA_PUBLISHED)
+    ctx = _ctx(tmp_path, finmind, None)
+
+    run = await run_whole_market_job(PRICE_EOD_JOB, TRADING_DAY, ctx)
+
+    assert run.status is RunStatus.SUCCESS  # the old empty-day behaviour
+    assert not ctx.store.is_closed(PRICE_EOD_JOB.dataset, "TW", TRADING_DAY)
+
+
+async def test_a_later_successful_write_clears_the_closure(tmp_path: object) -> None:
+    ctx = _ctx(tmp_path, _finmind(), _official())
+    ctx.store.mark_closed(PRICE_EOD_JOB.dataset, "TW", TRADING_DAY, MARKET_CLOSED_DETAIL)
+
+    run = await run_whole_market_job(PRICE_EOD_JOB, TRADING_DAY, ctx)
+
+    assert run.status is RunStatus.SUCCESS
+    assert not ctx.store.is_closed(PRICE_EOD_JOB.dataset, "TW", TRADING_DAY)

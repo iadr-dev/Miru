@@ -84,6 +84,24 @@ symbol's date range.
   and the `data.updated` publish are unchanged. If no source serves and any failed, the day is
   journaled `FAILED` with every source's reason; if every source is healthy and empty it is a
   legitimate empty trading day (SUCCESS, 0 rows), as before.
+- **Exchange-confirmed closures.** The internal calendar is learned from stored partitions (FinMind's
+  trading calendar is not free), so it cannot know a closure such as Teachers' Day. The adapter
+  tells an *explicit* "nothing published" (TWSE's no-data `stat`, a TPEx report without rows; the
+  parsers raise `NoDataPublishedError`) from trouble (HTTP error, 429, block page, wrong date, layout
+  change). When BOTH exchanges answered explicitly, it returns STALE with the detail constant
+  `sources.base.NO_DATA_PUBLISHED`. If the date is strictly before today (Taipei) the chain stops
+  there without calling FinMind, writes nothing and the job journals `SKIPPED`
+  (`market closed: TWSE and TPEx published no data`). Any other case is unchanged: trouble in
+  either exchange, one empty and one with rows, or today/a future date (maybe not published yet)
+  falls back to FinMind and ends `FAILED` if nothing serves. The skip is sticky: it leaves a marker
+  `<parquet_root>/_closures/<dataset>/<market>/<date>` (outside every `dataset=` tree, so no reader
+  or partition scan sees it) and `detect_missing_trading_days` (`only_missing`, gap-fill, preflight,
+  the backfill CLI) treats a marked day as done for THAT dataset only; a FAILED run leaves no
+  marker, and a later successful write clears it. The marker is deliberately not fed into the
+  learned `TradingDayCalendar` (frozen, built per process from partitions, shared by all jobs), so
+  one dataset's closure never silently suppresses another's fetch; each of the four datasets
+  confirms it once. Derived jobs (scores, screener flags, trend) still skip a date without a price
+  partition (`has_rows`), and the backfill CLI exit status and `dev-backend.sh` count only `FAILED`.
 - **Provenance** is the journal detail: `served by exchange_official: TWSE 1368 + TPEx 990 rows`,
   or `served by finmind: ok (after exchange_official: <why>)`. The Parquet layout is unchanged.
 - **Same row shapes.** The parsers emit exactly FinMind's row dicts (names, units, signs, ISO
