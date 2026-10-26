@@ -1,5 +1,5 @@
-"""Official company filings (monthly revenue, ...) from MOPS - the free first source for the
-period-keyed ingest jobs."""
+"""Official company filings (monthly revenue, financial statements) from MOPS - the free first
+source for the period-keyed ingest jobs."""
 
 from __future__ import annotations
 
