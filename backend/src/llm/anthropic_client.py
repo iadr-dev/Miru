@@ -156,34 +156,48 @@ def _conversation_params(
     that user message. A cache breakpoint ends the stable history (the latest question, just before
     the memory block) and another sits at the end of the request, so the history is read from cache
     and only the new question and the memory block are charged in full."""
-    inline = _supports_mid_conversation_system(model_id)
     turns = [m for m in messages if m.role is not MessageRole.SYSTEM]
     anchor = max((i for i, m in enumerate(turns) if m.role is MessageRole.USER), default=None)
-    per_turn_parts: list[str] = []
-    system_parts: list[str] = []
-    for message in messages:
-        if message.role is not MessageRole.SYSTEM or not message.content:
-            continue
-        if anchor is not None and message.per_turn:
-            per_turn_parts.append(message.content)
-        else:
-            system_parts.append(message.content)
-    system = "\n\n".join(system_parts) if system_parts else None
+    stable_parts, per_turn_parts = _system_texts(messages, anchored=anchor is not None)
+    system = "\n\n".join(stable_parts) if stable_parts else None
     params = [_message_to_param(m) for m in turns]
     if not params:
         return system, params
     if per_turn_parts and anchor is not None:
-        note = "\n\n".join(per_turn_parts)
-        params[anchor] = _with_cache_breakpoint(params[anchor])
-        if anchor != len(params) - 1:
-            params[-1] = _with_cache_breakpoint(params[-1])
-        if inline:
-            params.insert(anchor + 1, cast("MessageParam", {"role": "system", "content": note}))
-        else:
-            params[anchor] = _with_trailing_text(params[anchor], note)
+        _place_memory_note(
+            params,
+            anchor,
+            "\n\n".join(per_turn_parts),
+            inline=_supports_mid_conversation_system(model_id),
+        )
     else:
         params[-1] = _with_cache_breakpoint(params[-1])
     return system, params
+
+
+def _system_texts(messages: list[Message], *, anchored: bool) -> tuple[list[str], list[str]]:
+    """The non-empty system texts split into the stable prompt and the per-turn (recalled-memory)
+    blocks; a per-turn block only counts as one when there is a user message to anchor it to."""
+    stable_parts: list[str] = []
+    per_turn_parts: list[str] = []
+    for message in messages:
+        if message.role is not MessageRole.SYSTEM or not message.content:
+            continue
+        target = per_turn_parts if anchored and message.per_turn else stable_parts
+        target.append(message.content)
+    return stable_parts, per_turn_parts
+
+
+def _place_memory_note(params: list[MessageParam], anchor: int, note: str, *, inline: bool) -> None:
+    """Put the per-turn memory `note` after the latest user message (`params[anchor]`) with a
+    cache breakpoint ending the stable history, and another at the end of the request."""
+    params[anchor] = _with_cache_breakpoint(params[anchor])
+    if anchor != len(params) - 1:
+        params[-1] = _with_cache_breakpoint(params[-1])
+    if inline:
+        params.insert(anchor + 1, cast("MessageParam", {"role": "system", "content": note}))
+    else:
+        params[anchor] = _with_trailing_text(params[anchor], note)
 
 
 def _tool_result_block(part: ToolResultPart) -> dict[str, Any]:

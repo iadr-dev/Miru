@@ -214,27 +214,37 @@ _FLAG_PHRASE: Final = {
 
 def describe(condition: ConditionModel) -> str:
     """The rule in plain fact phrasing — the UI preview line and the notification subject."""
+    return _price_phrase(condition) or _flow_phrase(condition) or _flag_phrase(condition)
+
+
+def _price_phrase(condition: ConditionModel) -> str | None:
     if isinstance(condition, ClosePrice):
         relation = "高於" if condition.comparator == "above" else "低於"
-        phrase = f"收盤價{relation} {condition.value:g}"
-    elif isinstance(condition, DailyChange):
+        return f"收盤價{relation} {condition.value:g}"
+    if isinstance(condition, DailyChange):
         move = "漲幅" if condition.direction == "up" else "跌幅"
-        phrase = f"單日{move}達 {condition.percent:g}%"
-    elif isinstance(condition, VolumeSurge):
-        phrase = f"成交量達近 {condition.window} 日均量的 {condition.multiple:g} 倍"
-    elif isinstance(condition, InstitutionalStreak):
+        return f"單日{move}達 {condition.percent:g}%"
+    if isinstance(condition, VolumeSurge):
+        return f"成交量達近 {condition.window} 日均量的 {condition.multiple:g} 倍"
+    return None
+
+
+def _flow_phrase(condition: ConditionModel) -> str | None:
+    if isinstance(condition, InstitutionalStreak):
         side = "淨買超" if condition.direction == "buy" else "淨賣超"
-        phrase = f"{_INVESTOR_LABEL[condition.investor]}連續 {condition.days} 日{side}"
-    elif isinstance(condition, MarginBalanceChange):
-        phrase = _margin_phrase(condition)
-    elif isinstance(condition, EtfPremiumDiscount):
+        return f"{_INVESTOR_LABEL[condition.investor]}連續 {condition.days} 日{side}"
+    if isinstance(condition, MarginBalanceChange):
+        return _margin_phrase(condition)
+    if isinstance(condition, EtfPremiumDiscount):
         side = "溢價" if condition.direction == "premium" else "折價"
-        phrase = f"預估{side}幅度達 {condition.percent:g}%"
-    elif isinstance(condition, MaterialAnnouncementPublished) and condition.keyword:
-        phrase = f"公布含「{condition.keyword}」的重大訊息"
-    else:
-        phrase = _FLAG_PHRASE[condition.kind]
-    return phrase
+        return f"預估{side}幅度達 {condition.percent:g}%"
+    return None
+
+
+def _flag_phrase(condition: ConditionModel) -> str:
+    if isinstance(condition, MaterialAnnouncementPublished) and condition.keyword:
+        return f"公布含「{condition.keyword}」的重大訊息"
+    return _FLAG_PHRASE[condition.kind]
 
 
 def _margin_phrase(condition: MarginBalanceChange) -> str:

@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import dataclasses
+import functools
 from collections.abc import AsyncGenerator, AsyncIterator
 
 import structlog
@@ -54,6 +55,7 @@ from conversation.store import (
 from conversation.title_generator import generate_title
 from conversation.turn_lifecycle import SimpleCancelToken
 from events.bus import EventBus
+from events.hooks import RecallBlockProvider
 from events.kinds import EventKind
 from events.usage import MemoryRef, TurnUsage
 from llm.base import ImagePart, Message, MessageRole, ToolCall, ToolResultPart
@@ -440,68 +442,37 @@ async def _drive_turn(
     # SYSTEM message inside the orchestrator). Bound as a zero-arg thunk over this turn's
     # user/thread/query so the orchestrator — which has no `memory`/`conversation` layer access
     # per the dependency rule — never constructs the stores or knows the query shape itself.
-    # Its reads and the `mark_used` write are one short unit, committed before the model call.
-    async def recall_provider() -> str | None:
-        async with _unit(state) as session:
-            if not await memory_enabled(session, user_id=user_id):
-                return None  # the user paused memory: recall nothing
-            memory_store = SqlAlchemyMemoryStore(session)
-            block, used = await recall_with_ids(
-                memory_store=memory_store,
-                watchlist_store=WatchlistStore(session),
-                user_id=user_id,
-                thread_id=thread_id,
-                query=message,
-            )
-            if used:
-                await memory_store.mark_used(user_id=user_id, memory_ids=[m.id for m in used])
-        if used:
-            memories_used[:] = [_memory_ref(m) for m in used]
-            event_bus.publish(
-                EventKind.MEMORY_USED,
-                turn_id=turn_id,
-                data={"memories": [r.model_dump() for r in memories_used]},
-            )
-        return block
+    recall_provider = functools.partial(
+        _recall_block,
+        state,
+        event_bus,
+        memories_used,
+        user_id=user_id,
+        thread_id=thread_id,
+        turn_id=turn_id,
+        message=message,
+    )
 
     try:
-        async with _unit(state) as session:
-            pet_hint = await pet_hint_for_user(session, user_id=user_id)
-        personality = dataclasses.replace(personality, pet_hint=pet_hint)
-        async with _unit(state) as session:
-            history = await _load_history(
-                SqlAlchemyConversationStore(session),
-                user_id=user_id,
-                thread_id=thread_id,
-                turn_id=turn_id,
-            )
-        if deep_research:
-            result = await run_deep_research_turn(
-                state=state,
-                ctx=ctx,
-                event_bus=event_bus,
-                turn_id=turn_id,
-                question=message,
-                locale=locale,
-                model_override=model_override,
-                history=history,
-                images=images,
-            )
-        else:
-            result = await state.orchestrator.run(
-                message,
-                tool_context=ctx,
-                event_bus=event_bus,
-                turn_id=turn_id,
-                personality=personality,
-                steering_source=running,
+        result = await _run_turn(
+            state=state,
+            event_bus=event_bus,
+            user_id=user_id,
+            thread_id=thread_id,
+            turn_id=turn_id,
+            message=message,
+            ctx=ctx,
+            personality=personality,
+            running=running,
+            options=_RunOptions(
                 model_override=model_override,
                 web_search_enabled=web_search_enabled,
                 locale=locale,
                 images=images,
-                history=history,
-                recall_provider=recall_provider,
-            )
+                deep_research=deep_research,
+            ),
+            recall_provider=recall_provider,
+        )
     except asyncio.CancelledError:
         # A cancel request (via the turn registry) hard-stops the driver — end the stream with a
         # cancelled frame rather than letting the cancellation propagate as a silent drop.
@@ -517,32 +488,18 @@ async def _drive_turn(
     result = _with_memories(result, turn_id=turn_id, memories=memories_used)
     result = _with_personality(result, turn_id=turn_id, preset_id=tone_id)
     result = _with_estimated_cost(result, turn_id=turn_id, byok=byok is not None)
-    if result.usage is not None and result.usage.estimated_cost_micros > 0:
-        # The orchestrator's live frame predates the estimate: re-send the final totals (the
-        # client keeps the latest `usage` frame).
-        event_bus.publish(
-            EventKind.USAGE,
-            turn_id=turn_id,
-            agent_id="root",
-            data=result.usage.model_dump(mode="json"),
-        )
-    try:
-        async with _unit(state) as session:
-            await _persist_answer(
-                SqlAlchemyConversationStore(session),
-                user_id=user_id,
-                thread_id=thread_id,
-                result=result,
-                parent_message_id=answer_parent_message_id,
-                regenerate_of=regenerate_of,
-            )
-    except Exception as exc:  # the answer could not be saved: say so, never leave the stream open
-        logger.error("turn_persist_failed", turn_id=turn_id, error=repr(exc))
-        event_bus.publish(
-            EventKind.TURN_END,
-            turn_id=turn_id,
-            data={"status": "error", "message": "The answer could not be saved."},
-        )
+    _publish_final_usage(event_bus, turn_id=turn_id, result=result)
+    saved = await _save_answer(
+        state,
+        event_bus,
+        user_id=user_id,
+        thread_id=thread_id,
+        turn_id=turn_id,
+        result=result,
+        parent_message_id=answer_parent_message_id,
+        regenerate_of=regenerate_of,
+    )
+    if not saved:
         return
     await _maybe_title_thread(state, user_id=user_id, thread_id=thread_id, message=message)
     async with state.session_factory() as session:
@@ -557,6 +514,151 @@ async def _drive_turn(
     async with state.session_factory() as session:
         await reward_completed_chat(session, event_bus=event_bus, turn_id=turn_id, user_id=user_id)
     event_bus.publish(EventKind.TURN_END, turn_id=turn_id, data={"status": "done"})
+
+
+async def _recall_block(
+    state: AppState,
+    event_bus: EventBus,
+    memories_used: list[MemoryRef],
+    *,
+    user_id: str,
+    thread_id: str,
+    turn_id: str,
+    message: str,
+) -> str | None:
+    """The recall block for this turn's root reply agent. Its reads and the `mark_used` write are
+    one short unit, committed before the model call; the memories it used are recorded in
+    `memories_used` and announced."""
+    async with _unit(state) as session:
+        if not await memory_enabled(session, user_id=user_id):
+            return None  # the user paused memory: recall nothing
+        memory_store = SqlAlchemyMemoryStore(session)
+        block, used = await recall_with_ids(
+            memory_store=memory_store,
+            watchlist_store=WatchlistStore(session),
+            user_id=user_id,
+            thread_id=thread_id,
+            query=message,
+        )
+        if used:
+            await memory_store.mark_used(user_id=user_id, memory_ids=[m.id for m in used])
+    if used:
+        memories_used[:] = [_memory_ref(m) for m in used]
+        event_bus.publish(
+            EventKind.MEMORY_USED,
+            turn_id=turn_id,
+            data={"memories": [r.model_dump() for r in memories_used]},
+        )
+    return block
+
+
+@dataclasses.dataclass(frozen=True)
+class _RunOptions:
+    model_override: str | None
+    web_search_enabled: bool
+    locale: str
+    images: tuple[ImagePart, ...]
+    deep_research: bool
+
+
+async def _run_turn(
+    *,
+    state: AppState,
+    event_bus: EventBus,
+    user_id: str,
+    thread_id: str,
+    turn_id: str,
+    message: str,
+    ctx: ToolContext,
+    personality: PersonalityContext,
+    running: RunningTurn | None,
+    options: _RunOptions,
+    recall_provider: RecallBlockProvider,
+) -> OrchestratorResult:
+    """Prepare the turn's context (pet hint, history) and run the orchestrator, or the deep
+    research run when asked for."""
+    async with _unit(state) as session:
+        pet_hint = await pet_hint_for_user(session, user_id=user_id)
+    personality = dataclasses.replace(personality, pet_hint=pet_hint)
+    async with _unit(state) as session:
+        history = await _load_history(
+            SqlAlchemyConversationStore(session),
+            user_id=user_id,
+            thread_id=thread_id,
+            turn_id=turn_id,
+        )
+    if options.deep_research:
+        return await run_deep_research_turn(
+            state=state,
+            ctx=ctx,
+            event_bus=event_bus,
+            turn_id=turn_id,
+            question=message,
+            locale=options.locale,
+            model_override=options.model_override,
+            history=history,
+            images=options.images,
+        )
+    return await state.orchestrator.run(
+        message,
+        tool_context=ctx,
+        event_bus=event_bus,
+        turn_id=turn_id,
+        personality=personality,
+        steering_source=running,
+        model_override=options.model_override,
+        web_search_enabled=options.web_search_enabled,
+        locale=options.locale,
+        images=options.images,
+        history=history,
+        recall_provider=recall_provider,
+    )
+
+
+def _publish_final_usage(event_bus: EventBus, *, turn_id: str, result: OrchestratorResult) -> None:
+    if result.usage is not None and result.usage.estimated_cost_micros > 0:
+        # The orchestrator's live frame predates the estimate: re-send the final totals (the
+        # client keeps the latest `usage` frame).
+        event_bus.publish(
+            EventKind.USAGE,
+            turn_id=turn_id,
+            agent_id="root",
+            data=result.usage.model_dump(mode="json"),
+        )
+
+
+async def _save_answer(
+    state: AppState,
+    event_bus: EventBus,
+    *,
+    user_id: str,
+    thread_id: str,
+    turn_id: str,
+    result: OrchestratorResult,
+    parent_message_id: str,
+    regenerate_of: str | None,
+) -> bool:
+    """Persist the answer on its own short unit. On failure the stream ends with an error frame
+    (never left open) and the caller stops."""
+    try:
+        async with _unit(state) as session:
+            await _persist_answer(
+                SqlAlchemyConversationStore(session),
+                user_id=user_id,
+                thread_id=thread_id,
+                result=result,
+                parent_message_id=parent_message_id,
+                regenerate_of=regenerate_of,
+            )
+    except Exception as exc:  # the answer could not be saved: say so, never leave the stream open
+        logger.error("turn_persist_failed", turn_id=turn_id, error=repr(exc))
+        event_bus.publish(
+            EventKind.TURN_END,
+            turn_id=turn_id,
+            data={"status": "error", "message": "The answer could not be saved."},
+        )
+        return False
+    return True
 
 
 async def _maybe_title_thread(
