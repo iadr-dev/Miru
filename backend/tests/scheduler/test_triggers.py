@@ -128,3 +128,51 @@ def test_unknown_market_event_is_unresolvable() -> None:
     after = datetime(2026, 9, 30, 10, 0, tzinfo=TPE)
     with pytest.raises(UnresolvableTriggerError):
         next_run_after(trigger, after)
+
+
+def test_no_trading_day_within_horizon_is_unresolvable() -> None:
+    after = datetime(2026, 9, 30, 10, 0, tzinfo=TPE)
+    with pytest.raises(UnresolvableTriggerError, match="no trading day found"):
+        next_run_after(_event("pre_open"), after, is_trading_day=lambda _d, _m: False)
+
+
+def test_trading_check_receives_local_day_and_market_in_order() -> None:
+    seen: list[tuple[date, Market]] = []
+
+    def check(day: date, market: Market) -> bool:
+        seen.append((day, market))
+        return len(seen) >= 3
+
+    after = datetime(2026, 9, 30, 15, 0, tzinfo=TPE)
+    result = next_run_after(_event("after_close"), after, is_trading_day=check)
+    assert seen == [
+        (date(2026, 9, 30), Market.TW),
+        (date(2026, 10, 1), Market.TW),
+        (date(2026, 10, 2), Market.TW),
+    ]
+    assert _local(result) == datetime(2026, 10, 2, 14, 30, tzinfo=TPE)
+
+
+def test_unknown_market_event_message_and_cause() -> None:
+    after = datetime(2026, 9, 30, 10, 0, tzinfo=TPE)
+    with pytest.raises(UnresolvableTriggerError, match="unknown market event 'midnight'") as info:
+        next_run_after(_event("midnight"), after)
+    assert isinstance(info.value.__cause__, ValueError)
+
+
+def test_cron_never_fires_message() -> None:
+    after = datetime(2026, 9, 30, 10, 0, tzinfo=TPE)
+    with pytest.raises(UnresolvableTriggerError, match="never fires within a year"):
+        next_run_after(_cron("0 8 30 2 *"), after)
+
+
+def test_cron_ignores_trading_day_check() -> None:
+    after = datetime(2026, 9, 30, 10, 0, tzinfo=TPE)  # Wednesday
+    result = next_run_after(_cron("0 8 * * 6"), after, is_trading_day=lambda _d, _m: False)
+    assert _local(result) == datetime(2026, 10, 3, 8, 0, tzinfo=TPE)  # Saturday
+
+
+def test_cron_candidate_must_be_strictly_after() -> None:
+    after = datetime(2026, 9, 30, 8, 0, tzinfo=TPE)
+    result = next_run_after(_cron("0 8 * * *"), after)
+    assert _local(result) == datetime(2026, 10, 1, 8, 0, tzinfo=TPE)

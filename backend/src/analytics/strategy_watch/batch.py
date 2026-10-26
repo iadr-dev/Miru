@@ -18,6 +18,7 @@ from datetime import date as date_
 from typing import cast
 
 import anyio.to_thread
+import pandas as pd
 import structlog
 
 from analytics.indicators import PriceBar
@@ -31,6 +32,7 @@ from analytics.strategy_watch import context
 from analytics.strategy_watch.strategies import (
     HOLDER_WEEKS,
     MIN_HISTORY,
+    ChipInputs,
     Regime,
     Setup,
     Strategy,
@@ -74,6 +76,33 @@ def _by_symbol(rows: Sequence[Mapping[str, object]]) -> dict[str, list[Mapping[s
     return grouped
 
 
+def _chips_for(
+    symbol: str,
+    flow_by_symbol: Mapping[str, list[Mapping[str, object]]],
+    margin_by_symbol: Mapping[str, list[Mapping[str, object]]],
+    holders_by_symbol: Mapping[str, list[list[Mapping[str, object]]]],
+) -> ChipInputs | None:
+    # 籌碼 accumulation is about a company's shares changing hands. An ETF's holder count and
+    # large-holder share move with market making and creations, so ETFs get no chip setup.
+    if classify_symbol_type(symbol) is not SymbolType.STOCK:
+        return None
+    return context.chip_inputs(
+        flow_by_symbol.get(symbol, []),
+        margin_by_symbol.get(symbol, []),
+        holders_by_symbol.get(symbol, []),
+    )
+
+
+def _cap_per_strategy(setups: Sequence[Setup]) -> list[Setup]:
+    """Most liquid first, then a fixed cap per strategy: a short list a person can actually watch,
+    and the same order every run for the same data."""
+    by_strategy: dict[Strategy, list[Setup]] = defaultdict(list)
+    for setup in sorted(setups, key=lambda s: (-(s.close * s.avg_volume_20d), s.symbol)):
+        if len(by_strategy[setup.strategy]) < MAX_PER_STRATEGY:
+            by_strategy[setup.strategy].append(setup)
+    return [setup for group in by_strategy.values() for setup in group]
+
+
 def build_watchlist_rows(  # noqa: PLR0913 - one argument per input feed
     *,
     run_date: date_,
@@ -109,36 +138,20 @@ def build_watchlist_rows(  # noqa: PLR0913 - one argument per input feed
     for symbol, series in bars.items():
         if symbol in exclusions:
             continue
-        # 籌碼 accumulation is about a company's shares changing hands. An ETF's holder count and
-        # large-holder share move with market making and creations, so ETFs get no chip setup.
-        chips = (
-            context.chip_inputs(
-                flow_by_symbol.get(symbol, []),
-                margin_by_symbol.get(symbol, []),
-                holders_by_symbol.get(symbol, []),
-            )
-            if classify_symbol_type(symbol) is SymbolType.STOCK
-            else None
-        )
+        chips = _chips_for(symbol, flow_by_symbol, margin_by_symbol, holders_by_symbol)
         setups.extend(evaluate_setups(symbol, as_of, series, regime=regime, chips=chips))
 
-    # Most liquid first, then a fixed cap per strategy: a short list a person can actually watch,
-    # and the same order every run for the same data.
-    by_strategy: dict[Strategy, list[Setup]] = defaultdict(list)
-    for setup in sorted(setups, key=lambda s: (-(s.close * s.avg_volume_20d), s.symbol)):
-        if len(by_strategy[setup.strategy]) < MAX_PER_STRATEGY:
-            by_strategy[setup.strategy].append(setup)
-    kept = [setup for group in by_strategy.values() for setup in group]
+    kept = _cap_per_strategy(setups)
     strength = context.sector_strength(industry_by_symbol, bars)
 
     rows: list[dict[str, object]] = []
     for setup in kept:
-        foreign, trust = context.chip_streaks(flow_by_symbol.get(setup.symbol, []))
-        industry = industry_by_symbol.get(setup.symbol)
         carried = (previous or {}).get((setup.symbol, setup.strategy.value))
         first_listed, days = (carried[0], carried[1] + 1) if carried else (run_date, 1)
         row = setup.model_copy(update={"first_listed": first_listed, "days_on_list": days})
         values = row.model_dump(mode="json")
+        foreign, trust = context.chip_streaks(flow_by_symbol.get(setup.symbol, []))
+        industry = industry_by_symbol.get(setup.symbol)
         values.update(
             {
                 "run_date": run_date.isoformat(),
@@ -196,23 +209,60 @@ async def job_strategy_watchlist(run_date: date_, ctx: IngestContext) -> JobRun:
     return await anyio.to_thread.run_sync(_write_strategy_watchlist, run_date, ctx)
 
 
+def _skipped(run_date: date_, detail: str) -> JobRun:
+    return journal_run(
+        STRATEGY_WATCHLIST_DATASET,
+        run_date,
+        rows_written=0,
+        status=RunStatus.SKIPPED,
+        detail=detail,
+    )
+
+
+def _last_traded_days(frame: pd.DataFrame) -> dict[str, date_]:
+    """The newest trade date of every symbol in the price frame."""
+    last_dates: dict[str, date_] = {}
+    # Positional unpacking over a typed cast, the same way `scoring_batch.inputs` reads frames.
+    pairs = cast(
+        "Iterable[tuple[object, object]]",
+        frame.loc[:, ["symbol", "trade_date"]].itertuples(index=False, name=None),
+    )
+    for symbol, value in pairs:
+        day = context.as_date(value)
+        if day is not None and (str(symbol) not in last_dates or day > last_dates[str(symbol)]):
+            last_dates[str(symbol)] = day
+    return last_dates
+
+
+def _industry_and_names(
+    ctx: IngestContext, market: str, run_date: date_
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Industry and name by symbol from the newest stock-info partition on or before the run."""
+    industry_by_symbol: dict[str, str] = {}
+    name_by_symbol: dict[str, str] = {}
+    info = ctx.store.latest_partition_on_or_before(STOCK_INFO_DATASET, market, run_date)
+    if info is None:
+        return industry_by_symbol, name_by_symbol
+    for row in ctx.store.read_partition(STOCK_INFO_DATASET, market, info[0]):
+        symbol, industry, name = (
+            row.get("symbol"),
+            row.get("industry_category"),
+            row.get("name"),
+        )
+        if not isinstance(symbol, str):
+            continue
+        if isinstance(industry, str) and industry:
+            industry_by_symbol[symbol] = industry
+        if isinstance(name, str) and name:
+            name_by_symbol[symbol] = name
+    return industry_by_symbol, name_by_symbol
+
+
 def _write_strategy_watchlist(run_date: date_, ctx: IngestContext) -> JobRun:
     if not ctx.calendar.is_trading_day_extrapolating(run_date):
-        return journal_run(
-            STRATEGY_WATCHLIST_DATASET,
-            run_date,
-            rows_written=0,
-            status=RunStatus.SKIPPED,
-            detail="non-trading day (calendar-gated)",
-        )
+        return _skipped(run_date, "non-trading day (calendar-gated)")
     if not ctx.leader.is_leader():
-        return journal_run(
-            STRATEGY_WATCHLIST_DATASET,
-            run_date,
-            rows_written=0,
-            status=RunStatus.SKIPPED,
-            detail="not the leader — write skipped",
-        )
+        return _skipped(run_date, "not the leader — write skipped")
 
     market = ctx.market.value
     calendar = calendar_for(ctx)
@@ -226,52 +276,19 @@ def _write_strategy_watchlist(run_date: date_, ctx: IngestContext) -> JobRun:
         where=scoreable_symbol_sql(ctx.market),
     )
     if frame.empty:
-        return journal_run(
-            STRATEGY_WATCHLIST_DATASET,
-            run_date,
-            rows_written=0,
-            status=RunStatus.SKIPPED,
-            detail="no price history in the read window",
-        )
-    last_dates: dict[str, date_] = {}
-    # Positional unpacking over a typed cast, the same way `scoring_batch.inputs` reads frames.
-    pairs = cast(
-        "Iterable[tuple[object, object]]",
-        frame.loc[:, ["symbol", "trade_date"]].itertuples(index=False, name=None),
-    )
-    for symbol, value in pairs:
-        day = context.as_date(value)
-        if day is not None and (str(symbol) not in last_dates or day > last_dates[str(symbol)]):
-            last_dates[str(symbol)] = day
+        return _skipped(run_date, "no price history in the read window")
+    last_dates = _last_traded_days(frame)
     as_of = max(last_dates.values())
     stale_by = len(calendar.business_days_between(as_of, last_session)) - 1
     if stale_by > MAX_STALE_SESSIONS:
-        return journal_run(
-            STRATEGY_WATCHLIST_DATASET,
+        return _skipped(
             run_date,
-            rows_written=0,
-            status=RunStatus.SKIPPED,
-            detail=f"prices are stale (last session {as_of.isoformat()}), watchlist not published",
+            f"prices are stale (last session {as_of.isoformat()}), watchlist not published",
         )
     # Only symbols that traded on the last session: a suspended stock's levels are not current.
     bars = {s: b for s, b in bars_by_symbol(frame).items() if last_dates.get(s) == as_of}
 
-    info = ctx.store.latest_partition_on_or_before(STOCK_INFO_DATASET, market, run_date)
-    industry_by_symbol: dict[str, str] = {}
-    name_by_symbol: dict[str, str] = {}
-    if info is not None:
-        for row in ctx.store.read_partition(STOCK_INFO_DATASET, market, info[0]):
-            symbol, industry, name = (
-                row.get("symbol"),
-                row.get("industry_category"),
-                row.get("name"),
-            )
-            if not isinstance(symbol, str):
-                continue
-            if isinstance(industry, str) and industry:
-                industry_by_symbol[symbol] = industry
-            if isinstance(name, str) and name:
-                name_by_symbol[symbol] = name
+    industry_by_symbol, name_by_symbol = _industry_and_names(ctx, market, run_date)
 
     event_window = trailing_trading_days(ctx, run_date, EVENT_LOOKBACK_SESSIONS)
     exclusions = context.excluded_symbols(

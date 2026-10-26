@@ -134,22 +134,31 @@ def next_run_after(
         raise ValueError("`after` must be timezone-aware")
     tz = _tz_for(trigger.market)
     local_after = after.astimezone(tz)
-    trading = is_trading_day or is_market_open_day
-
     if trigger.type is TriggerType.MARKET_EVENT:
-        try:
-            fire_time = _EVENT_TIMES[trigger.market][MarketEvent(trigger.spec)]
-        except (KeyError, ValueError) as exc:
-            raise UnresolvableTriggerError(f"unknown market event {trigger.spec!r}") from exc
-        for offset in range(_HORIZON_DAYS):
-            day = local_after.date() + timedelta(days=offset)
-            if not trading(day, trigger.market):
-                continue
-            candidate = datetime.combine(day, fire_time, tzinfo=tz)
-            if candidate > local_after:
-                return candidate.astimezone(UTC)
-        raise UnresolvableTriggerError("no trading day found within the search horizon")
+        return _next_market_event_run(
+            trigger, local_after, tz, is_trading_day or is_market_open_day
+        )
+    return _next_cron_run(trigger, local_after, tz)
 
+
+def _next_market_event_run(
+    trigger: ScheduleTrigger, local_after: datetime, tz: ZoneInfo, trading: TradingDayCheck
+) -> datetime:
+    try:
+        fire_time = _EVENT_TIMES[trigger.market][MarketEvent(trigger.spec)]
+    except (KeyError, ValueError) as exc:
+        raise UnresolvableTriggerError(f"unknown market event {trigger.spec!r}") from exc
+    for offset in range(_HORIZON_DAYS):
+        day = local_after.date() + timedelta(days=offset)
+        if not trading(day, trigger.market):
+            continue
+        candidate = datetime.combine(day, fire_time, tzinfo=tz)
+        if candidate > local_after:
+            return candidate.astimezone(UTC)
+    raise UnresolvableTriggerError("no trading day found within the search horizon")
+
+
+def _next_cron_run(trigger: ScheduleTrigger, local_after: datetime, tz: ZoneInfo) -> datetime:
     cron = _Cron(trigger.spec)
     for offset in range(_HORIZON_DAYS):
         day = local_after.date() + timedelta(days=offset)

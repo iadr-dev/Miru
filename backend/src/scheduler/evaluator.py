@@ -147,12 +147,9 @@ def evaluate_condition(  # noqa: PLR0911 — one early return per template kind
     today = view.rows(dataset, market, as_of, symbol)
 
     if isinstance(condition, AttentionListEntry):
-        # The partition is the day's flag list, so presence IS the observation; a symbol that is
-        # absent is a legitimate "not flagged" (met=False), not missing data.
-        if not view.latest_partition_date(dataset, market, on_or_before=as_of, max_back_days=0):
-            return None
-        met = bool(today)
-        return Evaluation(met=met, message=_message(symbol, "列入注意股名單", condition))
+        return _eval_attention(
+            condition, symbol=symbol, market=market, as_of=as_of, view=view, today=today
+        )
 
     if isinstance(condition, DispositionListEntry):
         return _eval_disposition(condition, symbol=symbol, market=market, as_of=as_of, view=view)
@@ -174,44 +171,87 @@ def evaluate_condition(  # noqa: PLR0911 — one early return per template kind
         return None if close is None else _eval_close(condition, symbol, close)
 
     if isinstance(condition, DailyChange):
-        close = _num(today[0], "close")
-        prior = view.prior_dates(dataset, market, as_of, history_days_of(condition))
-        prev = _close(view, market, prior[0], symbol, dataset) if prior else None
-        if close is None or prev is None or prev == 0:
-            return None
-        change = (close - prev) / prev * 100
-        met = (
-            change >= condition.percent
-            if condition.direction == "up"
-            else (change <= -condition.percent)
-        )
-        return Evaluation(
-            met=met,
-            message=_message(
-                symbol, f"單日變動 {change:+.2f}%（前一交易日收盤 {prev:g}）", condition
-            ),
+        return _eval_daily_change(
+            condition, symbol=symbol, market=market, as_of=as_of, view=view, today=today
         )
 
     if isinstance(condition, VolumeSurge):
-        volume = _num(today[0], "volume")
-        prior = view.prior_dates(dataset, market, as_of, condition.window)
-        history = [
-            v
-            for d in prior
-            if (rows := view.rows(dataset, market, d, symbol))
-            and (v := _num(rows[0], "volume")) is not None
-        ]
-        if volume is None or len(history) < condition.window // 2 or sum(history) == 0:
-            return None
-        ratio = volume / (sum(history) / len(history))
-        return Evaluation(
-            met=ratio >= condition.multiple,
-            message=_message(
-                symbol, f"成交量為近 {len(history)} 日均量的 {ratio:.1f} 倍", condition
-            ),
+        return _eval_volume_surge(
+            condition, symbol=symbol, market=market, as_of=as_of, view=view, today=today
         )
 
     return _eval_streak(condition, symbol=symbol, market=market, as_of=as_of, view=view)
+
+
+def _eval_attention(  # noqa: PLR0913 — one argument per evaluation dimension
+    condition: AttentionListEntry,
+    *,
+    symbol: str,
+    market: Market,
+    as_of: date,
+    view: SnapshotView,
+    today: list[Row],
+) -> Evaluation | None:
+    # The partition is the day's flag list, so presence IS the observation; a symbol that is
+    # absent is a legitimate "not flagged" (met=False), not missing data.
+    dataset = dataset_of(condition, market)
+    if not view.latest_partition_date(dataset, market, on_or_before=as_of, max_back_days=0):
+        return None
+    return Evaluation(met=bool(today), message=_message(symbol, "列入注意股名單", condition))
+
+
+def _eval_daily_change(  # noqa: PLR0913 — one argument per evaluation dimension
+    condition: DailyChange,
+    *,
+    symbol: str,
+    market: Market,
+    as_of: date,
+    view: SnapshotView,
+    today: list[Row],
+) -> Evaluation | None:
+    dataset = dataset_of(condition, market)
+    close = _num(today[0], "close")
+    prior = view.prior_dates(dataset, market, as_of, history_days_of(condition))
+    prev = _close(view, market, prior[0], symbol, dataset) if prior else None
+    if close is None or prev is None or prev == 0:
+        return None
+    change = (close - prev) / prev * 100
+    met = (
+        change >= condition.percent
+        if condition.direction == "up"
+        else (change <= -condition.percent)
+    )
+    return Evaluation(
+        met=met,
+        message=_message(symbol, f"單日變動 {change:+.2f}%（前一交易日收盤 {prev:g}）", condition),
+    )
+
+
+def _eval_volume_surge(  # noqa: PLR0913 — one argument per evaluation dimension
+    condition: VolumeSurge,
+    *,
+    symbol: str,
+    market: Market,
+    as_of: date,
+    view: SnapshotView,
+    today: list[Row],
+) -> Evaluation | None:
+    dataset = dataset_of(condition, market)
+    volume = _num(today[0], "volume")
+    prior = view.prior_dates(dataset, market, as_of, condition.window)
+    history = [
+        v
+        for d in prior
+        if (rows := view.rows(dataset, market, d, symbol))
+        and (v := _num(rows[0], "volume")) is not None
+    ]
+    if volume is None or len(history) < condition.window // 2 or sum(history) == 0:
+        return None
+    ratio = volume / (sum(history) / len(history))
+    return Evaluation(
+        met=ratio >= condition.multiple,
+        message=_message(symbol, f"成交量為近 {len(history)} 日均量的 {ratio:.1f} 倍", condition),
+    )
 
 
 def _day_text(value: object) -> str:

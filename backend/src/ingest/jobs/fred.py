@@ -32,6 +32,7 @@ from typing import cast
 import structlog
 from pydantic import ValidationError
 
+from dataaccess.fred import FredGateway
 from ingest.context import IngestContext
 from ingest.fred_store import (
     MARKET,
@@ -188,6 +189,56 @@ def _needs_fetch(  # noqa: PLR0913 - the run's picture of one series
     return feed_stamp is not None and feed_stamp != previous.last_updated
 
 
+def _read_start(stored: list[Row], spec: MacroSeriesSpec, *, full: bool, cutoff: date_) -> date_:
+    """Where to start reading a transform: the whole window on a full refresh or a first pull,
+    else just before the newest stored point (the overlap catches revised recent values)."""
+    if full or not stored:
+        return cutoff
+    newest = max(d for d in (_date_of(r["observation_date"]) for r in stored) if d)
+    return max(cutoff, newest - timedelta(days=_OVERLAP_DAYS[spec.frequency]))
+
+
+def _merged_rows(
+    stored: list[Row], new_rows: list[Row], *, full: bool, start: date_, cutoff: date_
+) -> list[Row]:
+    """The stored rows older than the re-read window plus the new ones, within the cutoff."""
+    kept = [] if full else [r for r in stored if (_date_of(r["observation_date"]) or start) < start]
+    return [r for r in [*kept, *new_rows] if (_date_of(r["observation_date"]) or cutoff) >= cutoff]
+
+
+async def _fetch_units(  # noqa: PLR0913 - the run's picture of one series
+    ctx: IngestContext,
+    gateway: FredGateway,
+    spec: MacroSeriesSpec,
+    carried: dict[str, list[Row]],
+    *,
+    full: bool,
+    cutoff: date_,
+    gate: asyncio.Semaphore,
+) -> tuple[dict[str, list[Row]], str | None]:
+    """Re-read every stored transform of one series: the merged rows per transform and the failure
+    text (None when every read answered). A failure discards the transforms read before it."""
+    fetched: dict[str, list[Row]] = {}
+    async with gate:
+        for units in (u.value for u in spec.stored_units):
+            stored = carried[units]
+            start = _read_start(stored, spec, full=full, cutoff=cutoff)
+            result = await gateway.fetch_all_observations(
+                spec.series_id,
+                units=units,
+                observation_start=start,
+                observation_end=None,
+                tls_policy=ctx.tls_policy,
+            )
+            if result.health.status not in (HealthStatus.OK, HealthStatus.STALE):
+                return {}, f"observations ({units}): {result.health.detail}"
+            new_rows = _observation_rows(spec.series_id, units, result)
+            if not new_rows and stored:
+                continue  # an empty answer never replaces stored rows
+            fetched[units] = _merged_rows(stored, new_rows, full=full, start=start, cutoff=cutoff)
+    return fetched, None
+
+
 async def _refresh_series(  # noqa: PLR0913, PLR0917 - the run's whole picture of one series
     ctx: IngestContext,
     spec: MacroSeriesSpec,
@@ -220,42 +271,97 @@ async def _refresh_series(  # noqa: PLR0913, PLR0917 - the run's whole picture o
     if gateway is None:  # pragma: no cover - gated by the caller
         outcome.failure = NOT_CONFIGURED_DETAIL
         return outcome
-    fetched: dict[str, list[Row]] = {}
-    async with gate:
-        for units in (u.value for u in spec.stored_units):
-            stored = carried[units]
-            start = cutoff
-            if not full and stored:
-                newest = max(d for d in (_date_of(r["observation_date"]) for r in stored) if d)
-                start = max(cutoff, newest - timedelta(days=_OVERLAP_DAYS[spec.frequency]))
-            result = await gateway.fetch_all_observations(
-                spec.series_id,
-                units=units,
-                observation_start=start,
-                observation_end=None,
-                tls_policy=ctx.tls_policy,
-            )
-            if result.health.status not in (HealthStatus.OK, HealthStatus.STALE):
-                outcome.failure = f"observations ({units}): {result.health.detail}"
-                return outcome  # keep every stored row for this series; the run is PARTIAL
-            new_rows = _observation_rows(spec.series_id, units, result)
-            if not new_rows and stored:
-                continue  # an empty answer never replaces stored rows
-            kept = (
-                []
-                if full
-                else [r for r in stored if (_date_of(r["observation_date"]) or start) < start]
-            )
-            fetched[units] = [
-                r
-                for r in [*kept, *new_rows]
-                if (_date_of(r["observation_date"]) or cutoff) >= cutoff
-            ]
+    fetched, failure = await _fetch_units(
+        ctx, gateway, spec, carried, full=full, cutoff=cutoff, gate=gate
+    )
+    if failure is not None:
+        outcome.failure = failure
+        return outcome  # keep every stored row for this series; the run is PARTIAL
     outcome.rows_by_units.update(fetched)
     outcome.fetched = True
     if full:
         outcome.full_refresh_date = run_date
     return outcome
+
+
+@dataclass
+class _VintageRun:
+    """What the vintage refresh accumulates across the revision-tracked series."""
+
+    vintages: dict[str, list[Row]]
+    latest: dict[str, date_ | None]
+    failures: list[str] = field(default_factory=lambda: [])
+
+
+def _newest_observation(outcome: _SeriesOutcome) -> date_ | None:
+    stored = [row for rows in outcome.rows_by_units.values() for row in rows]
+    return max((d for d in (_date_of(r["observation_date"]) for r in stored) if d), default=None)
+
+
+def _vintage_rows(spec: MacroSeriesSpec, result: SourceResult) -> list[Row]:
+    rows: list[Row] = []
+    for raw in _payload_list(result, "observations"):
+        observed = _date_of(raw.get("date"))
+        real_start = _date_of(raw.get("realtime_start"))
+        real_end = _date_of(raw.get("realtime_end"))
+        value = raw.get("value")
+        if observed is None or real_start is None or real_end is None:
+            continue
+        if not isinstance(value, float):
+            continue
+        rows.append(
+            MacroVintageRow(
+                series_id=spec.series_id,
+                observation_date=observed,
+                realtime_start=real_start,
+                realtime_end=real_end,
+                value=value,
+            ).model_dump()
+        )
+    return rows
+
+
+async def _refresh_vintage_series(  # noqa: PLR0913, PLR0917 - the run's whole picture of one series
+    ctx: IngestContext,
+    gateway: FredGateway,
+    spec: MacroSeriesSpec,
+    outcome: _SeriesOutcome | None,
+    previous: list[Row] | None,
+    state: _VintageRun,
+    gate: asyncio.Semaphore,
+) -> None:
+    if outcome is None or not (outcome.fetched or not previous):
+        return
+    newest = _newest_observation(outcome)
+    if newest is None:
+        return
+    # An observation first appears on or after its own date, so the real-time range starts at
+    # the window start: nothing earlier can be a first release, and the request stays under
+    # the cap on vintage dates per call (a whole-history range would exceed it for the
+    # long, often-revised series).
+    start = newest - timedelta(days=_VINTAGE_WINDOW_DAYS.get(spec.frequency, 760))
+    async with gate:
+        result = await gateway.fetch_all_observations(
+            spec.series_id,
+            units="lin",
+            observation_start=start,
+            realtime_start=start,
+            realtime_end=LATEST_REALTIME,
+            tls_policy=ctx.tls_policy,
+        )
+        if result.health.status not in (HealthStatus.OK, HealthStatus.STALE):
+            state.failures.append(f"{spec.series_id} vintages: {result.health.detail}")
+            outcome.failure = outcome.failure or f"vintages: {result.health.detail}"
+            return
+        rows = _vintage_rows(spec, result)
+        if rows:  # an empty answer keeps the stored history
+            state.vintages[spec.series_id] = rows
+        dates = await gateway.vintage_dates(
+            spec.series_id, sort_order="desc", limit=1, tls_policy=ctx.tls_policy
+        )
+        listed = _payload_list_of_str(dates, "vintage_dates")
+        if listed:
+            state.latest[spec.series_id] = _date_of(listed[0])
 
 
 async def _refresh_vintages(
@@ -266,70 +372,27 @@ async def _refresh_vintages(
     gate: asyncio.Semaphore,
 ) -> tuple[dict[str, list[Row]], dict[str, date_ | None], list[str]]:
     gateway = ctx.fred
-    vintages: dict[str, list[Row]] = {sid: list(rows) for sid, rows in previous.items()}
-    latest: dict[str, date_ | None] = dict(previous_vintage_dates)
-    failures: list[str] = []
+    state = _VintageRun(
+        vintages={sid: list(rows) for sid, rows in previous.items()},
+        latest=dict(previous_vintage_dates),
+    )
     if gateway is None:  # pragma: no cover - gated by the caller
-        return vintages, latest, failures
-
-    async def one(spec: MacroSeriesSpec) -> None:
-        outcome = outcomes.get(spec.series_id)
-        if outcome is None or not (outcome.fetched or not previous.get(spec.series_id)):
-            return
-        stored = [row for rows in outcome.rows_by_units.values() for row in rows]
-        newest = max(
-            (d for d in (_date_of(r["observation_date"]) for r in stored) if d), default=None
+        return state.vintages, state.latest, state.failures
+    await asyncio.gather(
+        *(
+            _refresh_vintage_series(
+                ctx,
+                gateway,
+                spec,
+                outcomes.get(spec.series_id),
+                previous.get(spec.series_id),
+                state,
+                gate,
+            )
+            for spec in REVISION_SERIES
         )
-        if newest is None:
-            return
-        # An observation first appears on or after its own date, so the real-time range starts at
-        # the window start: nothing earlier can be a first release, and the request stays under
-        # the cap on vintage dates per call (a whole-history range would exceed it for the
-        # long, often-revised series).
-        start = newest - timedelta(days=_VINTAGE_WINDOW_DAYS.get(spec.frequency, 760))
-        async with gate:
-            result = await gateway.fetch_all_observations(
-                spec.series_id,
-                units="lin",
-                observation_start=start,
-                realtime_start=start,
-                realtime_end=LATEST_REALTIME,
-                tls_policy=ctx.tls_policy,
-            )
-            if result.health.status not in (HealthStatus.OK, HealthStatus.STALE):
-                failures.append(f"{spec.series_id} vintages: {result.health.detail}")
-                outcome.failure = outcome.failure or f"vintages: {result.health.detail}"
-                return
-            rows: list[Row] = []
-            for raw in _payload_list(result, "observations"):
-                observed = _date_of(raw.get("date"))
-                real_start = _date_of(raw.get("realtime_start"))
-                real_end = _date_of(raw.get("realtime_end"))
-                value = raw.get("value")
-                if observed is None or real_start is None or real_end is None:
-                    continue
-                if not isinstance(value, float):
-                    continue
-                rows.append(
-                    MacroVintageRow(
-                        series_id=spec.series_id,
-                        observation_date=observed,
-                        realtime_start=real_start,
-                        realtime_end=real_end,
-                        value=value,
-                    ).model_dump()
-                )
-            if rows:  # an empty answer keeps the stored history
-                vintages[spec.series_id] = rows
-            dates = await gateway.vintage_dates(
-                spec.series_id, sort_order="desc", limit=1, tls_policy=ctx.tls_policy
-            )
-            listed = _payload_list_of_str(dates, "vintage_dates")
-            if listed:
-                latest[spec.series_id] = _date_of(listed[0])
-
-    await asyncio.gather(*(one(spec) for spec in REVISION_SERIES))
-    return vintages, latest, failures
+    )
+    return state.vintages, state.latest, state.failures
 
 
 def _payload_list_of_str(result: SourceResult, key: str) -> list[str]:
@@ -341,6 +404,25 @@ def _payload_list_of_str(result: SourceResult, key: str) -> list[str]:
     )
 
 
+def _text(series: Row, key: str, default: str = "") -> str:
+    return str(series.get(key) or default)
+
+
+def _carried_meta(previous: MacroSeriesMetaRow | None) -> Row | None:
+    return previous.model_dump() if previous is not None else None
+
+
+def _release_of(outcome: _SeriesOutcome, previous: MacroSeriesMetaRow | None) -> Row:
+    # A failed `series/release` lookup must not blank the release link a series already had.
+    if outcome.release is None and previous is not None:
+        return {
+            "id": previous.release_id,
+            "name": previous.release_name,
+            "link": previous.release_link,
+        }
+    return outcome.release or {}
+
+
 def _meta_row(
     outcome: _SeriesOutcome,
     previous: MacroSeriesMetaRow | None,
@@ -349,32 +431,25 @@ def _meta_row(
 ) -> Row | None:
     spec = outcome.spec
     if outcome.series is None:
-        return previous.model_dump() if previous is not None else None
+        return _carried_meta(previous)
     series = outcome.series
-    # A failed `series/release` lookup must not blank the release link a series already had.
-    release = outcome.release or {}
-    if outcome.release is None and previous is not None:
-        release = {
-            "id": previous.release_id,
-            "name": previous.release_name,
-            "link": previous.release_link,
-        }
+    release = _release_of(outcome, previous)
     # A failed observation or vintage read keeps the stamp from before: tomorrow's run sees it
     # changed again and retries, instead of waiting up to a week for the full refresh.
-    stamp = str(series.get("last_updated") or "")
+    stamp = _text(series, "last_updated")
     if outcome.failure is not None and previous is not None:
         stamp = previous.last_updated
     default_rows = outcome.rows_by_units.get(spec.default_units.value, [])
     try:
         return MacroSeriesMetaRow(
             series_id=spec.series_id,
-            title=str(series.get("title") or spec.label),
-            units=str(series.get("units") or ""),
-            units_short=str(series.get("units_short") or ""),
-            frequency=str(series.get("frequency") or ""),
-            frequency_short=str(series.get("frequency_short") or ""),
-            seasonal_adjustment=str(series.get("seasonal_adjustment") or ""),
-            seasonal_adjustment_short=str(series.get("seasonal_adjustment_short") or ""),
+            title=_text(series, "title", spec.label),
+            units=_text(series, "units"),
+            units_short=_text(series, "units_short"),
+            frequency=_text(series, "frequency"),
+            frequency_short=_text(series, "frequency_short"),
+            seasonal_adjustment=_text(series, "seasonal_adjustment"),
+            seasonal_adjustment_short=_text(series, "seasonal_adjustment_short"),
             last_updated=stamp,
             observation_start=_date_of(series.get("observation_start")),
             observation_end=_date_of(series.get("observation_end")),
@@ -389,7 +464,7 @@ def _meta_row(
         ).model_dump()
     except ValidationError as exc:
         logger.warning("fred_meta_row_rejected", series_id=spec.series_id, error=str(exc))
-        return previous.model_dump() if previous is not None else None
+        return _carried_meta(previous)
 
 
 def _release_rows(

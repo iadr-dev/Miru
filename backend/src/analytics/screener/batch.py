@@ -361,6 +361,32 @@ def _symbol_tags(
     return tags
 
 
+def _group_by_symbol(rows: Sequence[dict[str, object]]) -> dict[str, list[dict[str, object]]]:
+    """The rows keyed by their symbol; a row without a non-empty text symbol is ignored."""
+    grouped: dict[str, list[dict[str, object]]] = defaultdict(list)
+    for row in rows:
+        symbol = row.get("symbol")
+        if isinstance(symbol, str) and symbol:
+            grouped[symbol].append(row)
+    return grouped
+
+
+def _shareholding_by_symbol(
+    snapshots: Sequence[Sequence[dict[str, object]]],
+) -> dict[str, list[list[dict[str, object]]]]:
+    """Per symbol, its own rows from each weekly snapshot, in the same oldest-first order as
+    `snapshots` itself."""
+    by_symbol: dict[str, list[list[dict[str, object]]]] = defaultdict(
+        lambda: [[] for _ in snapshots]
+    )
+    for week_index, snapshot_rows in enumerate(snapshots):
+        for row in snapshot_rows:
+            symbol = row.get("symbol")
+            if isinstance(symbol, str) and symbol:
+                by_symbol[symbol][week_index].append(row)
+    return by_symbol
+
+
 def compute_flag_rows(
     price_rows: Sequence[dict[str, object]],
     flow_rows: Sequence[dict[str, object]],
@@ -371,34 +397,10 @@ def compute_flag_rows(
     to 4 weekly shareholding-distribution snapshots, oldest first), return the tidy `(symbol,
     tag)` flag rows for every symbol/tag that evaluates true. Sorted by `(symbol, tag)` so the
     partition is deterministic for a given input."""
-    price_by_symbol: dict[str, list[dict[str, object]]] = defaultdict(list)
-    for row in price_rows:
-        symbol = row.get("symbol")
-        if isinstance(symbol, str) and symbol:
-            price_by_symbol[symbol].append(row)
-
-    flow_by_symbol: dict[str, list[dict[str, object]]] = defaultdict(list)
-    for row in flow_rows:
-        symbol = row.get("symbol")
-        if isinstance(symbol, str) and symbol:
-            flow_by_symbol[symbol].append(row)
-
-    margin_by_symbol: dict[str, list[dict[str, object]]] = defaultdict(list)
-    for row in margin_rows:
-        symbol = row.get("symbol")
-        if isinstance(symbol, str) and symbol:
-            margin_by_symbol[symbol].append(row)
-
-    # Per symbol, this symbol's own rows from each weekly snapshot, in the same oldest-first order
-    # as `weekly_shareholding_snapshots` itself.
-    shareholding_by_symbol: dict[str, list[list[dict[str, object]]]] = defaultdict(
-        lambda: [[] for _ in weekly_shareholding_snapshots]
-    )
-    for week_index, snapshot_rows in enumerate(weekly_shareholding_snapshots):
-        for row in snapshot_rows:
-            symbol = row.get("symbol")
-            if isinstance(symbol, str) and symbol:
-                shareholding_by_symbol[symbol][week_index].append(row)
+    price_by_symbol = _group_by_symbol(price_rows)
+    flow_by_symbol = _group_by_symbol(flow_rows)
+    margin_by_symbol = _group_by_symbol(margin_rows)
+    shareholding_by_symbol = _shareholding_by_symbol(weekly_shareholding_snapshots)
 
     all_symbols = (
         price_by_symbol.keys()

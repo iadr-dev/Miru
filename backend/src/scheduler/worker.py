@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import asyncio
 from calendar.holidays import is_market_open_day
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from typing import cast
@@ -528,44 +528,26 @@ class SchedulerWorker:
             return False
 
         state = dict(rule.state)
-        raw_met = state.get("met")
-        met_map: dict[str, bool] = (
-            {str(k): bool(v) for k, v in cast("dict[object, object]", raw_met).items()}
-            if isinstance(raw_met, dict)
-            else {}
-        )
+        met_map = _met_map(state)
         fire_count = _as_int(state.get("fire_count"))
-        prefs = await store.get_preferences(user_id=rule.user_id)
-        channels = rule.channels or (prefs.channels if prefs else ())
-        quiet = rule.quiet_hours or (prefs.quiet_hours if prefs else None)
-        hold_external = _within_quiet_hours(quiet, now, prefs.timezone if prefs else None)
+        channels, hold_external = await _delivery_settings(
+            store, user_id=rule.user_id, channels=rule.channels, quiet=rule.quiet_hours, at=now
+        )
         delivered = False
 
         for symbol, evaluation in results.items():
             was_met = met_map.get(symbol, False)
             met_map[symbol] = evaluation.met
-            if not evaluation.met:
+            if not _should_fire(rule, evaluation, was_met=was_met, state=state, now=now):
                 continue
-            edge = rule.trigger_mode is not TriggerMode.EVERY_OCCURRENCE
-            if edge and was_met and rule.condition.kind not in EVENT_KINDS:
-                continue  # still true since the last evaluation — fire on the transition only
-            if _in_cooldown(rule, state, now):
-                continue
-            self._emit(
-                EventKind.ALERT_FIRED, user_id=user.id, data={"alert_id": rule.id, "symbol": symbol}
-            )
-            await self._deliver(
+            await self._fire_alert(
                 store,
+                rule=rule,
                 user=user,
-                source=NotificationSource.ALERT,
-                source_id=rule.id if rule.symbol else f"{rule.id}:{symbol}",
+                symbol=symbol,
+                evaluation=evaluation,
                 channels=channels,
-                title=f"{symbol} - {describe(rule.condition)}",
-                body=_safe_body(
-                    evaluation.message, rule.condition, symbol, evaluation.plain_message
-                ),
                 trigger_date=as_of,
-                deep_link={"route": "stock", "symbol": symbol},
                 hold_external=hold_external,
             )
             fire_count += 1
@@ -583,6 +565,34 @@ class SchedulerWorker:
             auto_paused_reason="completed" if completed else None,
         )
         return delivered
+
+    async def _fire_alert(  # noqa: PLR0913 — one argument per delivery dimension
+        self,
+        store: SqlAlchemySchedulerStore,
+        *,
+        rule: AlertRule,
+        user: User,
+        symbol: str,
+        evaluation: Evaluation,
+        channels: tuple[DeliveryChannelKind, ...],
+        trigger_date: date,
+        hold_external: bool,
+    ) -> None:
+        self._emit(
+            EventKind.ALERT_FIRED, user_id=user.id, data={"alert_id": rule.id, "symbol": symbol}
+        )
+        await self._deliver(
+            store,
+            user=user,
+            source=NotificationSource.ALERT,
+            source_id=rule.id if rule.symbol else f"{rule.id}:{symbol}",
+            channels=channels,
+            title=f"{symbol} - {describe(rule.condition)}",
+            body=_safe_body(evaluation.message, rule.condition, symbol, evaluation.plain_message),
+            trigger_date=trigger_date,
+            deep_link={"route": "stock", "symbol": symbol},
+            hold_external=hold_external,
+        )
 
     # ---- shared internals ----
 
@@ -607,10 +617,7 @@ class SchedulerWorker:
         During the user's quiet hours (`hold_external`) the inbox entry is still written at once
         (it is silent) but external channels are only recorded as held; `release_held` sends them
         as one digest once the window closes."""
-        selected = (
-            DeliveryChannelKind.IN_APP,
-            *(c for c in channels if c is not DeliveryChannelKind.IN_APP),
-        )
+        selected = _channel_order(channels)
         recipient = await self._recipient_for(store, user)
         for channel_kind in selected:
             held = hold_external and channel_kind is not DeliveryChannelKind.IN_APP
@@ -621,12 +628,7 @@ class SchedulerWorker:
                 source_id=source_id,
                 channel=channel_kind,
                 trigger_date=trigger_date,
-                payload={
-                    "title": title,
-                    "body": body,
-                    "deep_link": deep_link,
-                    **({"held": True} if held else {}),
-                },
+                payload=_notification_payload(title, body, deep_link, held=held),
                 delivery_state="pending" if external else "sent",
             )
             if record is None:
@@ -640,13 +642,7 @@ class SchedulerWorker:
             channel = self._ctx.channels.get(channel_kind)
             if channel is None:
                 if external:  # not configured in this deployment: nothing will ever send it
-                    await store.mark_delivery(
-                        notification_id=record.id,
-                        state="failed",
-                        attempts=0,
-                        next_attempt_at=None,
-                    )
-                    await store.session.commit()
+                    await _fail_unsendable(store, record.id)
                 continue
             notification = DeliveryNotification(
                 notification_id=record.id,
@@ -817,34 +813,26 @@ class SchedulerWorker:
         user = await self._load_user(session, subscription.user_id)
         if user is None:
             return
-        members: frozenset[str] | None = None
-        if subscription.watchlist_id is not None:
-            group = await store.watchlist_members(
-                watchlist_id=subscription.watchlist_id, user_id=user.id
-            )
-            members = frozenset(symbol for symbol, market in group if market is Market.TW)
-        prefs = await store.get_preferences(user_id=user.id)
-        channels = subscription.channels or (prefs.channels if prefs else ())
-        quiet = subscription.quiet_hours or (prefs.quiet_hours if prefs else None)
-        hold = _within_quiet_hours(quiet, local, prefs.timezone if prefs else None)
+        members = await _subscription_members(store, subscription, user.id)
+        channels, hold = await _delivery_settings(
+            store,
+            user_id=user.id,
+            channels=subscription.channels,
+            quiet=subscription.quiet_hours,
+            at=local,
+        )
         today = local.date()
         watch = in_scope(watch_rows, subscription.strategies, members)
         if subscription.morning_list and local.time() < _SESSION_CLOSE:
-            listing = morning_list(watch, today)
-            if listing is not None:
-                title, body = listing
-                await self._deliver(
-                    store,
-                    user=user,
-                    source=NotificationSource.ALERT,
-                    source_id=f"{STRATEGY_SOURCE_PREFIX}{subscription.id}:morning",
-                    channels=channels,
-                    title=title,
-                    body=safe_body(body, body, "今日盯盤清單已更新，請開啟 Miru 查看。"),
-                    trigger_date=today,
-                    deep_link={"route": "watch"},
-                    hold_external=hold,
-                )
+            await self._deliver_morning_list(
+                store,
+                user=user,
+                subscription=subscription,
+                watch=watch,
+                today=today,
+                channels=channels,
+                hold=hold,
+            )
         # A subscription made today only hears about slots after it existed.
         created = as_utc(subscription.created_at).astimezone(local.tzinfo)
         not_before = created.time() if created.date() == today else None
@@ -872,6 +860,34 @@ class SchedulerWorker:
                 deep_link={"route": "watch", "symbol": symbol, "strategy": strategy},
                 hold_external=hold,
             )
+
+    async def _deliver_morning_list(  # noqa: PLR0913 — one argument per delivery dimension
+        self,
+        store: SqlAlchemySchedulerStore,
+        *,
+        user: User,
+        subscription: StrategySubscription,
+        watch: Sequence[Mapping[str, object]],
+        today: date,
+        channels: tuple[DeliveryChannelKind, ...],
+        hold: bool,
+    ) -> None:
+        listing = morning_list(watch, today)
+        if listing is None:
+            return
+        title, body = listing
+        await self._deliver(
+            store,
+            user=user,
+            source=NotificationSource.ALERT,
+            source_id=f"{STRATEGY_SOURCE_PREFIX}{subscription.id}:morning",
+            channels=channels,
+            title=title,
+            body=safe_body(body, body, "今日盯盤清單已更新，請開啟 Miru 查看。"),
+            trigger_date=today,
+            deep_link={"route": "watch"},
+            hold_external=hold,
+        )
 
     async def send_morning_digests(self, *, now: datetime | None = None) -> int:
         """Send the 晨間摘要 to every user who turned it on, once per local day: on a Taiwan
@@ -1385,6 +1401,85 @@ def as_utc(moment: datetime) -> datetime:
     UTC, so a naive one is labelled UTC. `naive.astimezone(UTC)` would instead assume the host's
     local zone and shift the value by its offset."""
     return moment.replace(tzinfo=UTC) if moment.tzinfo is None else moment.astimezone(UTC)
+
+
+async def _subscription_members(
+    store: SqlAlchemySchedulerStore, subscription: StrategySubscription, user_id: str
+) -> frozenset[str] | None:
+    """The Taiwan symbols of the subscription's watchlist, or None when it covers everything."""
+    if subscription.watchlist_id is None:
+        return None
+    group = await store.watchlist_members(watchlist_id=subscription.watchlist_id, user_id=user_id)
+    return frozenset(symbol for symbol, market in group if market is Market.TW)
+
+
+async def _fail_unsendable(store: SqlAlchemySchedulerStore, notification_id: str) -> None:
+    await store.mark_delivery(
+        notification_id=notification_id, state="failed", attempts=0, next_attempt_at=None
+    )
+    await store.session.commit()
+
+
+def _channel_order(channels: tuple[DeliveryChannelKind, ...]) -> tuple[DeliveryChannelKind, ...]:
+    """The in-app inbox entry always comes first (it is the dedupe guard), then the others."""
+    return (
+        DeliveryChannelKind.IN_APP,
+        *(c for c in channels if c is not DeliveryChannelKind.IN_APP),
+    )
+
+
+def _notification_payload(
+    title: str, body: str, deep_link: dict[str, object], *, held: bool
+) -> dict[str, object]:
+    return {
+        "title": title,
+        "body": body,
+        "deep_link": deep_link,
+        **({"held": True} if held else {}),
+    }
+
+
+def _met_map(state: dict[str, object]) -> dict[str, bool]:
+    raw_met = state.get("met")
+    if not isinstance(raw_met, dict):
+        return {}
+    return {str(k): bool(v) for k, v in cast("dict[object, object]", raw_met).items()}
+
+
+def _should_fire(
+    rule: AlertRule,
+    evaluation: Evaluation,
+    *,
+    was_met: bool,
+    state: dict[str, object],
+    now: datetime,
+) -> bool:
+    """Whether one met evaluation notifies: edge-triggering (transition only, except event kinds)
+    and the cooldown both suppress it."""
+    if not evaluation.met:
+        return False
+    edge = rule.trigger_mode is not TriggerMode.EVERY_OCCURRENCE
+    if edge and was_met and rule.condition.kind not in EVENT_KINDS:
+        return False  # still true since the last evaluation — fire on the transition only
+    return not _in_cooldown(rule, state, now)
+
+
+async def _delivery_settings(
+    store: SqlAlchemySchedulerStore,
+    *,
+    user_id: str,
+    channels: tuple[DeliveryChannelKind, ...],
+    quiet: QuietHours | None,
+    at: datetime,
+) -> tuple[tuple[DeliveryChannelKind, ...], bool]:
+    """The channels and quiet-hours hold for one rule or subscription: its own override, else the
+    user's saved preferences."""
+    prefs = await store.get_preferences(user_id=user_id)
+    resolved_channels = channels or (prefs.channels if prefs else ())
+    resolved_quiet = quiet or (prefs.quiet_hours if prefs else None)
+    return resolved_channels, _within_quiet_hours(
+        resolved_quiet, at, prefs.timezone if prefs else None
+    )
 
 
 def _as_int(raw: object) -> int:
