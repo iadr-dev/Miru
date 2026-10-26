@@ -282,11 +282,9 @@ class OpenAIClient:
         self._max_tokens = max_tokens
         # Sensible default kept off unless the model supports it — a caller can still force a
         # specific level via the constructor kwarg regardless of the model-prefix heuristic.
-        self._reasoning_effort = (
-            reasoning_effort
-            if reasoning_effort is not None
-            else ("medium" if _supports_reasoning_effort(model_id) else None)
-        )
+        self._reasoning_effort = reasoning_effort
+        if reasoning_effort is None and _supports_reasoning_effort(model_id):
+            self._reasoning_effort = "medium"
         # SDK client construction is local — no network call.
         self._client = AsyncOpenAI(api_key=api_key, base_url=base_url)
         self._encoding = _encoding_for_model(model_id)

@@ -151,7 +151,12 @@ def _kd_score(k: float | None, d: float | None) -> float | None:
     slight lift when %K is above %D (short-term momentum confirming the level), capped at 100."""
     if k is None or d is None:
         return None
-    return min(100.0, k + (5.0 if k > d else -5.0 if k < d else 0.0))
+    lift = 0.0
+    if k > d:
+        lift = 5.0
+    elif k < d:
+        lift = -5.0
+    return min(100.0, k + lift)
 
 
 def _macd_score(histogram: float | None, prior_histogram: float | None) -> float | None:
