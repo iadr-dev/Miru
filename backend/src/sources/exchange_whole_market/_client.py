@@ -73,6 +73,15 @@ class RequestPolicy:
 
 
 @dataclass(frozen=True)
+class _Call:
+    """One request: a GET with `params`, or a form POST when `form` is given."""
+
+    url: str
+    params: dict[str, str]
+    form: dict[str, str] | None = None
+
+
+@dataclass(frozen=True)
 class _Reader[T]:
     """What to ask for (`Accept`) and how to turn the successful response into a `T`."""
 
@@ -107,19 +116,25 @@ class ThrottledJsonClient:
         429, 5xx, timeouts, transport errors and a non-JSON body (the block page) are retried
         with a growing pause, anything else (403, 404) is not."""
         return await self._get(
-            url,
-            params,
+            _Call(url, params),
             label=label,
             tls_policy=tls_policy,
             reader=_Reader("application/json", self._read_json),
         )
 
     async def get_text(
-        self, url: str, *, label: str, tls_policy: TLSPolicy, encoding: str = "utf-8"
+        self,
+        url: str,
+        *,
+        label: str,
+        tls_policy: TLSPolicy,
+        encoding: str = "utf-8",
+        form: dict[str, str] | None = None,
     ) -> str:
         """The body of a page decoded as `encoding` (a legacy page: Big5), with the same
-        throttle, timeout, retry and error rules as `get_json`. A body that does not decode is
-        the block page and is retried like any other transient failure."""
+        throttle, timeout, retry and error rules as `get_json`; a `form` makes it a form POST
+        (a legacy report query). A body that does not decode is the block page and is retried
+        like any other transient failure."""
 
         def read(response: httpx.Response) -> str:
             try:
@@ -128,13 +143,15 @@ class ThrottledJsonClient:
                 raise _TransientError(f"response is not {encoding} text") from exc
 
         return await self._get(
-            url, {}, label=label, tls_policy=tls_policy, reader=_Reader("text/html", read)
+            _Call(url, {}, form),
+            label=label,
+            tls_policy=tls_policy,
+            reader=_Reader("text/html", read),
         )
 
     async def _get[T](
         self,
-        url: str,
-        params: dict[str, str],
+        call: _Call,
         *,
         label: str,
         tls_policy: TLSPolicy,
@@ -146,7 +163,7 @@ class ThrottledJsonClient:
             started = self._clock()
             retry_after: float | None = None
             try:
-                body = await self._once(url, params, tls_policy, reader)
+                body = await self._once(call, tls_policy, reader)
             except _TransientError as exc:
                 reason = exc.reason
                 retry_after = exc.retry_after
@@ -171,20 +188,17 @@ class ThrottledJsonClient:
                 await self._sleep(max(pause, retry_after or 0.0))
         raise ExchangeFetchError(f"{self._host} {label}: {reason} after {self._max_attempts} tries")
 
-    async def _once[T](
-        self,
-        url: str,
-        params: dict[str, str],
-        tls_policy: TLSPolicy,
-        reader: _Reader[T],
-    ) -> T:
+    async def _once[T](self, call: _Call, tls_policy: TLSPolicy, reader: _Reader[T]) -> T:
         try:
             async with build_async_client(
                 tls_policy=tls_policy,
                 timeout=self._timeout,
                 headers={"User-Agent": USER_AGENT, "Accept": reader.accept},
             ) as client:
-                response = await client.get(url, params=params)
+                if call.form is None:
+                    response = await client.get(call.url, params=call.params)
+                else:
+                    response = await client.post(call.url, data=call.form)
         except httpx.TimeoutException as exc:
             raise _TransientError("timeout") from exc
         except httpx.TransportError as exc:
