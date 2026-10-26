@@ -58,6 +58,9 @@ logger = structlog.get_logger(__name__)
 
 _MANIFEST_NAME = "_manifest.json"
 _TMP_DIRNAME = ".tmp"
+# Exchange-confirmed market closures, one marker file per (dataset, market, date), outside every
+# `dataset=` tree so no partition scan, freshness token or reader ever sees them.
+_CLOSURES_DIRNAME = "_closures"
 _WRITE_LOCK_NAME = ".write.lock"
 
 # A reader that resolved the manifest just before a flip may still be reading the previous version
@@ -461,6 +464,25 @@ class ParquetStore:
             if base.is_dir():
                 token.append((dataset_dir.name, base.stat().st_mtime_ns))
         return tuple(token)
+
+    def _closure_marker(self, dataset: str, market: str, run_date: date_) -> Path:
+        return self.root / _CLOSURES_DIRNAME / dataset / market / run_date.isoformat()
+
+    def mark_closed(self, dataset: str, market: str, run_date: date_, detail: str) -> None:
+        """Remember that `run_date` was confirmed a market closure for `dataset`, so a gap check
+        does not fetch it again. Per dataset: a closure learned from one dataset is not assumed
+        for another. Not a partition and not a trading-day fact: nothing reads it as data."""
+        marker = self._closure_marker(dataset, market, run_date)
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(detail, encoding="utf-8")
+
+    def clear_closed(self, dataset: str, market: str, run_date: date_) -> None:
+        """Forget a recorded closure (data for the day turned up after all)."""
+        self._closure_marker(dataset, market, run_date).unlink(missing_ok=True)
+
+    def is_closed(self, dataset: str, market: str, run_date: date_) -> bool:
+        """True when an earlier run confirmed `run_date` as a market closure for `dataset`."""
+        return self._closure_marker(dataset, market, run_date).is_file()
 
     def has_partition(self, dataset: str, market: str, run_date: date_) -> bool:
         """True only if the manifest exists AND the version it points at is on disk, so a torn

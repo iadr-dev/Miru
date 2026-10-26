@@ -26,6 +26,7 @@ from ._common import (
     Endpoint,
     ExchangeFetchError,
     JsonObject,
+    NoDataPublished,
     Row,
     ValuationColumns,
     as_list,
@@ -108,7 +109,7 @@ def _table_report(
 def parse_price(body: JsonObject, run_date: date_) -> list[Row]:
     report = _table_report(body, "MI_INDEX", wanted="每日收盤行情", by_title=True)
     if report is None:
-        return []
+        raise NoDataPublished
     check_response_date(body, run_date, "MI_INDEX")
     fields, rows = report
     columns = BarColumns(
@@ -126,7 +127,7 @@ def parse_price(body: JsonObject, run_date: date_) -> list[Row]:
 def parse_institutional(body: JsonObject, run_date: date_) -> list[Row]:
     report = _flat_report(body, "T86")
     if report is None:
-        return []
+        raise NoDataPublished
     check_response_date(body, run_date, "T86")
     fields, rows = report
     columns = {
@@ -140,7 +141,7 @@ def parse_institutional(body: JsonObject, run_date: date_) -> list[Row]:
 def parse_margin(body: JsonObject, run_date: date_) -> list[Row]:
     report = _table_report(body, "MI_MARGN", wanted="資券互抵", by_title=False)
     if report is None:
-        return []
+        raise NoDataPublished
     check_response_date(body, run_date, "MI_MARGN")
     fields, rows = report
     # Two blocks of six headers repeat the same names (買進/賣出/...): read by position, after
@@ -170,7 +171,7 @@ def parse_margin(body: JsonObject, run_date: date_) -> list[Row]:
 def parse_valuation(body: JsonObject, run_date: date_) -> list[Row]:
     report = _flat_report(body, "BWIBBU_d")
     if report is None:
-        return []
+        raise NoDataPublished
     check_response_date(body, run_date, "BWIBBU_d")
     fields, rows = report
     columns = ValuationColumns(

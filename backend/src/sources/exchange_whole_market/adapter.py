@@ -22,10 +22,11 @@ import structlog
 
 from schemas.enums import Capability, DataClass, TimingClass, TLSPolicy
 from schemas.source import HealthStatus, SourceHealth, SourceResult
+from sources.base import NO_DATA_PUBLISHED
 
 from . import tpex, twse
 from ._client import ThrottledJsonClient
-from ._common import Endpoint, ExchangeFetchError, Row
+from ._common import Endpoint, ExchangeFetchError, NoDataPublished, Row
 
 logger = structlog.get_logger(__name__)
 
@@ -53,6 +54,8 @@ _IDENTITY: Final = ("symbol", "investor")
 class _Outcome:
     rows: list[Row] | None = None
     error: str | None = None
+    # The exchange answered explicitly that it published nothing for the date (rows is `[]`).
+    no_data: bool = False
 
 
 class ExchangeWholeMarketAdapter:
@@ -114,6 +117,8 @@ class ExchangeWholeMarketAdapter:
                 endpoint.url, endpoint.query(run_date), label=endpoint.label, tls_policy=tls_policy
             )
             return _Outcome(rows=endpoint.parse(body, run_date))
+        except NoDataPublished:
+            return _Outcome(rows=[], no_data=True)
         except ExchangeFetchError as exc:
             return _Outcome(error=exc.detail)
 
@@ -134,7 +139,14 @@ def _combine(cap: Capability, listed: _Outcome, otc: _Outcome) -> SourceResult:
         ]
         return _result(cap, [], HealthStatus.UNREACHABLE, "; ".join(reasons))
     if not listed.rows and not otc.rows:
-        return _result(cap, [], HealthStatus.STALE, "no rows published (TWSE and TPEx empty)")
+        # Explicit on both = a closure the caller may act on; an empty report that was not an
+        # explicit "no data" answer stays an ordinary empty day.
+        detail = (
+            NO_DATA_PUBLISHED
+            if listed.no_data and otc.no_data
+            else "no rows published (TWSE and TPEx empty)"
+        )
+        return _result(cap, [], HealthStatus.STALE, detail)
     if not listed.rows or not otc.rows:
         empty, other = ("TWSE", "TPEx") if not listed.rows else ("TPEx", "TWSE")
         return _result(

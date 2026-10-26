@@ -6,7 +6,7 @@ concretely — they depend on this Protocol.
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Final, Protocol
 
 from schemas.enums import Capability, Market, TimingClass, TLSPolicy
 from schemas.market import Symbol
@@ -53,6 +53,12 @@ class SourceAdapter(Protocol):
         malformed data.
         """
         ...
+
+
+# The `SourceHealth.detail` of a whole-market answer in which EVERY exchange said, explicitly, that
+# it published nothing for the date (status `STALE`). The chain reads it to tell a market closure
+# from a transport or parse failure; no other detail may equal it.
+NO_DATA_PUBLISHED: Final = "no rows published (TWSE and TPEx explicitly report no data)"
 
 
 class WholeMarketSource(Protocol):

@@ -23,6 +23,7 @@ from ._common import (
     Endpoint,
     ExchangeFetchError,
     JsonObject,
+    NoDataPublished,
     Row,
     ValuationColumns,
     as_list,
@@ -77,7 +78,7 @@ def _first_table(body: JsonObject, label: str) -> tuple[list[object], list[list[
 def parse_price(body: JsonObject, run_date: date_) -> list[Row]:
     report = _first_table(body, "otc")
     if report is None:
-        return []
+        raise NoDataPublished
     check_response_date(body, run_date, "otc")
     fields, rows = report
     columns = BarColumns(
@@ -95,7 +96,7 @@ def parse_price(body: JsonObject, run_date: date_) -> list[Row]:
 def parse_institutional(body: JsonObject, run_date: date_) -> list[Row]:
     report = _first_table(body, "dailyTrade")
     if report is None:
-        return []
+        raise NoDataPublished
     check_response_date(body, run_date, "dailyTrade")
     fields, rows = report
     if len(fields) != _INSTITUTIONAL_COLUMNS:
@@ -107,7 +108,7 @@ def parse_institutional(body: JsonObject, run_date: date_) -> list[Row]:
 def parse_margin(body: JsonObject, run_date: date_) -> list[Row]:
     report = _first_table(body, "balance")
     if report is None:
-        return []
+        raise NoDataPublished
     check_response_date(body, run_date, "balance")
     fields, rows = report
     at = {name: column_index(fields, name) for name in _MARGIN_HEADERS}
@@ -145,7 +146,7 @@ def parse_margin(body: JsonObject, run_date: date_) -> list[Row]:
 def parse_valuation(body: JsonObject, run_date: date_) -> list[Row]:
     report = _first_table(body, "peQryDate")
     if report is None:
-        return []
+        raise NoDataPublished
     check_response_date(body, run_date, "peQryDate")
     fields, rows = report
     columns = ValuationColumns(

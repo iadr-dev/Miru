@@ -9,7 +9,7 @@ import structlog
 from pydantic import BaseModel, ValidationError
 
 from ingest.context import IngestContext
-from ingest.jobs.source_chain import ChainOutcome, result_rows, walk_chain
+from ingest.jobs.source_chain import MARKET_CLOSED_DETAIL, ChainOutcome, result_rows, walk_chain
 from ingest.jobs.specs import (
     ACTIVE_ETF_HOLDING_CHANGE_JOB,
     ACTIVE_ETF_HOLDING_JOB,
@@ -156,6 +156,18 @@ async def run_whole_market_job(
     # the first healthy answer with rows wins. Never retry-loop tightly - a day no source could
     # serve journals FAILED and the next scheduled run (or an explicit gap-fill) retries.
     outcome = await walk_chain(ctx, spec.capability, run_date)
+    if outcome.market_closed:
+        # Both exchanges said, explicitly, that nothing was published for a past date: a closure
+        # the internal calendar could not know. Nothing is written and FinMind is not asked; the
+        # marker keeps `only_missing` runs from re-fetching it (a failed day leaves none).
+        ctx.store.mark_closed(spec.dataset, ctx.market.value, run_date, MARKET_CLOSED_DETAIL)
+        return journal_run(
+            spec.dataset,
+            run_date,
+            rows_written=0,
+            status=RunStatus.SKIPPED,
+            detail=MARKET_CLOSED_DETAIL,
+        )
     if outcome.winner is None and outcome.failures:
         detail = _failure_detail(outcome)
         logger.warning(
@@ -179,6 +191,7 @@ async def run_whole_market_job(
         raise RuntimeError(f"no whole-market source for {spec.dataset}")
     rows = validate_rows(spec, result_rows(result), run_date)
     rows_written = ctx.store.write_partition(spec.dataset, ctx.market.value, run_date, rows)
+    ctx.store.clear_closed(spec.dataset, ctx.market.value, run_date)  # data arrived after all
     # The partition has landed atomically — signal it so a subscribed client revalidates exactly
     # the affected keys now, rather than waiting out a fixed time boundary. Leader-only: this line
     # is already inside the `is_leader()` guard above, so a follower never emits. Best-effort by

@@ -32,6 +32,13 @@ class ExchangeFetchError(Exception):
         self.detail = detail
 
 
+class NoDataPublished(Exception):  # noqa: N818 - an answer, not an error
+    """The exchange answered, explicitly, that it published nothing for the requested date (TWSE's
+    "沒有符合條件的資料" `stat`, a TPEx report with no rows). Distinct from `ExchangeFetchError`: a
+    parser raises it for that one answer only, never for a block page, a bad status or a layout
+    change, so the adapter can tell a market closure from trouble."""
+
+
 @dataclass(frozen=True)
 class Endpoint:
     """One exchange endpoint for one dataset: how to ask for a date, how to read the answer."""

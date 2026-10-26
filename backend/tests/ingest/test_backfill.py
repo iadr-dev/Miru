@@ -11,7 +11,7 @@ import sources.finmind as finmind_module
 from config.settings import Settings
 from ingest.backfill import backfill_range, detect_missing_trading_days
 from ingest.context import IngestContext
-from ingest.jobs import PRICE_EOD_JOB
+from ingest.jobs import INSTITUTIONAL_FLOW_JOB, PRICE_EOD_JOB
 from ingest.journal import RunStatus
 from ingest.leader import AlwaysLeader
 from ingest.store import ParquetStore
@@ -73,3 +73,17 @@ async def test_backfill_range_skips_dates_already_partitioned(
 
     assert runs == ()  # nothing to do — already partitioned
     assert not calls  # no fetch attempted for an already-filled date
+
+
+async def test_only_missing_treats_a_closure_as_done_but_retries_failed_days(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ctx = _ctx(tmp_path)
+    closed, failed = date(2024, 1, 2), date(2024, 1, 3)
+    ctx.store.mark_closed(PRICE_EOD_JOB.dataset, "TW", closed, "market closed")
+    # a different dataset's closure does not hide this dataset's gap
+    ctx.store.mark_closed(INSTITUTIONAL_FLOW_JOB.dataset, "TW", failed, "market closed")
+
+    missing = detect_missing_trading_days(PRICE_EOD_JOB, ctx, start=closed, end=failed)
+
+    assert missing == (failed,)

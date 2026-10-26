@@ -34,7 +34,15 @@ def detect_missing_trading_days(
     expected = (end,) if spec.snapshot_only else ctx.calendar.business_days_between(start, end)
     # `has_rows`, not `has_partition`: a day an earlier run recorded as an empty placeholder
     # (fetched before the upstream had published it) is still a gap.
-    return tuple(d for d in expected if not ctx.store.has_rows(spec.dataset, ctx.market.value, d))
+    # A day an earlier run confirmed as a market closure (journaled SKIPPED) is done, not a gap; a
+    # FAILED run leaves no marker, so it is retried.
+    market = ctx.market.value
+    return tuple(
+        d
+        for d in expected
+        if not ctx.store.has_rows(spec.dataset, market, d)
+        and not ctx.store.is_closed(spec.dataset, market, d)
+    )
 
 
 async def backfill_range(

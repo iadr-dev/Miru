@@ -10,10 +10,12 @@ share it, so the order is decided in one place.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from datetime import date as date_
 from functools import lru_cache
 from pathlib import Path
 from typing import Final, cast
+from zoneinfo import ZoneInfo
 
 import structlog
 import yaml
@@ -21,7 +23,7 @@ import yaml
 from ingest.context import IngestContext
 from schemas.enums import Capability, Market
 from schemas.source import HealthStatus, SourceResult
-from sources.base import WholeMarketSource
+from sources.base import NO_DATA_PUBLISHED, WholeMarketSource
 
 logger = structlog.get_logger(__name__)
 
@@ -31,6 +33,9 @@ _CONFIG_PATH: Final = (
 FINMIND_ID: Final = "finmind"
 EXCHANGE_ID: Final = "exchange_official"
 _DEFAULT_CHAIN: Final = (FINMIND_ID,)
+_TAIPEI: Final = ZoneInfo("Asia/Taipei")
+# The journal detail of a day both exchanges said they published nothing for.
+MARKET_CLOSED_DETAIL: Final = "market closed: TWSE and TPEx published no data"
 
 
 @lru_cache(maxsize=1)
@@ -87,6 +92,26 @@ def _failed(result: SourceResult) -> bool:
     return result.health.status not in (HealthStatus.OK, HealthStatus.STALE)
 
 
+def taipei_today() -> date_:
+    return datetime.now(UTC).astimezone(_TAIPEI).date()
+
+
+def confirms_market_closure(
+    source_id: str, result: SourceResult, run_date: date_, *, today: date_ | None = None
+) -> bool:
+    """Whether `result` proves `run_date` was a day the market was closed: the exchange adapter
+    reports that TWSE AND TPEx each answered, explicitly, "no data published", and the date is
+    strictly before today (Taipei). Today or later may simply not be published yet. Transport or
+    parse trouble, or only one exchange being empty, never reaches this detail."""
+    return (
+        source_id == EXCHANGE_ID
+        and result.health.status is HealthStatus.STALE
+        and result.health.detail == NO_DATA_PUBLISHED
+        and not result_rows(result)
+        and run_date < (today or taipei_today())
+    )
+
+
 @dataclass
 class ChainOutcome:
     """What walking the chain found."""
@@ -98,6 +123,9 @@ class ChainOutcome:
     failures: list[tuple[str, str]] = field(default_factory=list[tuple[str, str]])
     empties: list[tuple[str, SourceResult]] = field(default_factory=list[tuple[str, SourceResult]])
     last: SourceResult | None = None
+    # Both exchanges explicitly published no data for a date before today: a market closure, so
+    # the chain stopped without asking the remaining sources.
+    market_closed: bool = False
 
     @property
     def fell_back(self) -> bool:
@@ -122,6 +150,15 @@ async def walk_chain(
             capability, tls_policy=ctx.tls_policy, start_date=run_date.isoformat()
         )
         outcome.last = result
+        if confirms_market_closure(link.source_id, result, run_date):
+            outcome.market_closed = True
+            logger.info(
+                "ingest_whole_market_closure_confirmed",
+                capability=capability.value,
+                run_date=run_date.isoformat(),
+                source=link.source_id,
+            )
+            break
         if _failed(result):
             outcome.failures.append((link.source_id, result.health.detail))
             logger.warning(
@@ -155,11 +192,14 @@ async def fetch_whole_market_chained(
 __all__ = [
     "EXCHANGE_ID",
     "FINMIND_ID",
+    "MARKET_CLOSED_DETAIL",
     "ChainLink",
     "ChainOutcome",
+    "confirms_market_closure",
     "fetch_whole_market_chained",
     "load_whole_market_priority",
     "resolve_chain",
     "result_rows",
+    "taipei_today",
     "walk_chain",
 ]

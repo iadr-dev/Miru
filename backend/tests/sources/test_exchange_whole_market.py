@@ -25,6 +25,7 @@ from ingest.jobs import (
 from schemas.capabilities import EODBar, InstitutionalFlowRow, MarginShortRow, ValuationRatiosRow
 from schemas.enums import Capability, TLSPolicy
 from schemas.source import HealthStatus, SourceResult
+from sources.base import NO_DATA_PUBLISHED
 from sources.exchange_whole_market import ExchangeWholeMarketAdapter
 from sources.exchange_whole_market._client import (
     USER_AGENT,
@@ -331,7 +332,21 @@ async def test_non_trading_day_is_an_empty_result_not_an_error(
     result = await _fetch(cap, SATURDAY)
 
     assert result.health.status is HealthStatus.STALE
+    assert result.health.detail == NO_DATA_PUBLISHED  # both said so explicitly
     assert _rows(result) == []
+
+
+async def test_explicit_no_data_from_one_exchange_and_trouble_from_the_other_is_not_a_closure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake = FakeWeb(EMPTY)
+    fake.overrides["www.tpex.org.tw"] = [httpx.Response(200, json={"stat": "blocked"})]
+    monkeypatch.setattr(client_module, "build_async_client", fake.factory)
+
+    result = await _fetch(Capability.PRICE_EOD, SATURDAY)
+
+    assert result.health.status is HealthStatus.UNREACHABLE
+    assert result.health.detail != NO_DATA_PUBLISHED
 
 
 async def test_one_exchange_empty_while_the_other_has_rows_is_not_a_result(
