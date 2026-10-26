@@ -23,6 +23,7 @@ from collections.abc import Collection, Iterable, Mapping
 
 from analytics.supply_chain.domain.models import MarketCode
 from analytics.supply_chain.positions.models import (
+    ChainMember,
     ChainPosition,
     ChainSpec,
     Method,
@@ -136,6 +137,61 @@ def _decide(
     return None
 
 
+def _anchor_positions(
+    chain: ChainSpec,
+    members: Mapping[str, ChainMember],
+    priors: Mapping[str, Prior | None],
+    override_by_key: Mapping[Key, Override],
+) -> dict[str, Position]:
+    """Members whose position is settled enough to seed the graph: overrides, strong priors."""
+    anchors: dict[str, Position] = {}
+    for symbol in sorted(members):
+        override = override_by_key.get((symbol, members[symbol].market, chain.chain_key))
+        prior = priors[symbol]
+        if override is not None:
+            anchors[symbol] = override.position
+        elif prior is not None and _prior_confidence(prior) >= ANCHOR_MIN_CONFIDENCE:
+            anchors[symbol] = prior.position
+    return anchors
+
+
+def _chain_rows(
+    chain: ChainSpec,
+    members: Mapping[str, ChainMember],
+    edges: Collection[Edge],
+    override_by_key: Mapping[Key, Override],
+) -> list[ChainPosition]:
+    tw_symbols = {s for s, m in members.items() if m.market == "TW"}
+    chain_edges = [(a, b) for a, b in edges if a in tw_symbols and b in tw_symbols]
+    priors = {s: chain.tiers.get(m.sub_industry) for s, m in members.items()}
+    anchors = _anchor_positions(chain, members, priors, override_by_key)
+    signals = chain_signals(chain_edges, anchors)
+    rows: list[ChainPosition] = []
+    for symbol in sorted(members):
+        member = members[symbol]
+        override = override_by_key.get((symbol, member.market, chain.chain_key))
+        prior = priors[symbol]
+        graph = signals.get(symbol) if member.market == "TW" else None
+        decided = _decide(chain.chain_key, override, prior, graph)
+        if decided is None:
+            continue
+        position, method, confidence, reasons = decided
+        rows.append(
+            ChainPosition(
+                symbol=symbol,
+                market=member.market,
+                chain_key=chain.chain_key,
+                chain_name=chain.chain_name,
+                position=position,
+                method=method,
+                confidence=confidence,
+                reasons=reasons,
+                inputs_hash=_inputs_hash(override, prior, graph),
+            )
+        )
+    return rows
+
+
 def resolve_positions(
     chains: Iterable[ChainSpec],
     edges: Collection[Edge],
@@ -151,43 +207,7 @@ def resolve_positions(
     for chain in chains:
         members = {m.symbol: m for m in chain.members}
         chain_sizes[chain.chain_key] = len(members)
-        tw_symbols = {s for s, m in members.items() if m.market == "TW"}
-        chain_edges = [(a, b) for a, b in edges if a in tw_symbols and b in tw_symbols]
-
-        priors = {s: chain.tiers.get(m.sub_industry) for s, m in members.items()}
-
-        anchors: dict[str, Position] = {}
-        for symbol in sorted(members):
-            member = members[symbol]
-            override = override_by_key.get((symbol, member.market, chain.chain_key))
-            prior = priors[symbol]
-            if override is not None:
-                anchors[symbol] = override.position
-            elif prior is not None and _prior_confidence(prior) >= ANCHOR_MIN_CONFIDENCE:
-                anchors[symbol] = prior.position
-        signals = chain_signals(chain_edges, anchors)
-        for symbol in sorted(members):
-            member = members[symbol]
-            override = override_by_key.get((symbol, member.market, chain.chain_key))
-            prior = priors[symbol]
-            graph = signals.get(symbol) if member.market == "TW" else None
-            decided = _decide(chain.chain_key, override, prior, graph)
-            if decided is None:
-                continue
-            position, method, confidence, reasons = decided
-            rows.append(
-                ChainPosition(
-                    symbol=symbol,
-                    market=member.market,
-                    chain_key=chain.chain_key,
-                    chain_name=chain.chain_name,
-                    position=position,
-                    method=method,
-                    confidence=confidence,
-                    reasons=reasons,
-                    inputs_hash=_inputs_hash(override, prior, graph),
-                )
-            )
+        rows.extend(_chain_rows(chain, members, edges, override_by_key))
     return _mark_primary(rows, chain_sizes)
 
 

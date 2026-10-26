@@ -7,6 +7,7 @@ Only ids, labels, types and counts are produced - never report text. Capped at `
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Mapping
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
@@ -117,6 +118,71 @@ async def _supply_links(supply: SupplyChainStore, nodes: dict[str, GraphNode]) -
     ]
 
 
+async def _focus_entity_totals(
+    concepts: ConceptStore, symbol: str, market: MarketCode
+) -> tuple[dict[str, int], Entity | None]:
+    """The focus company's entity mention totals (its own name excluded) and its own entity."""
+    totals = await concepts.entity_totals(symbol) if market == "TW" else {}
+    self_entities = await concepts.entities_by_symbol([symbol])
+    own = self_entities.get((symbol, market))
+    if own is not None:  # a company's mention of its own name says nothing about its neighbours
+        totals = {eid: n for eid, n in totals.items() if eid != own.id}
+    return totals, own
+
+
+async def _rank_peers(
+    concepts: ConceptStore, symbol: str, shown: dict[str, int]
+) -> tuple[dict[str, dict[str, int]], list[str]]:
+    """Companies mentioning the shown entities (entity -> count per peer), best overlap first."""
+    peers_shared: dict[str, dict[str, int]] = defaultdict(dict)
+    for peer, eid, count in await concepts.mentions_of_entities(list(shown)):
+        if peer != symbol:
+            peers_shared[peer][eid] = count
+    peer_order = sorted(
+        peers_shared, key=lambda p: (-len(peers_shared[p]), -sum(peers_shared[p].values()), p)
+    )[:MAX_PEERS]
+    return peers_shared, peer_order
+
+
+def _add_entity_nodes(
+    focus_id: str,
+    ranked: list[tuple[str, int]],
+    entities: Mapping[str, Entity],
+    nodes: dict[str, GraphNode],
+    links: list[GraphLink],
+) -> dict[str, str]:
+    """Node + focus mention link per shown entity; returns entity id -> node id it landed on."""
+    target_of: dict[str, str] = {}
+    for eid, count in ranked:
+        entity = entities.get(eid)
+        if entity is None:
+            continue
+        mapped = _existing_company_node(entity, nodes)
+        if mapped is None:
+            mapped = entity_node_id(eid)
+            nodes[mapped] = _entity_node(entity, count)
+        target_of[eid] = mapped
+        links.append(GraphLink(source=focus_id, target=mapped, weight=float(count), kind="mention"))
+    return target_of
+
+
+def _peer_mention_links(
+    peer_order: list[str],
+    peers_shared: dict[str, dict[str, int]],
+    target_of: dict[str, str],
+) -> list[GraphLink]:
+    links: list[GraphLink] = []
+    for peer in peer_order:
+        peer_id = company_node_id(peer, "TW")
+        for eid, count in sorted(peers_shared[peer].items()):
+            target = target_of.get(eid)
+            if target is not None and target != peer_id:
+                links.append(
+                    GraphLink(source=peer_id, target=target, weight=float(count), kind="mention")
+                )
+    return links
+
+
 async def build_entity_graph(  # noqa: PLR0913 - two stores and the focus and two query knobs
     concepts: ConceptStore,
     supply: SupplyChainStore,
@@ -134,24 +200,14 @@ async def build_entity_graph(  # noqa: PLR0913 - two stores and the focus and tw
     supplier -> customer and exist only for verified, non-stale relations between shown companies.
     """
     cap = max(1, min(limit, MAX_ENTITIES))
-    totals = await concepts.entity_totals(symbol) if market == "TW" else {}
-    self_entities = await concepts.entities_by_symbol([symbol])
-    own = self_entities.get((symbol, market))
-    if own is not None:  # a company's mention of its own name says nothing about its neighbours
-        totals = {eid: n for eid, n in totals.items() if eid != own.id}
+    totals, own = await _focus_entity_totals(concepts, symbol, market)
     ranked = sorted(
         ((eid, n) for eid, n in totals.items() if n >= min_weight),
         key=lambda item: (-item[1], item[0]),
     )[:cap]
     shown = dict(ranked)
 
-    peers_shared: dict[str, dict[str, int]] = defaultdict(dict)
-    for peer, eid, count in await concepts.mentions_of_entities(list(shown)):
-        if peer != symbol:
-            peers_shared[peer][eid] = count
-    peer_order = sorted(
-        peers_shared, key=lambda p: (-len(peers_shared[p]), -sum(peers_shared[p].values()), p)
-    )[:MAX_PEERS]
+    peers_shared, peer_order = await _rank_peers(concepts, symbol, shown)
     peer_totals = await concepts.distinct_entity_counts(peer_order)
 
     entities = await concepts.get_entities(list(shown))
@@ -182,26 +238,8 @@ async def build_entity_graph(  # noqa: PLR0913 - two stores and the focus and tw
             )
         )
 
-    target_of: dict[str, str] = {}
-    for eid, count in ranked:
-        entity = entities.get(eid)
-        if entity is None:
-            continue
-        mapped = _existing_company_node(entity, nodes)
-        if mapped is None:
-            mapped = entity_node_id(eid)
-            nodes[mapped] = _entity_node(entity, count)
-        target_of[eid] = mapped
-        links.append(GraphLink(source=focus_id, target=mapped, weight=float(count), kind="mention"))
-    for peer in peer_order:
-        peer_id = company_node_id(peer, "TW")
-        for eid, count in sorted(peers_shared[peer].items()):
-            target = target_of.get(eid)
-            if target is not None and target != peer_id:
-                links.append(
-                    GraphLink(source=peer_id, target=target, weight=float(count), kind="mention")
-                )
-
+    target_of = _add_entity_nodes(focus_id, ranked, entities, nodes, links)
+    links.extend(_peer_mention_links(peer_order, peers_shared, target_of))
     links.extend(await _supply_links(supply, nodes))
     return EntityGraph(
         symbol=symbol, market=market, nodes=tuple(nodes.values()), links=tuple(links)

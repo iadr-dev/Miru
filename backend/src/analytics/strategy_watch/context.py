@@ -157,6 +157,45 @@ def sector_strength(
     }
 
 
+_EX_DIVIDEND_FIELDS = ("cash_ex_dividend_date", "stock_ex_dividend_date")
+
+
+def _add_dispositions(
+    reasons: dict[str, str], rows: Iterable[Mapping[str, object]], run_date: date_
+) -> None:
+    for row in rows:
+        start = as_date(row.get("period_start"))
+        end = as_date(row.get("period_end"))
+        symbol = row.get("symbol")
+        if isinstance(symbol, str) and start and end and start <= run_date <= end:
+            reasons[symbol] = "disposition"
+
+
+def _add_attention(
+    reasons: dict[str, str], rows: Iterable[Mapping[str, object]], as_of: date_
+) -> None:
+    for row in rows:
+        symbol = row.get("symbol")
+        if isinstance(symbol, str) and as_date(row.get("flagged_date")) == as_of:
+            reasons.setdefault(symbol, "attention")
+
+
+def _add_ex_dividends(
+    reasons: dict[str, str],
+    rows: Iterable[Mapping[str, object]],
+    run_date: date_,
+    until: date_,
+) -> None:
+    for row in rows:
+        symbol = row.get("symbol")
+        if not isinstance(symbol, str):
+            continue
+        for field in _EX_DIVIDEND_FIELDS:
+            day = as_date(row.get(field))
+            if day is not None and run_date <= day <= until:
+                reasons.setdefault(symbol, "ex_dividend")
+
+
 def excluded_symbols(  # noqa: PLR0913 - the dates plus one argument per event feed
     *,
     run_date: date_,
@@ -173,24 +212,9 @@ def excluded_symbols(  # noqa: PLR0913 - the dates plus one argument per event f
     - 除權息 from today through `ex_dividend_until`: the price gaps down by the dividend, which
       breaks every level computed from yesterday's close."""
     reasons: dict[str, str] = {}
-    for row in disposition_rows:
-        start = as_date(row.get("period_start"))
-        end = as_date(row.get("period_end"))
-        symbol = row.get("symbol")
-        if isinstance(symbol, str) and start and end and start <= run_date <= end:
-            reasons[symbol] = "disposition"
-    for row in attention_rows:
-        symbol = row.get("symbol")
-        if isinstance(symbol, str) and as_date(row.get("flagged_date")) == as_of:
-            reasons.setdefault(symbol, "attention")
-    for row in dividend_rows:
-        symbol = row.get("symbol")
-        if not isinstance(symbol, str):
-            continue
-        for field in ("cash_ex_dividend_date", "stock_ex_dividend_date"):
-            day = as_date(row.get(field))
-            if day is not None and run_date <= day <= ex_dividend_until:
-                reasons.setdefault(symbol, "ex_dividend")
+    _add_dispositions(reasons, disposition_rows, run_date)
+    _add_attention(reasons, attention_rows, as_of)
+    _add_ex_dividends(reasons, dividend_rows, run_date, ex_dividend_until)
     return reasons
 
 

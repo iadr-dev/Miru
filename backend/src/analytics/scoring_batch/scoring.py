@@ -155,6 +155,28 @@ class _CrossSectionalUniverses:
     dollar_volume: list[float]
 
 
+def _ma_series_or_empty(bars: Sequence[PriceBar]) -> dict[str, tuple[float | None, ...]]:
+    return _ma_series_for(bars) if bars else {f"ma{w}": () for w in _MA_WINDOWS}
+
+
+def _scored_flow_trend(rows: Sequence[InstitutionalFlowRow]) -> float | None:
+    scored = [row for row in rows if row.investor in _FLOW_INVESTORS]
+    return net_buy_20d_trend(scored, investors=_FLOW_INVESTORS)
+
+
+def _consensus_signals(
+    consensus: AnalystConsensus | None, price: float | None
+) -> tuple[float | None, float | None, float | None]:
+    """The US-only (eps-trend delta, growth estimate, price-target upside) raw signals."""
+    if consensus is None:
+        return None, None, None
+    return (
+        eps_trend_delta(consensus),
+        consensus.current_year_growth_estimate,
+        price_target_upside(consensus, price),
+    )
+
+
 def _assemble_signals_and_universes(  # noqa: PLR0913 — one keyword-only field per upstream frame
     universe: Sequence[str],
     *,
@@ -184,34 +206,22 @@ def _assemble_signals_and_universes(  # noqa: PLR0913 — one keyword-only field
         closes = [bar.close for bar in bars]
         raw_momentum[symbol] = twelve_minus_one_momentum(closes) if closes else None
         raw_dollar_volume[symbol] = average_dollar_volume(closes, [bar.volume for bar in bars])
-        ma_series: dict[str, tuple[float | None, ...]] = (
-            _ma_series_for(bars) if bars else {f"ma{w}": () for w in _MA_WINDOWS}
-        )
+        ma_series = _ma_series_or_empty(bars)
         ma_series_by_symbol[symbol] = ma_series
         price_by_symbol[symbol] = closes[-1] if closes else None
         ma50_by_symbol[symbol] = ma_series["ma50"][-1] if ma_series["ma50"] else None
 
-        symbol_flow_rows = [
-            row for row in flow_by_symbol.get(symbol, ()) if row.investor in _FLOW_INVESTORS
-        ]
-        flow_value_by_symbol[symbol] = net_buy_20d_trend(
-            symbol_flow_rows, investors=_FLOW_INVESTORS
-        )
+        flow_value_by_symbol[symbol] = _scored_flow_trend(flow_by_symbol.get(symbol, ()))
 
         lines = lines_by_symbol.get(symbol, [])
         mcap = market_value_by_symbol.get(symbol)
         metrics_by_symbol[symbol] = compute_fundamental_metrics(lines, market_value=mcap)
 
-        consensus = consensus_by_symbol.get(symbol)
-        raw_eps_trend_delta[symbol] = eps_trend_delta(consensus) if consensus is not None else None
-        raw_growth_estimate[symbol] = (
-            consensus.current_year_growth_estimate if consensus is not None else None
-        )
-        raw_price_target_upside[symbol] = (
-            price_target_upside(consensus, price_by_symbol[symbol])
-            if consensus is not None
-            else None
-        )
+        (
+            raw_eps_trend_delta[symbol],
+            raw_growth_estimate[symbol],
+            raw_price_target_upside[symbol],
+        ) = _consensus_signals(consensus_by_symbol.get(symbol), price_by_symbol[symbol])
 
     signals = _PerSymbolSignals(
         bars_by_symbol=bars_by_symbol,
