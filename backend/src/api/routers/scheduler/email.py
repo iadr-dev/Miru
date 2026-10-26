@@ -206,15 +206,36 @@ async def resend_webhook(
             message="Bad webhook signature.",
             retryable=False,
         )
+    parsed = _parse_event(body)
+    if parsed is None:
+        return {"suppressed": 0}
+    kind, payload = parsed
+    reason = _suppression_reason(kind, payload)
+    if reason is None:
+        return {"suppressed": 0}
+    event_id = str(payload.get("email_id") or "") or None
+    count = 0
+    for address in _recipient_addresses(payload):
+        await store.suppress_email(address=address, reason=reason, event_id=event_id)
+        count += 1
+    return {"suppressed": count}
+
+
+def _parse_event(body: bytes) -> tuple[object, dict[str, object]] | None:
+    """The event's `type` and its `data` object, or None for a body that is not JSON or has no
+    `data` object (acknowledged and ignored)."""
     try:
         event = cast("dict[str, object]", json.loads(body or b"{}"))
     except ValueError:
-        return {"suppressed": 0}
-    kind = event.get("type")
+        return None
     data = event.get("data")
     if not isinstance(data, dict):
-        return {"suppressed": 0}
-    payload = cast("dict[str, object]", data)
+        return None
+    return event.get("type"), cast("dict[str, object]", data)
+
+
+def _suppression_reason(kind: object, payload: dict[str, object]) -> str | None:
+    """Why the event's addresses must never be emailed again, or None for an event to ignore."""
     bounce = payload.get("bounce")
     hard_bounce = (
         kind == "email.bounced"
@@ -224,17 +245,19 @@ async def resend_webhook(
     # `email.suppressed`: Resend itself declined to send because the address is already on its own
     # suppression list — it is just as unreachable for us, so it is recorded the same way.
     if not (hard_bounce or kind in ("email.complained", "email.suppressed")):
-        return {"suppressed": 0}
-    reason = "complained" if kind == "email.complained" else "bounced"
+        return None
+    return "complained" if kind == "email.complained" else "bounced"
+
+
+def _recipient_addresses(payload: dict[str, object]) -> list[str]:
     recipients = payload.get("to")
-    count = 0
-    for address in cast("list[object]", recipients) if isinstance(recipients, list) else []:
-        if isinstance(address, str) and address.strip():
-            await store.suppress_email(
-                address=address, reason=reason, event_id=str(payload.get("email_id") or "") or None
-            )
-            count += 1
-    return {"suppressed": count}
+    if not isinstance(recipients, list):
+        return []
+    return [
+        address
+        for address in cast("list[object]", recipients)
+        if isinstance(address, str) and address.strip()
+    ]
 
 
 __all__ = ["router"]
