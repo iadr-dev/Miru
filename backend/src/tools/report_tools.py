@@ -766,6 +766,78 @@ class _EtfExtras(BaseModel):
     top10_weight_pct: float | None = None
 
 
+async def _etf_fetch(
+    router: DataAccessRouter, ctx: ToolContext, symbol: Symbol, cap: Capability
+) -> SourceResult:
+    return await router.fetch(cap, symbol, tls_policy=ctx.tls_policy)
+
+
+async def _trailing_return_extras(
+    router: DataAccessRouter, ctx: ToolContext, symbol: Symbol
+) -> dict[str, object]:
+    result = await _etf_fetch(router, ctx, symbol, Capability.ETF_TRAILING_RETURNS)
+    raw_returns = result.payload.get("returns")
+    returns = (
+        EtfTrailingReturns.model_validate(raw_returns) if isinstance(raw_returns, dict) else None
+    )
+    return {
+        "return_1y": returns.return_1y_pct if returns else None,
+        "return_3y": returns.return_3y_pct if returns else None,
+        "return_5y": returns.return_5y_pct if returns else None,
+    }
+
+
+async def _tw_fee_extras(
+    router: DataAccessRouter, ctx: ToolContext, symbol: Symbol
+) -> dict[str, object]:
+    extras: dict[str, object] = {}
+    info_result = await _etf_fetch(router, ctx, symbol, Capability.ETF_HOLDINGS)
+    expense_result = await _etf_fetch(router, ctx, symbol, Capability.ETF_EXPENSE_RATIO)
+    raw_info = info_result.payload.get("info")
+    raw_expense = expense_result.payload.get("info")
+    if isinstance(raw_info, dict):
+        extras["tracked"] = EtfFundInfo.model_validate(raw_info).tracked_index
+    if isinstance(raw_expense, dict):
+        expense = EtfExpenseInfo.model_validate(raw_expense)
+        extras["expense_pct"] = expense.total_expense_ratio_pct_approx
+        extras["management_fee_pct"] = expense.management_fee_pct
+        extras["custody_fee_pct"] = expense.custody_fee_pct
+    return extras
+
+
+async def _tw_premium_extras(
+    store: ParquetStore, ctx: ToolContext, symbol: Symbol
+) -> dict[str, object]:
+    extras: dict[str, object] = {}
+    premium = await GetEtfPremiumDiscountTool(store).run(
+        GetEtfPremiumDiscountInput(id=symbol.id, market=symbol.market, days=5), ctx
+    )
+    if isinstance(premium, GetEtfPremiumDiscountOutput):
+        extras["aum"] = premium.current_aum
+        if premium.rows:
+            extras["premium_pct"] = premium.rows[-1].premium_discount_pct
+    return extras
+
+
+async def _non_tw_extras(
+    router: DataAccessRouter, ctx: ToolContext, symbol: Symbol, profile: FundProfileRow | None
+) -> dict[str, object]:
+    extras: dict[str, object] = {}
+    holdings_result = await _etf_fetch(router, ctx, symbol, Capability.FUND_HOLDINGS)
+    raw_holdings = holdings_result.payload.get("holdings")
+    if isinstance(raw_holdings, list) and raw_holdings:
+        weights = [
+            FundHoldingRow.model_validate(row).weight
+            for row in cast("list[object]", raw_holdings)[:_TOP_HOLDINGS]
+        ]
+        total = sum(weights)
+        extras["top10_weight_pct"] = round(total * 100 if total <= _FRACTION_LIMIT else total, 1)
+    if profile is not None:
+        extras["aum"] = profile.total_assets
+        extras["tracked"] = profile.category
+    return extras
+
+
 async def _load_etf_extras(
     router: DataAccessRouter,
     store: ParquetStore | None,
@@ -773,56 +845,13 @@ async def _load_etf_extras(
     symbol: Symbol,
     profile: FundProfileRow | None,
 ) -> _EtfExtras:
-    is_tw = symbol.market is Market.TW
-
-    async def fetch(cap: Capability) -> SourceResult:
-        return await router.fetch(cap, symbol, tls_policy=ctx.tls_policy)
-
-    trailing_result = await fetch(Capability.ETF_TRAILING_RETURNS)
-    raw_returns = trailing_result.payload.get("returns")
-    returns = (
-        EtfTrailingReturns.model_validate(raw_returns) if isinstance(raw_returns, dict) else None
-    )
-    extras: dict[str, object] = {
-        "return_1y": returns.return_1y_pct if returns else None,
-        "return_3y": returns.return_3y_pct if returns else None,
-        "return_5y": returns.return_5y_pct if returns else None,
-    }
-    if is_tw:
-        info_result = await fetch(Capability.ETF_HOLDINGS)
-        expense_result = await fetch(Capability.ETF_EXPENSE_RATIO)
-        raw_info = info_result.payload.get("info")
-        raw_expense = expense_result.payload.get("info")
-        if isinstance(raw_info, dict):
-            extras["tracked"] = EtfFundInfo.model_validate(raw_info).tracked_index
-        if isinstance(raw_expense, dict):
-            expense = EtfExpenseInfo.model_validate(raw_expense)
-            extras["expense_pct"] = expense.total_expense_ratio_pct_approx
-            extras["management_fee_pct"] = expense.management_fee_pct
-            extras["custody_fee_pct"] = expense.custody_fee_pct
+    extras = await _trailing_return_extras(router, ctx, symbol)
+    if symbol.market is Market.TW:
+        extras.update(await _tw_fee_extras(router, ctx, symbol))
         if store is not None:
-            premium = await GetEtfPremiumDiscountTool(store).run(
-                GetEtfPremiumDiscountInput(id=symbol.id, market=symbol.market, days=5), ctx
-            )
-            if isinstance(premium, GetEtfPremiumDiscountOutput):
-                extras["aum"] = premium.current_aum
-                if premium.rows:
-                    extras["premium_pct"] = premium.rows[-1].premium_discount_pct
+            extras.update(await _tw_premium_extras(store, ctx, symbol))
     else:
-        holdings_result = await fetch(Capability.FUND_HOLDINGS)
-        raw_holdings = holdings_result.payload.get("holdings")
-        if isinstance(raw_holdings, list) and raw_holdings:
-            weights = [
-                FundHoldingRow.model_validate(row).weight
-                for row in cast("list[object]", raw_holdings)[:_TOP_HOLDINGS]
-            ]
-            total = sum(weights)
-            extras["top10_weight_pct"] = round(
-                total * 100 if total <= _FRACTION_LIMIT else total, 1
-            )
-        if profile is not None:
-            extras["aum"] = profile.total_assets
-            extras["tracked"] = profile.category
+        extras.update(await _non_tw_extras(router, ctx, symbol, profile))
     return _EtfExtras.model_validate(extras)
 
 

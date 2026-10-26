@@ -29,7 +29,7 @@ from __future__ import annotations
 import asyncio
 import functools
 from calendar.trading_days import TradingDayCalendar
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Iterable, Sequence
 from datetime import date as date_
 from datetime import timedelta
 from typing import Literal, cast
@@ -158,6 +158,36 @@ def _latest_price_partition_date(store: ParquetStore, market: str) -> date_ | No
     return max(dates) if dates else None
 
 
+def _passes_tw_stock_gates(row: dict[str, object], gates: GateDefaults) -> str | None:
+    """The symbol of a price row if it is a scoreable plain TW stock above the price/volume
+    floors, else None. A missing (non-numeric) close or volume is not gated on."""
+    symbol = row.get("symbol")
+    close = row.get("close")
+    volume = row.get("volume")
+    if not isinstance(symbol, str) or not symbol:
+        return None
+    # TW tab is stocks-only — TW-listed ETFs have their own "ETF" market tab
+    # (`SCREENER_MARKETS`), and warrants/derivatives are never scoreable at all.
+    if not is_scoreable_symbol(symbol, Market.TW):
+        return None
+    if classify_symbol_type(symbol, Market.TW) is not SymbolType.STOCK:
+        return None
+    if isinstance(close, int | float) and close < gates.min_price:
+        return None
+    if isinstance(volume, int | float) and volume < gates.min_avg_volume:
+        return None
+    return symbol
+
+
+def _latest_flagged_symbols(store: ParquetStore, dataset: str) -> set[str]:
+    """Symbols in the latest partition of a forward-only flag feed (empty without a partition)."""
+    dates = store.list_partition_dates(dataset, Market.TW.value)
+    if not dates:
+        return set()
+    rows = store.read_partition(dataset, Market.TW.value, max(dates))
+    return {s for s in (row.get("symbol") for row in rows) if isinstance(s, str)}
+
+
 def _gated_tw_universe(store: ParquetStore, gates: GateDefaults) -> tuple[set[str], date_ | None]:
     """The set of TW symbols surviving stage ⓐ, read from the latest already-ingested price
     partition plus the current day's attention/disposition feeds (forward-only feeds — see
@@ -167,47 +197,12 @@ def _gated_tw_universe(store: ParquetStore, gates: GateDefaults) -> tuple[set[st
     if as_of is None:
         return set(), None
     price_rows = store.read_partition(_PRICE_EOD_DATASET, Market.TW.value, as_of)
-    survivors: set[str] = set()
-    for row in price_rows:
-        symbol = row.get("symbol")
-        close = row.get("close")
-        volume = row.get("volume")
-        if not isinstance(symbol, str) or not symbol:
-            continue
-        # TW tab is stocks-only — TW-listed ETFs have their own "ETF" market tab
-        # (`SCREENER_MARKETS`), and warrants/derivatives are never scoreable at all.
-        if not is_scoreable_symbol(symbol, Market.TW):
-            continue
-        if classify_symbol_type(symbol, Market.TW) is not SymbolType.STOCK:
-            continue
-        if isinstance(close, int | float) and close < gates.min_price:
-            continue
-        if isinstance(volume, int | float) and volume < gates.min_avg_volume:
-            continue
-        survivors.add(symbol)
-
+    passed = (_passes_tw_stock_gates(row, gates) for row in price_rows)
+    survivors = {symbol for symbol in passed if symbol is not None}
     if gates.exclude_attention:
-        attention_dates = store.list_partition_dates(_ATTENTION_STOCKS_DATASET, Market.TW.value)
-        if attention_dates:
-            flagged = {
-                row.get("symbol")
-                for row in store.read_partition(
-                    _ATTENTION_STOCKS_DATASET, Market.TW.value, max(attention_dates)
-                )
-            }
-            survivors -= {s for s in flagged if isinstance(s, str)}
-
+        survivors -= _latest_flagged_symbols(store, _ATTENTION_STOCKS_DATASET)
     if gates.exclude_disposition:
-        disposition_dates = store.list_partition_dates(_DISPOSITION_EVENTS_DATASET, Market.TW.value)
-        if disposition_dates:
-            flagged = {
-                row.get("symbol")
-                for row in store.read_partition(
-                    _DISPOSITION_EVENTS_DATASET, Market.TW.value, max(disposition_dates)
-                )
-            }
-            survivors -= {s for s in flagged if isinstance(s, str)}
-
+        survivors -= _latest_flagged_symbols(store, _DISPOSITION_EVENTS_DATASET)
     return survivors, as_of
 
 
@@ -278,6 +273,52 @@ _ETF_RETURN_WINDOWS_TRADING_DAYS: dict[str, int] = {
 }
 
 
+def _closes_by_symbol(
+    raw_rows: Iterable[dict[str, object]],
+) -> dict[str, list[tuple[date_, float]]]:
+    """(date, close) points per symbol; rows lacking a str symbol, numeric close or date skipped."""
+    by_symbol: dict[str, list[tuple[date_, float]]] = {}
+    for row in raw_rows:
+        symbol = row.get("symbol")
+        close = row.get("close")
+        row_date = row.get("date")
+        if not (isinstance(symbol, str) and isinstance(close, int | float)):
+            continue
+        if not isinstance(row_date, date_):
+            continue
+        by_symbol.setdefault(symbol, []).append((row_date, float(close)))
+    return by_symbol
+
+
+def _window_returns(ordered: list[tuple[date_, float]]) -> dict[str, float]:
+    """Return (%) over each `_ETF_RETURN_WINDOWS_TRADING_DAYS` window of one date-ordered series;
+    a window too short for a return, or starting on a zero close, is omitted."""
+    last_close = ordered[-1][1]
+    windows: dict[str, float] = {}
+    for field_key, trading_days in _ETF_RETURN_WINDOWS_TRADING_DAYS.items():
+        window_slice = ordered[-(trading_days + 1) :]
+        if len(window_slice) < _MIN_RETURN_SERIES_LENGTH:
+            continue
+        first_close = window_slice[0][1]
+        if first_close:
+            windows[field_key] = (last_close / first_close - 1) * 100
+    return windows
+
+
+def _window_returns_by_symbol(
+    by_symbol: dict[str, list[tuple[date_, float]]],
+) -> dict[str, dict[str, float]]:
+    returns_by_symbol: dict[str, dict[str, float]] = {}
+    for symbol, series in by_symbol.items():
+        ordered = sorted(series)
+        if len(ordered) < _MIN_RETURN_SERIES_LENGTH:
+            continue
+        windows = _window_returns(ordered)
+        if windows:
+            returns_by_symbol[symbol] = windows
+    return returns_by_symbol
+
+
 def _etf_trailing_returns_by_symbol(
     store: ParquetStore, market: str, as_of: date_, etf_symbols: set[str]
 ) -> dict[str, dict[str, float]]:
@@ -296,35 +337,7 @@ def _etf_trailing_returns_by_symbol(
     year_start = calendar.shift_business_days(as_of, -longest_window)
     year_dates = calendar.business_days_between(year_start, as_of)
     raw_rows = store.read_range(_PRICE_EOD_DATASET, market, year_dates, symbols=tuple(etf_symbols))
-    by_symbol: dict[str, list[tuple[date_, float]]] = {}
-    for row in raw_rows:
-        symbol = row.get("symbol")
-        close = row.get("close")
-        row_date_raw = row.get("date")
-        if not (isinstance(symbol, str) and isinstance(close, int | float)):
-            continue
-        row_date = row_date_raw if isinstance(row_date_raw, date_) else None
-        if row_date is None:
-            continue
-        by_symbol.setdefault(symbol, []).append((row_date, float(close)))
-
-    returns_by_symbol: dict[str, dict[str, float]] = {}
-    for symbol, series in by_symbol.items():
-        ordered = sorted(series)
-        if len(ordered) < _MIN_RETURN_SERIES_LENGTH:
-            continue
-        last_close = ordered[-1][1]
-        windows: dict[str, float] = {}
-        for field_key, trading_days in _ETF_RETURN_WINDOWS_TRADING_DAYS.items():
-            window_slice = ordered[-(trading_days + 1) :]
-            if len(window_slice) < _MIN_RETURN_SERIES_LENGTH:
-                continue
-            first_close = window_slice[0][1]
-            if first_close:
-                windows[field_key] = (last_close / first_close - 1) * 100
-        if windows:
-            returns_by_symbol[symbol] = windows
-    return returns_by_symbol
+    return _window_returns_by_symbol(_closes_by_symbol(raw_rows))
 
 
 def _etf_aum_by_symbol(store: ParquetStore) -> dict[str, float]:
@@ -749,6 +762,93 @@ async def _matched_symbols_for_bulk_source(  # noqa: PLR0913, PLR0917 — one ar
     }
 
 
+class _TwSetup:
+    """One request's stage-ⓑ state for TW: the inputs every condition source reads plus the lazy
+    per-request caches (each whole-market read happens at most once, on first use)."""
+
+    def __init__(
+        self,
+        gated_universe: set[str],
+        tag_reader: ParquetMarketDataReader,
+        session_factory: async_sessionmaker[AsyncSession],
+        parquet_store: ParquetStore,
+    ) -> None:
+        self._gated = gated_universe
+        self._tag_reader = tag_reader
+        self._session_factory = session_factory
+        self._store = parquet_store
+        self._scores_cache: tuple[ScoreResult, ...] | None = None
+        self._bulk_cache: dict[str, dict[str, dict[str, float]] | None] = {}
+
+    def tag_matches(self, condition: ScreenerConditionInput) -> set[str]:
+        partition_date = _latest_tw_flag_date(self._tag_reader)
+        if partition_date is None:
+            return set()
+        rows = self._tag_reader.read_partition(
+            SCREENER_FLAGS_DATASET, Market.TW.value, partition_date
+        )
+        by_tag, _universe = _flag_symbols_by_tag(rows)
+        return by_tag.get(condition.factor, set()) & self._gated
+
+    def _bulk_loader(self, kind: str) -> Callable[[], Awaitable[dict[str, dict[str, float]]]]:
+        store = self._store
+        if kind == "valuation":
+            return lambda: anyio.to_thread.run_sync(
+                _latest_valuation_ratios_by_symbol, store, Market.TW.value
+            )
+        if kind == "fundamentals":
+            return lambda: _bulk_by_day(
+                "fundamentals",
+                Market.TW.value,
+                _fundamentals_as_of(store, Market.TW.value),
+                lambda: _latest_fundamentals_by_symbol(store, Market.TW.value),
+            )
+        return lambda: _bulk_by_day(
+            "technical",
+            Market.TW.value,
+            _latest_price_partition_date(store, Market.TW.value),
+            lambda: _latest_technical_indicators_by_symbol(store, Market.TW.value),
+        )
+
+    @staticmethod
+    def _bulk_kind(source_field: str) -> str | None:
+        if source_field in _VALUATION_RATIO_SOURCE_FIELDS:
+            return "valuation"
+        if source_field in _FUNDAMENTALS_BATCH_SOURCE_FIELDS:
+            return "fundamentals"
+        if source_field in _TECHNICAL_INDICATOR_SOURCE_FIELDS:
+            return "technical"
+        return None
+
+    async def _score_matches(
+        self, condition: ScreenerConditionInput, field: FactorField
+    ) -> set[str]:
+        if self._scores_cache is None:
+            async with self._session_factory() as session:
+                self._scores_cache = await get_all_scores_for_date(
+                    session, market=Market.TW, profile=ScoreProfile.SWING
+                )
+        source_field = field.source_field
+        return {
+            result.symbol
+            for result in self._scores_cache
+            if result.symbol in self._gated
+            and _condition_holds(
+                _score_field_value(result, source_field), condition.op, condition.value
+            )
+        }
+
+    async def numeric_matches(
+        self, condition: ScreenerConditionInput, field: FactorField
+    ) -> set[str]:
+        kind = self._bulk_kind(field.source_field)
+        if kind is None:
+            return await self._score_matches(condition, field)
+        return await _matched_symbols_for_bulk_source(
+            condition, field, self._gated, self._bulk_cache, kind, self._bulk_loader(kind)
+        )
+
+
 async def _setup_tw(  # noqa: PLR0913 — one arg per real input this stage genuinely reads
     *,
     conditions: tuple[ScreenerConditionInput, ...],
@@ -766,97 +866,22 @@ async def _setup_tw(  # noqa: PLR0913 — one arg per real input this stage genu
     catalog = get_factor_catalog(Market.TW.value)
     numeric_by_key = {field.key: field for field in catalog.fields}
     known_tags = tag_keys()
+    setup = _TwSetup(gated_universe, tag_reader, session_factory, parquet_store)
 
     per_condition: list[set[str]] = []
     labels: list[str] = []
     degraded: list[str] = []
 
-    scores_cache: tuple[ScoreResult, ...] | None = None
-    bulk_cache: dict[str, dict[str, dict[str, float]] | None] = {}
-
     for condition in conditions:
         field = numeric_by_key.get(condition.factor)
         if condition.factor in known_tags:
-            partition_date = _latest_tw_flag_date(tag_reader)
-            if partition_date is None:
-                per_condition.append(set())
-                labels.append(condition.factor)
-                continue
-            rows = tag_reader.read_partition(
-                SCREENER_FLAGS_DATASET, Market.TW.value, partition_date
-            )
-            by_tag, _universe = _flag_symbols_by_tag(rows)
-            per_condition.append(by_tag.get(condition.factor, set()) & gated_universe)
-            labels.append(condition.factor)
-        elif field is not None and field.source_field in _VALUATION_RATIO_SOURCE_FIELDS:
-            per_condition.append(
-                await _matched_symbols_for_bulk_source(
-                    condition,
-                    field,
-                    gated_universe,
-                    bulk_cache,
-                    "valuation",
-                    lambda: anyio.to_thread.run_sync(
-                        _latest_valuation_ratios_by_symbol, parquet_store, Market.TW.value
-                    ),
-                )
-            )
-            labels.append(condition.factor)
-        elif field is not None and field.source_field in _FUNDAMENTALS_BATCH_SOURCE_FIELDS:
-            per_condition.append(
-                await _matched_symbols_for_bulk_source(
-                    condition,
-                    field,
-                    gated_universe,
-                    bulk_cache,
-                    "fundamentals",
-                    lambda: _bulk_by_day(
-                        "fundamentals",
-                        Market.TW.value,
-                        _fundamentals_as_of(parquet_store, Market.TW.value),
-                        lambda: _latest_fundamentals_by_symbol(parquet_store, Market.TW.value),
-                    ),
-                )
-            )
-            labels.append(condition.factor)
-        elif field is not None and field.source_field in _TECHNICAL_INDICATOR_SOURCE_FIELDS:
-            per_condition.append(
-                await _matched_symbols_for_bulk_source(
-                    condition,
-                    field,
-                    gated_universe,
-                    bulk_cache,
-                    "technical",
-                    lambda: _bulk_by_day(
-                        "technical",
-                        Market.TW.value,
-                        _latest_price_partition_date(parquet_store, Market.TW.value),
-                        lambda: _latest_technical_indicators_by_symbol(
-                            parquet_store, Market.TW.value
-                        ),
-                    ),
-                )
-            )
-            labels.append(condition.factor)
+            per_condition.append(setup.tag_matches(condition))
         elif field is not None:
-            if scores_cache is None:
-                async with session_factory() as session:
-                    scores_cache = await get_all_scores_for_date(
-                        session, market=Market.TW, profile=ScoreProfile.SWING
-                    )
-            source_field = field.source_field
-            matched = {
-                result.symbol
-                for result in scores_cache
-                if result.symbol in gated_universe
-                and _condition_holds(
-                    _score_field_value(result, source_field), condition.op, condition.value
-                )
-            }
-            per_condition.append(matched)
-            labels.append(condition.factor)
+            per_condition.append(await setup.numeric_matches(condition, field))
         else:
             degraded.append(f"unknown TW factor key: {condition.factor}")
+            continue
+        labels.append(condition.factor)
 
     matches_by_symbol = _combine(per_condition, labels, match)
     return matches_by_symbol, degraded
