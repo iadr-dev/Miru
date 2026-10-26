@@ -175,7 +175,7 @@ def redirect_uri_matches(
         validate_redirect_uri(presented, extra_schemes=extra_schemes)
         presented_parts = urlsplit(presented)
         port = presented_parts.port
-    except (RedirectUriError, ValueError):
+    except ValueError:
         return False
     for candidate in registered:
         if candidate == presented:

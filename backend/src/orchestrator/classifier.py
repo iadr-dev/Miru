@@ -233,7 +233,7 @@ class IntentClassifier:
                     )
                 )
             return _parse_routing(response.text or "", self._registry)
-        except (ValueError, json.JSONDecodeError) as exc:
+        except ValueError as exc:
             logger.warning("classifier_parse_failed_falling_back", error=str(exc))
             return _keyword_fallback(message, self._registry)
         except Exception as exc:

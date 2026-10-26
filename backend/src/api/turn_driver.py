@@ -269,7 +269,7 @@ async def _finish_when_done(
         await asyncio.wait_for(
             asyncio.shield(runner), timeout=state.settings.unattended_turn_limit_seconds
         )
-    except (TimeoutError, asyncio.CancelledError, Exception):
+    except (asyncio.CancelledError, Exception):
         logger.warning("detached_turn_stopped", turn_id=turn_id)
     await _finish_turn(state, event_bus, running, runner, turn_id, thread_id, cancel=True)
 
