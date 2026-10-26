@@ -72,6 +72,14 @@ class RequestPolicy:
     backoff_seconds: float = 3.0
 
 
+@dataclass(frozen=True)
+class _Reader[T]:
+    """What to ask for (`Accept`) and how to turn the successful response into a `T`."""
+
+    accept: str
+    read: Callable[[httpx.Response], T]
+
+
 class ThrottledJsonClient:
     """GET a JSON object from one host, politely."""
 
@@ -98,13 +106,47 @@ class ThrottledJsonClient:
         """The parsed JSON object, or `ExchangeFetchError`. Every attempt waits for the throttle;
         429, 5xx, timeouts, transport errors and a non-JSON body (the block page) are retried
         with a growing pause, anything else (403, 404) is not."""
+        return await self._get(
+            url,
+            params,
+            label=label,
+            tls_policy=tls_policy,
+            reader=_Reader("application/json", self._read_json),
+        )
+
+    async def get_text(
+        self, url: str, *, label: str, tls_policy: TLSPolicy, encoding: str = "utf-8"
+    ) -> str:
+        """The body of a page decoded as `encoding` (a legacy page: Big5), with the same
+        throttle, timeout, retry and error rules as `get_json`. A body that does not decode is
+        the block page and is retried like any other transient failure."""
+
+        def read(response: httpx.Response) -> str:
+            try:
+                return response.content.decode(encoding)
+            except UnicodeDecodeError as exc:
+                raise _TransientError(f"response is not {encoding} text") from exc
+
+        return await self._get(
+            url, {}, label=label, tls_policy=tls_policy, reader=_Reader("text/html", read)
+        )
+
+    async def _get[T](
+        self,
+        url: str,
+        params: dict[str, str],
+        *,
+        label: str,
+        tls_policy: TLSPolicy,
+        reader: _Reader[T],
+    ) -> T:
         reason = "no attempt made"
         for attempt in range(1, self._max_attempts + 1):
             await self._throttle.wait_turn()
             started = self._clock()
             retry_after: float | None = None
             try:
-                body = await self._once(url, params, tls_policy)
+                body = await self._once(url, params, tls_policy, reader)
             except _TransientError as exc:
                 reason = exc.reason
                 retry_after = exc.retry_after
@@ -129,12 +171,18 @@ class ThrottledJsonClient:
                 await self._sleep(max(pause, retry_after or 0.0))
         raise ExchangeFetchError(f"{self._host} {label}: {reason} after {self._max_attempts} tries")
 
-    async def _once(self, url: str, params: dict[str, str], tls_policy: TLSPolicy) -> JsonObject:
+    async def _once[T](
+        self,
+        url: str,
+        params: dict[str, str],
+        tls_policy: TLSPolicy,
+        reader: _Reader[T],
+    ) -> T:
         try:
             async with build_async_client(
                 tls_policy=tls_policy,
                 timeout=self._timeout,
-                headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
+                headers={"User-Agent": USER_AGENT, "Accept": reader.accept},
             ) as client:
                 response = await client.get(url, params=params)
         except httpx.TimeoutException as exc:
@@ -146,6 +194,9 @@ class ThrottledJsonClient:
             raise _TransientError(f"HTTP {status}", _retry_after(response))
         if status != _HTTP_OK:
             raise ExchangeFetchError(f"{self._host}: HTTP {status}")
+        return reader.read(response)
+
+    def _read_json(self, response: httpx.Response) -> JsonObject:
         try:
             body: object = response.json()
         except (json.JSONDecodeError, UnicodeDecodeError) as exc:
