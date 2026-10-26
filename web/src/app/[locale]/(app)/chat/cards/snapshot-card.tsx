@@ -170,6 +170,95 @@ function DepthColumn({
   );
 }
 
+type CardTranslator = ReturnType<typeof useTranslations>;
+
+function asRecord(data: unknown): Record<string, unknown> | null {
+  return data && typeof data === "object" ? (data as Record<string, unknown>) : null;
+}
+
+/** The scalar fields worth a cell in the stat grid, in payload order. */
+type StatEntry = [string, string | number | boolean];
+
+function statEntries(entity: Record<string, unknown>): StatEntry[] {
+  const stats: StatEntry[] = [];
+  for (const [key, value] of Object.entries(entity)) {
+    const isScalar =
+      typeof value === "string" || typeof value === "number" || typeof value === "boolean";
+    if (isScalar && !SKIP_KEYS.has(key)) stats.push([key, value]);
+  }
+  return stats;
+}
+
+function stringOrEmpty(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+/** `get_stock_score` (and any future cache-only read) reports `found: false` with a plain-
+ * language `message` when the underlying compute hasn't run yet for this symbol — e.g. "No
+ * score has been computed yet…" — rather than fabricating a stale/partial number. Without this
+ * check, the raw leftover scalar fields (`profile`, `message`) would fall through to the
+ * generic stat grid and render as confusing raw key/value noise instead of an honest
+ * "not yet available" note. */
+function NotFoundNote({ message }: Readonly<{ message: unknown }>): ReactNode {
+  if (typeof message !== "string" || message.length === 0) return null;
+  return <p className="surface-card mt-3 p-4 text-[13px] text-[var(--text-muted)]">{message}</p>;
+}
+
+function StatGrid({
+  stats,
+  t,
+  locale,
+}: Readonly<{
+  stats: [string, string | number | boolean][];
+  t: CardTranslator;
+  locale: string;
+}>): ReactNode {
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      {stats.map(([key, value]) => (
+        <div key={key} className="min-w-0">
+          <p className="truncate text-[11px] text-[var(--text-muted)]">{fieldLabel(t, key)}</p>
+          <p
+            className={
+              typeof value === "number"
+                ? "font-num text-[14px] text-[var(--text)] tabular-nums"
+                : "truncate text-[14px] text-[var(--text)]"
+            }
+            title={
+              typeof value === "number" && COMPACT_NUMBER_FIELDS.has(key)
+                ? formatNumber(asNumber(value), locale)
+                : undefined
+            }
+          >
+            {typeof value === "number"
+              ? formatNumericField(key, value, locale)
+              : valueLabel(t, key, String(value))}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MissingFields({
+  fields,
+  t,
+}: Readonly<{ fields: string[]; t: CardTranslator }>): ReactNode {
+  if (fields.length === 0) return null;
+  return (
+    <div className="mt-3 flex flex-wrap gap-1.5">
+      {fields.map((field) => (
+        <span
+          key={field}
+          className="rounded-[var(--radius-pill)] bg-[var(--surface-2)] px-2 py-0.5 text-[11px] text-[var(--text-muted)]"
+        >
+          {t("fieldUnavailable", { field: fieldLabel(t, field) })}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 /** A single flat entity at one point in time (`price_quote`, `live_quote_snapshot`,
  * `company_profile`, `etf_fund_info`, `stock_score`) — every one of these nests its real payload
  * one level down (`bar`, `snapshot`, `info`, `result`, or the top level itself for
@@ -181,17 +270,9 @@ export function SnapshotCard({
   const locale = useLocale();
   const t = useTranslations("chat.cards");
 
-  // `get_stock_score` (and any future cache-only read) reports `found: false` with a plain-
-  // language `message` when the underlying compute hasn't run yet for this symbol — e.g. "No
-  // score has been computed yet…" — rather than fabricating a stale/partial number. Without this
-  // check, the raw leftover scalar fields (`profile`, `message`) would fall through to the
-  // generic stat grid below and render as confusing raw key/value noise instead of an honest
-  // "not yet available" note.
-  if (data && typeof data === "object" && (data as Record<string, unknown>).found === false) {
-    const message = (data as Record<string, unknown>).message;
-    return typeof message === "string" && message.length > 0 ? (
-      <p className="surface-card mt-3 p-4 text-[13px] text-[var(--text-muted)]">{message}</p>
-    ) : null;
+  const record = asRecord(data);
+  if (record !== null && record.found === false) {
+    return <NotFoundNote message={record.message} />;
   }
 
   const entity = unwrapEntity(data);
@@ -203,12 +284,8 @@ export function SnapshotCard({
   const missing = Array.isArray(entity.missing_fields)
     ? entity.missing_fields.filter((v): v is string => typeof v === "string")
     : [];
-  const stats = Object.entries(entity).filter(
-    ([key, value]) =>
-      !SKIP_KEYS.has(key) &&
-      (typeof value === "string" || typeof value === "number" || typeof value === "boolean"),
-  );
   const typeLabel = cardTypeLabel(t, card_type);
+  const hasDepth = typeof entity.best_bid === "string" || typeof entity.best_ask === "string";
 
   return (
     <div className="surface-card mt-3 p-4 sm:p-5">
@@ -218,51 +295,18 @@ export function SnapshotCard({
         </span>
         <span className="text-[11px] text-[var(--text-muted)]">{typeLabel}</span>
       </div>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        {stats.map(([key, value]) => (
-          <div key={key} className="min-w-0">
-            <p className="truncate text-[11px] text-[var(--text-muted)]">{fieldLabel(t, key)}</p>
-            <p
-              className={
-                typeof value === "number"
-                  ? "font-num text-[14px] text-[var(--text)] tabular-nums"
-                  : "truncate text-[14px] text-[var(--text)]"
-              }
-              title={
-                typeof value === "number" && COMPACT_NUMBER_FIELDS.has(key)
-                  ? formatNumber(asNumber(value), locale)
-                  : undefined
-              }
-            >
-              {typeof value === "number"
-                ? formatNumericField(key, value, locale)
-                : valueLabel(t, key, String(value))}
-            </p>
-          </div>
-        ))}
-      </div>
-      {typeof entity.best_bid === "string" || typeof entity.best_ask === "string" ? (
+      <StatGrid stats={statEntries(entity)} t={t} locale={locale} />
+      {hasDepth ? (
         <FiveTierDepthChart
-          bestBid={typeof entity.best_bid === "string" ? entity.best_bid : ""}
-          bestBidVolume={typeof entity.best_bid_volume === "string" ? entity.best_bid_volume : ""}
-          bestAsk={typeof entity.best_ask === "string" ? entity.best_ask : ""}
-          bestAskVolume={typeof entity.best_ask_volume === "string" ? entity.best_ask_volume : ""}
+          bestBid={stringOrEmpty(entity.best_bid)}
+          bestBidVolume={stringOrEmpty(entity.best_bid_volume)}
+          bestAsk={stringOrEmpty(entity.best_ask)}
+          bestAskVolume={stringOrEmpty(entity.best_ask_volume)}
           t={t}
           locale={locale}
         />
       ) : null}
-      {missing.length > 0 ? (
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {missing.map((field) => (
-            <span
-              key={field}
-              className="rounded-[var(--radius-pill)] bg-[var(--surface-2)] px-2 py-0.5 text-[11px] text-[var(--text-muted)]"
-            >
-              {t("fieldUnavailable", { field: fieldLabel(t, field) })}
-            </span>
-          ))}
-        </div>
-      ) : null}
+      <MissingFields fields={missing} t={t} />
     </div>
   );
 }

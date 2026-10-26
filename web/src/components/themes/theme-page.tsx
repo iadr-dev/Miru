@@ -14,7 +14,7 @@ import { useThemeMembers, useThemes } from "@/hooks/use-themes";
 import { Link } from "@/i18n/navigation";
 import { cn } from "@/lib/cn";
 import type { Market } from "@/types/settings";
-import type { ThemeMember, ThemeSummary } from "@/types/theme";
+import type { ThemeMember, ThemeMembersResponse, ThemeSummary } from "@/types/theme";
 
 const CHAIN_COLUMNS = ["upstream", "midstream", "downstream"] as const;
 type ChainColumn = (typeof CHAIN_COLUMNS)[number];
@@ -56,12 +56,34 @@ function marketOf(member: ThemeMember): Market {
   return member.market === "US" ? "US" : "TW";
 }
 
+function visibleMembers(board: Board, limit: number): ThemeMember[] {
+  const lists = [...CHAIN_COLUMNS.map((column) => board.columns[column]), board.related];
+  return lists.flatMap((list) => list.slice(0, limit));
+}
+
+function codesIn(members: readonly ThemeMember[], market: Market): string[] {
+  return [...new Set(members.filter((member) => marketOf(member) === market).map((m) => m.symbol))];
+}
+
+function quoteOf(
+  member: ThemeMember,
+  twQuotes: readonly SymbolQuote[],
+  usQuotes: readonly SymbolQuote[],
+): SymbolQuote | undefined {
+  const quotes = marketOf(member) === "TW" ? twQuotes : usQuotes;
+  return quotes.find((q) => q.code === member.symbol);
+}
+
+/** The theme's own related keys, else the ones the theme list carries for it. */
+function relatedKeysOf(data: ThemeMembersResponse, summary: ThemeSummary | undefined): string[] {
+  return data.related_keys.length > 0 ? data.related_keys : (summary?.related_keys ?? []);
+}
+
 /** A concept theme: what it is, the themes next to it, and its members laid out along the chain
  * (上游 → 中游 → 下游) with the latest daily move beside each, plus the companies that belong to
  * the theme without a place on the chain. */
 export function ThemePage({ themeKey }: { readonly themeKey: string }): ReactNode {
   const t = useTranslations("themes.page");
-  const tLock = useTranslations("featureLock");
   const membersQuery = useThemeMembers(themeKey);
   const themesQuery = useThemes("concept");
   const [expanded, setExpanded] = useState(false);
@@ -69,15 +91,9 @@ export function ThemePage({ themeKey }: { readonly themeKey: string }): ReactNod
   const members = membersQuery.data?.members;
   const board = useMemo(() => splitBoard(members ?? []), [members]);
   const limit = expanded ? Number.POSITIVE_INFINITY : COLLAPSED_COUNT;
-  const visible = useMemo(() => {
-    const lists = [...CHAIN_COLUMNS.map((column) => board.columns[column]), board.related];
-    return lists.flatMap((list) => list.slice(0, limit));
-  }, [board, limit]);
-  const codesIn = (market: Market): string[] => [
-    ...new Set(visible.filter((member) => marketOf(member) === market).map((m) => m.symbol)),
-  ];
-  const twQuotes = useSymbolQuotes(codesIn("TW"), "TW");
-  const usQuotes = useSymbolQuotes(codesIn("US"), "US");
+  const visible = useMemo(() => visibleMembers(board, limit), [board, limit]);
+  const twQuotes = useSymbolQuotes(codesIn(visible, "TW"), "TW");
+  const usQuotes = useSymbolQuotes(codesIn(visible, "US"), "US");
 
   if (membersQuery.isLoading) {
     return <ThemePageSkeleton />;
@@ -87,109 +103,165 @@ export function ThemePage({ themeKey }: { readonly themeKey: string }): ReactNod
   }
   const data = membersQuery.data;
   if (!data?.found) {
-    return (
-      <Card as="section">
-        <EmptyState
-          icon={<TagIcon size={20} weight="regular" />}
-          title={t("notFoundTitle")}
-          description={t("notFoundBody")}
-          action={<BackLink />}
-        />
-      </Card>
-    );
+    return <ThemeNotFound />;
   }
 
   const summaries = themesQuery.data?.themes ?? [];
   const summary = summaries.find((theme) => theme.key === themeKey);
   const description = data.description || summary?.description || "";
-  const relatedKeys =
-    data.related_keys.length > 0 ? data.related_keys : (summary?.related_keys ?? []);
-  const hasChain = CHAIN_COLUMNS.some((column) => board.columns[column].length > 0);
-  const quoteFor = (member: ThemeMember): SymbolQuote | undefined =>
-    (marketOf(member) === "TW" ? twQuotes : usQuotes).quotes.find((q) => q.code === member.symbol);
-  const quotesPending = twQuotes.isLoading || usQuotes.isLoading;
   const hiddenCount = data.members.length - visible.length;
-  const canToggle = expanded || hiddenCount > 0;
 
   return (
     <div className="@container flex flex-col gap-4">
       <BackLink />
-      <header className="flex flex-col gap-2">
-        <h1 className="break-words font-semibold text-[22px] text-[var(--text)] leading-tight">
-          {data.name_zh}
-          {data.name_en ? (
-            <span className="ml-2 font-normal text-[14px] text-[var(--text-muted)]">
-              {data.name_en}
-            </span>
-          ) : null}
-        </h1>
-        {description ? (
-          <p className="max-w-prose text-[14px] text-[var(--text-muted)] leading-relaxed">
-            {description}
-          </p>
-        ) : null}
-        <p className="font-num text-[12px] text-[var(--text-muted)] tabular-nums">
-          {t("memberCount", { count: data.member_count })}
-        </p>
-        <RelatedThemes keys={relatedKeys} summaries={summaries} />
-      </header>
+      <ThemeHeader
+        data={data}
+        description={description}
+        relatedKeys={relatedKeysOf(data, summary)}
+        summaries={summaries}
+      />
 
       {data.members.length === 0 ? (
         <Card as="section">
           <EmptyState compact title={t("emptyTitle")} description={t("emptyBody")} />
         </Card>
       ) : (
-        <>
-          {hasChain ? (
-            <section aria-label={t("boardAria")} className="flex flex-col gap-2">
-              <h2 className="font-semibold text-[15px] text-[var(--text)]">{t("boardTitle")}</h2>
-              <div className="grid grid-cols-1 gap-3 @2xl:grid-cols-3">
-                {CHAIN_COLUMNS.map((column) => (
-                  <BoardColumn
-                    key={column}
-                    column={column}
-                    members={board.columns[column].slice(0, limit)}
-                    quoteFor={quoteFor}
-                    pending={quotesPending}
-                  />
-                ))}
-              </div>
-            </section>
-          ) : null}
-          {board.related.length > 0 ? (
-            <section aria-label={t("relatedCompanies")} className="flex flex-col gap-2">
-              <h2 className="font-semibold text-[15px] text-[var(--text)]">
-                {t("relatedCompanies")}
-              </h2>
-              <ul className="grid grid-cols-1 gap-2 @md:grid-cols-2 @3xl:grid-cols-3">
-                {board.related.slice(0, limit).map((member) => (
-                  <li key={`${member.market}-${member.symbol}`} className="min-w-0">
-                    <MemberCard member={member} quote={quoteFor(member)} pending={quotesPending} />
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ) : null}
-          {data.locked && data.hidden_count > 0 ? (
-            <FeatureLock
-              message={tLock("themePage.more", { count: data.hidden_count })}
-              benefit={tLock("themePage.benefit")}
-            />
-          ) : null}
-          {canToggle ? (
-            <button
-              type="button"
-              aria-expanded={expanded}
-              onClick={() => setExpanded((current) => !current)}
-              className="min-h-11 w-fit font-medium text-[13px] text-[var(--accent-text)] hover:underline focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
-            >
-              {expanded ? t("showFewer") : t("showAll", { count: hiddenCount })}
-            </button>
-          ) : null}
-        </>
+        <ThemeMembers
+          data={data}
+          board={board}
+          limit={limit}
+          quoteFor={(member) => quoteOf(member, twQuotes.quotes, usQuotes.quotes)}
+          pending={twQuotes.isLoading || usQuotes.isLoading}
+          expanded={expanded}
+          hiddenCount={hiddenCount}
+          onToggle={() => setExpanded((current) => !current)}
+        />
       )}
       <p className="text-[11.5px] text-[var(--text-muted)] leading-relaxed">{t("quoteNote")}</p>
     </div>
+  );
+}
+
+function ThemeNotFound(): ReactNode {
+  const t = useTranslations("themes.page");
+  return (
+    <Card as="section">
+      <EmptyState
+        icon={<TagIcon size={20} weight="regular" />}
+        title={t("notFoundTitle")}
+        description={t("notFoundBody")}
+        action={<BackLink />}
+      />
+    </Card>
+  );
+}
+
+function ThemeHeader({
+  data,
+  description,
+  relatedKeys,
+  summaries,
+}: {
+  readonly data: ThemeMembersResponse;
+  readonly description: string;
+  readonly relatedKeys: readonly string[];
+  readonly summaries: readonly ThemeSummary[];
+}): ReactNode {
+  const t = useTranslations("themes.page");
+  return (
+    <header className="flex flex-col gap-2">
+      <h1 className="break-words font-semibold text-[22px] text-[var(--text)] leading-tight">
+        {data.name_zh}
+        {data.name_en ? (
+          <span className="ml-2 font-normal text-[14px] text-[var(--text-muted)]">
+            {data.name_en}
+          </span>
+        ) : null}
+      </h1>
+      {description ? (
+        <p className="max-w-prose text-[14px] text-[var(--text-muted)] leading-relaxed">
+          {description}
+        </p>
+      ) : null}
+      <p className="font-num text-[12px] text-[var(--text-muted)] tabular-nums">
+        {t("memberCount", { count: data.member_count })}
+      </p>
+      <RelatedThemes keys={relatedKeys} summaries={summaries} />
+    </header>
+  );
+}
+
+/** The chain board, the related-companies strip, the Pro-preview row and the show-all toggle. */
+function ThemeMembers({
+  data,
+  board,
+  limit,
+  quoteFor,
+  pending,
+  expanded,
+  hiddenCount,
+  onToggle,
+}: {
+  readonly data: ThemeMembersResponse;
+  readonly board: Board;
+  readonly limit: number;
+  readonly quoteFor: (member: ThemeMember) => SymbolQuote | undefined;
+  readonly pending: boolean;
+  readonly expanded: boolean;
+  readonly hiddenCount: number;
+  readonly onToggle: () => void;
+}): ReactNode {
+  const t = useTranslations("themes.page");
+  const tLock = useTranslations("featureLock");
+  const hasChain = CHAIN_COLUMNS.some((column) => board.columns[column].length > 0);
+  const canToggle = expanded || hiddenCount > 0;
+  return (
+    <>
+      {hasChain ? (
+        <section aria-label={t("boardAria")} className="flex flex-col gap-2">
+          <h2 className="font-semibold text-[15px] text-[var(--text)]">{t("boardTitle")}</h2>
+          <div className="grid grid-cols-1 gap-3 @2xl:grid-cols-3">
+            {CHAIN_COLUMNS.map((column) => (
+              <BoardColumn
+                key={column}
+                column={column}
+                members={board.columns[column].slice(0, limit)}
+                quoteFor={quoteFor}
+                pending={pending}
+              />
+            ))}
+          </div>
+        </section>
+      ) : null}
+      {board.related.length > 0 ? (
+        <section aria-label={t("relatedCompanies")} className="flex flex-col gap-2">
+          <h2 className="font-semibold text-[15px] text-[var(--text)]">{t("relatedCompanies")}</h2>
+          <ul className="grid grid-cols-1 gap-2 @md:grid-cols-2 @3xl:grid-cols-3">
+            {board.related.slice(0, limit).map((member) => (
+              <li key={`${member.market}-${member.symbol}`} className="min-w-0">
+                <MemberCard member={member} quote={quoteFor(member)} pending={pending} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+      {data.locked && data.hidden_count > 0 ? (
+        <FeatureLock
+          message={tLock("themePage.more", { count: data.hidden_count })}
+          benefit={tLock("themePage.benefit")}
+        />
+      ) : null}
+      {canToggle ? (
+        <button
+          type="button"
+          aria-expanded={expanded}
+          onClick={onToggle}
+          className="min-h-11 w-fit font-medium text-[13px] text-[var(--accent-text)] hover:underline focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
+        >
+          {expanded ? t("showFewer") : t("showAll", { count: hiddenCount })}
+        </button>
+      ) : null}
+    </>
   );
 }
 

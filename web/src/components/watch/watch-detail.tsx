@@ -151,19 +151,24 @@ function ConditionList({
 
 type Fact = { text: string; icon: Icon; color: string };
 
-/** A fact's icon and colour say what kind of signal it is at a glance: sector (sky), 法人 (blue),
- * 大戶 (gold), 融資 (orange when it surges, else muted), 重訊 (purple). */
-function ContextFacts({ item }: Readonly<{ item: StrategyWatchItem }>): ReactNode {
-  const t = useTranslations("watch.context");
-  const heading = useTranslations("watch.detail")("context");
+type ContextTranslator = ReturnType<typeof useTranslations>;
+
+function signed(value: number, decimals: number): string {
+  return `${value >= 0 ? "+" : ""}${value.toFixed(decimals)}`;
+}
+
+function sectorFact(item: StrategyWatchItem, t: ContextTranslator): Fact | null {
+  if (!item.industry || item.sector_strength_pct === null) return null;
+  return {
+    text: t("sector", { industry: item.industry, pct: Math.round(item.sector_strength_pct) }),
+    icon: BuildingsIcon,
+    color: "var(--chart-7)",
+  };
+}
+
+/** 法人 consecutive buy/sell days — only a streak of two or more is worth a line. */
+function streakFacts(item: StrategyWatchItem, t: ContextTranslator): Fact[] {
   const facts: Fact[] = [];
-  if (item.industry && item.sector_strength_pct !== null) {
-    facts.push({
-      text: t("sector", { industry: item.industry, pct: Math.round(item.sector_strength_pct) }),
-      icon: BuildingsIcon,
-      color: "var(--chart-7)",
-    });
-  }
   for (const [key, streak] of [
     ["foreign", item.foreign_streak],
     ["trust", item.trust_streak],
@@ -176,34 +181,54 @@ function ContextFacts({ item }: Readonly<{ item: StrategyWatchItem }>): ReactNod
       });
     }
   }
-  if (item.large_holder_pct !== null && item.large_holder_change_4w !== null) {
-    const change = item.large_holder_change_4w;
-    facts.push({
-      text: t("largeHolder", {
-        pct: item.large_holder_pct.toFixed(1),
-        change: `${change >= 0 ? "+" : ""}${change.toFixed(2)}`,
-      }),
-      icon: CrownSimpleIcon,
-      color: "var(--chart-3)",
-    });
-  }
-  if (item.margin_change_20d_pct !== null) {
-    const margin = item.margin_change_20d_pct;
-    const text = t("margin", { pct: `${margin >= 0 ? "+" : ""}${margin.toFixed(1)}` });
-    const surge = margin > 20;
-    facts.push({
-      text: surge ? `${text}（${t("marginSurge")}）` : text,
-      icon: CoinsIcon,
-      color: surge ? "var(--chart-8)" : "var(--chart-6)",
-    });
-  }
-  if (item.headline) {
-    facts.push({
-      text: t("headline", { text: item.headline }),
-      icon: MegaphoneIcon,
-      color: "var(--chart-2)",
-    });
-  }
+  return facts;
+}
+
+function largeHolderFact(item: StrategyWatchItem, t: ContextTranslator): Fact | null {
+  if (item.large_holder_pct === null || item.large_holder_change_4w === null) return null;
+  return {
+    text: t("largeHolder", {
+      pct: item.large_holder_pct.toFixed(1),
+      change: signed(item.large_holder_change_4w, 2),
+    }),
+    icon: CrownSimpleIcon,
+    color: "var(--chart-3)",
+  };
+}
+
+function marginFact(item: StrategyWatchItem, t: ContextTranslator): Fact | null {
+  if (item.margin_change_20d_pct === null) return null;
+  const margin = item.margin_change_20d_pct;
+  const text = t("margin", { pct: signed(margin, 1) });
+  const surge = margin > 20;
+  return {
+    text: surge ? `${text}（${t("marginSurge")}）` : text,
+    icon: CoinsIcon,
+    color: surge ? "var(--chart-8)" : "var(--chart-6)",
+  };
+}
+
+function headlineFact(item: StrategyWatchItem, t: ContextTranslator): Fact | null {
+  if (!item.headline) return null;
+  return {
+    text: t("headline", { text: item.headline }),
+    icon: MegaphoneIcon,
+    color: "var(--chart-2)",
+  };
+}
+
+/** A fact's icon and colour say what kind of signal it is at a glance: sector (sky), 法人 (blue),
+ * 大戶 (gold), 融資 (orange when it surges, else muted), 重訊 (purple). */
+function ContextFacts({ item }: Readonly<{ item: StrategyWatchItem }>): ReactNode {
+  const t = useTranslations("watch.context");
+  const heading = useTranslations("watch.detail")("context");
+  const facts = [
+    sectorFact(item, t),
+    ...streakFacts(item, t),
+    largeHolderFact(item, t),
+    marginFact(item, t),
+    headlineFact(item, t),
+  ].filter((fact): fact is Fact => fact !== null);
   if (facts.length === 0) return null;
   return (
     <section aria-labelledby="watch-context">

@@ -17,7 +17,7 @@ import {
 } from "@/components/watch/timeline-math";
 import { tint } from "@/components/watch/watch-format";
 import { cn } from "@/lib/cn";
-import type { StrategyWatchToday } from "@/types/strategy-watch";
+import type { StrategyWatchSlot, StrategyWatchToday } from "@/types/strategy-watch";
 
 const STEP_MINUTES: Record<PipelineStepKey, number> = {
   screen: 8 * 60,
@@ -42,7 +42,10 @@ function useNow(): Date {
 
 /** The connector to the next step: amber dashes when its data is stale, a moving dash in its colour
  * on today's live list, and a still dash on a past day's list (nothing is in progress there). */
-function flowStyle(next: StepView, live: boolean): Record<string, string> {
+function flowStyle({
+  next,
+  live,
+}: Readonly<{ next: StepView; live: boolean }>): Record<string, string> {
   if (next.stale) {
     return {
       backgroundImage: "repeating-linear-gradient(90deg, var(--warn) 0 6px, transparent 6px 12px)",
@@ -73,6 +76,62 @@ type StepView = PipelineStep & {
   stale: boolean;
 };
 
+/** True when `step` is not done and its note says its data stops before the list's session. */
+function isStale(step: PipelineStep, runDate: string | null): boolean {
+  if (step.done || runDate === null) return false;
+  return step.note?.kind === "dataThrough" && step.note.date < runDate;
+}
+
+function buildViews(
+  steps: readonly PipelineStep[],
+  colors: Record<PipelineStepKey, string>,
+  runDate: string | null,
+  inSession: boolean,
+): StepView[] {
+  return steps.map((step) => ({
+    ...step,
+    position: positionOf(STEP_MINUTES[step.key]),
+    color: colors[step.key],
+    running: step.key === "watch" && inSession,
+    stale: isStale(step, runDate),
+  }));
+}
+
+function lastDoneIndex(views: readonly StepView[]): number {
+  return views.reduce((at, v, i) => (v.done ? i : at), -1);
+}
+
+function nextPending(views: readonly StepView[], lastDone: number): StepView | null {
+  return views.find((v, i) => i > lastDone && !v.done) ?? null;
+}
+
+/** How far the progress fill runs: up to now on today's list, else to the last finished step. */
+function fillOf(nowPosition: number | null, lastDone: number, views: readonly StepView[]): number {
+  if (nowPosition !== null) return nowPosition;
+  if (lastDone < 0) return 0;
+  return views[lastDone]?.position ?? 0;
+}
+
+type Upcoming = ReturnType<typeof nextCheck>;
+
+function upcomingCheck({ live, minutes }: Readonly<{ live: boolean; minutes: number }>): Upcoming {
+  return live && minutes <= SESSION_END ? nextCheck(minutes) : null;
+}
+
+/** Keep "now" in view on a narrow screen, where the track scrolls sideways. */
+function centerOnNow(box: HTMLDivElement | null, nowPosition: number | null): void {
+  if (box === null || nowPosition === null || box.scrollWidth <= box.clientWidth) return;
+  box.scrollLeft = (nowPosition / 100) * box.scrollWidth - box.clientWidth / 2;
+}
+
+function toggled(current: PipelineStepKey | null, key: PipelineStepKey): PipelineStepKey | null {
+  return current === key ? null : key;
+}
+
+function closed(current: PipelineStepKey | null, key: PipelineStepKey): PipelineStepKey | null {
+  return current === key ? null : current;
+}
+
 /** The trading day as a track: each step at its time, the session's 28 checks as ticks, the
  * progress filled up to now, the running step breathing and a moving dash towards the next step.
  * Hover, focus or tap a step for what it does and how it went. */
@@ -85,8 +144,6 @@ export function PipelineTimeline({
   steps: readonly PipelineStep[];
   colors: Record<PipelineStepKey, string>;
 }>): ReactNode {
-  const t = useTranslations("watch");
-  const reduceMotion = useReducedMotion();
   const now = useNow();
   const clock = taipeiClock(now);
   const live = data.run_date !== null && data.run_date === clock.date;
@@ -94,29 +151,16 @@ export function PipelineTimeline({
   const [open, setOpen] = useState<PipelineStepKey | null>(null);
 
   const inSession = live && clock.minutes >= SESSION_START && clock.minutes <= SESSION_END;
-  const views: StepView[] = steps.map((step) => ({
-    ...step,
-    position: positionOf(STEP_MINUTES[step.key]),
-    color: colors[step.key],
-    running: step.key === "watch" && inSession,
-    stale:
-      !step.done &&
-      step.note?.kind === "dataThrough" &&
-      data.run_date !== null &&
-      step.note.date < data.run_date,
-  }));
-  const lastDone = views.reduce((at, v, i) => (v.done ? i : at), -1);
-  const next = views.find((v, i) => i > lastDone && !v.done) ?? null;
+  const views = buildViews(steps, colors, data.run_date, inSession);
+  const lastDone = lastDoneIndex(views);
+  const next = nextPending(views, lastDone);
   const nowPosition = live ? positionOf(clock.minutes) : null;
-  const fill = nowPosition ?? (lastDone >= 0 ? (views[lastDone]?.position ?? 0) : 0);
-  const upcoming = live && clock.minutes <= SESSION_END ? nextCheck(clock.minutes) : null;
+  const fill = fillOf(nowPosition, lastDone, views);
+  const upcoming = upcomingCheck({ live, minutes: clock.minutes });
   const checked = new Map(data.slots.map((s) => [s.slot, s]));
 
-  // Keep "now" in view on a narrow screen, where the track scrolls sideways.
   useEffect(() => {
-    const box = scroller.current;
-    if (box === null || nowPosition === null || box.scrollWidth <= box.clientWidth) return;
-    box.scrollLeft = (nowPosition / 100) * box.scrollWidth - box.clientWidth / 2;
+    centerOnNow(scroller.current, nowPosition);
   }, [nowPosition]);
 
   const sessionLeft = positionOf(SESSION_START);
@@ -129,141 +173,29 @@ export function PipelineTimeline({
         views={views}
         data={data}
         open={open}
-        onToggle={(key) => setOpen((now) => (now === key ? null : key))}
+        onToggle={(key) => setOpen((cur) => toggled(cur, key))}
       />
       <div ref={scroller} className="hidden overflow-x-auto pb-1 @3xl:block">
         {/* Side padding so the first and last step labels are never clipped at the edges. */}
         <div className="min-w-[820px] px-16">
           <div className="relative h-[112px]">
-            {/* The session band the ticks sit in. */}
-            <div
-              aria-hidden
-              className="absolute rounded-[var(--radius-input)]"
-              style={{
-                left: `${sessionLeft}%`,
-                width: `${sessionRight - sessionLeft}%`,
-                top: TRACK_TOP - 18,
-                height: 36,
-                backgroundColor: tint(colors.watch, 8),
-              }}
+            <SessionBand left={sessionLeft} right={sessionRight} color={colors.watch} />
+            <SessionSweep
+              inSession={inSession}
+              nowPosition={nowPosition}
+              left={sessionLeft}
+              color={colors.watch}
             />
-            {/* While the session is on, a soft light sweeps 09:00 → now: the market is being
-                watched right now. Clipped at now, so it never runs ahead of the present. */}
-            {inSession && nowPosition !== null ? (
-              <div
-                aria-hidden
-                className="absolute overflow-hidden rounded-[var(--radius-input)]"
-                style={{
-                  left: `${sessionLeft}%`,
-                  width: `${Math.max(nowPosition - sessionLeft, 0)}%`,
-                  top: TRACK_TOP - 18,
-                  height: 36,
-                }}
-              >
-                <span
-                  className="watch-scan absolute inset-y-0 left-0 w-2/5"
-                  style={{
-                    backgroundImage: `linear-gradient(90deg, transparent, ${tint(colors.watch, 30)}, transparent)`,
-                  }}
-                />
-              </div>
-            ) : null}
-            {/* Base track and the progress fill, which runs through each step's colour. */}
-            <div
-              aria-hidden
-              className="absolute right-0 left-0 h-1 rounded-full bg-[var(--border)]"
-              style={{ top: TRACK_TOP }}
+            <TrackFill fill={fill} colors={colors} />
+            <CheckTicks checked={checked} color={colors.watch} />
+            <FlowConnector views={views} lastDone={lastDone} next={next} live={live} />
+            <NowMarker nowPosition={nowPosition} minutes={clock.minutes} />
+            <NextCheckPill
+              upcoming={upcoming}
+              left={sessionLeft}
+              right={sessionRight}
+              color={colors.watch}
             />
-            <motion.div
-              aria-hidden
-              className="absolute left-0 h-1 rounded-full"
-              style={{
-                top: TRACK_TOP,
-                backgroundImage: `linear-gradient(90deg, ${colors.screen}, ${colors.watch}, ${colors.prices}, ${colors.close}, ${colors.flows})`,
-                backgroundSize: `${fill > 0 ? (100 / fill) * 100 : 100}% 100%`,
-              }}
-              initial={reduceMotion ? false : { width: 0 }}
-              animate={{ width: `${fill}%` }}
-              transition={{ duration: reduceMotion ? 0 : 0.8, ease: "easeOut" }}
-            />
-            {/* The 28 checks: filled once run, taller and coloured when something met its conditions. */}
-            {SESSION_SLOTS.map((slot, index) => {
-              const run = checked.get(slot);
-              const left = positionOf(minutesOf(slot));
-              const hit = run !== undefined && run.all_met > 0;
-              return (
-                // The ticks grow in left to right once (the day's checks replaying), a hit glows,
-                // and a tick lifts under the pointer.
-                <motion.span
-                  key={slot}
-                  aria-hidden
-                  initial={reduceMotion ? false : { scaleY: 0, opacity: 0 }}
-                  animate={{ scaleY: 1, opacity: run ? 1 : 0.5 }}
-                  transition={{
-                    duration: reduceMotion ? 0 : 0.28,
-                    delay: reduceMotion ? 0 : 0.35 + index * 0.022,
-                    ease: "easeOut",
-                  }}
-                  title={
-                    run
-                      ? t("pipeline.hitsAt", {
-                          slot,
-                          checked: run.checked,
-                          met: run.all_met,
-                          alerted: run.alertable,
-                        })
-                      : slot
-                  }
-                  className="absolute w-[3px] -translate-x-1/2 cursor-default rounded-full transition-[scale,filter] duration-150 hover:scale-y-125 hover:brightness-125 motion-reduce:transition-none motion-reduce:hover:scale-y-100"
-                  style={{
-                    left: `${left}%`,
-                    top: hit ? TRACK_TOP - 12 : TRACK_TOP - 7,
-                    height: hit ? 28 : 18,
-                    backgroundColor: tickColor(run !== undefined, hit, colors.watch),
-                    boxShadow: hit ? `0 0 8px ${tint(colors.watch, 70)}` : undefined,
-                  }}
-                />
-              );
-            })}
-            {/* A moving dash from the last finished step to the next one; amber and still when the
-            next step's data is stale. */}
-            {next !== null && lastDone >= 0 ? (
-              <span
-                aria-hidden
-                className={cn("absolute h-1 rounded-full", live && !next.stale && "watch-flow")}
-                style={{
-                  top: TRACK_TOP,
-                  left: `${views[lastDone]?.position ?? 0}%`,
-                  width: `${next.position - (views[lastDone]?.position ?? 0)}%`,
-                  ...flowStyle(next, live),
-                }}
-              />
-            ) : null}
-            {/* Now. */}
-            {nowPosition !== null ? (
-              <div
-                className="absolute flex -translate-x-1/2 flex-col items-center"
-                style={{ left: `${nowPosition}%`, top: 0 }}
-              >
-                <span className="whitespace-nowrap rounded-[var(--radius-pill)] bg-[var(--text)] px-1.5 py-px font-num text-[10.5px] text-[var(--bg)] tabular-nums">
-                  {t("pipeline.now", { time: hhmm(clock.minutes) })}
-                </span>
-                <span aria-hidden className="h-[38px] w-px bg-[var(--text)] opacity-60" />
-              </div>
-            ) : null}
-            {/* The next check, while the session is on (or about to be). */}
-            {upcoming !== null ? (
-              <span
-                className="absolute -translate-x-1/2 whitespace-nowrap rounded-[var(--radius-pill)] px-2 py-0.5 text-[11px] text-[var(--text)]"
-                style={{
-                  left: `${(sessionLeft + sessionRight) / 2}%`,
-                  top: TRACK_TOP + 20,
-                  backgroundColor: tint(colors.watch, 18),
-                }}
-              >
-                {t("pipeline.nextCheck", { time: upcoming.slot, minutes: upcoming.inMinutes })}
-              </span>
-            ) : null}
             {/* The steps. */}
             {views.map((view, index) => (
               <StepMarker
@@ -272,31 +204,257 @@ export function PipelineTimeline({
                 index={index}
                 open={open === view.key}
                 onOpen={() => setOpen(view.key)}
-                onToggle={() => setOpen((now) => (now === view.key ? null : view.key))}
-                onClose={() => setOpen((now) => (now === view.key ? null : now))}
+                onToggle={() => setOpen((cur) => toggled(cur, view.key))}
+                onClose={() => setOpen((cur) => closed(cur, view.key))}
               />
             ))}
           </div>
         </div>
       </div>
       <div id="watch-step-details" aria-live="polite" className="hidden @3xl:block">
-        {openView !== null ? (
-          <motion.div
-            key={openView.key}
-            initial={reduceMotion ? false : { opacity: 0, y: -4 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: reduceMotion ? 0 : 0.18 }}
-            className="mt-1 rounded-[var(--radius-input)] p-3 text-[12px]"
-            style={{
-              backgroundColor: tint(openView.stale ? "var(--warn)" : openView.color, 8),
-              borderLeft: `3px solid ${openView.stale ? "var(--warn)" : openView.color}`,
-            }}
-          >
-            <StepDetails view={openView} data={data} />
-          </motion.div>
-        ) : null}
+        <OpenStepCard openView={openView} data={data} />
       </div>
     </div>
+  );
+}
+
+/** The session band the ticks sit in. */
+function SessionBand({
+  left,
+  right,
+  color,
+}: Readonly<{ left: number; right: number; color: string }>): ReactNode {
+  return (
+    <div
+      aria-hidden
+      className="absolute rounded-[var(--radius-input)]"
+      style={{
+        left: `${left}%`,
+        width: `${right - left}%`,
+        top: TRACK_TOP - 18,
+        height: 36,
+        backgroundColor: tint(color, 8),
+      }}
+    />
+  );
+}
+
+/** While the session is on, a soft light sweeps 09:00 → now: the market is being watched right
+ * now. Clipped at now, so it never runs ahead of the present. */
+function SessionSweep({
+  inSession,
+  nowPosition,
+  left,
+  color,
+}: Readonly<{
+  inSession: boolean;
+  nowPosition: number | null;
+  left: number;
+  color: string;
+}>): ReactNode {
+  if (!inSession || nowPosition === null) return null;
+  return (
+    <div
+      aria-hidden
+      className="absolute overflow-hidden rounded-[var(--radius-input)]"
+      style={{
+        left: `${left}%`,
+        width: `${Math.max(nowPosition - left, 0)}%`,
+        top: TRACK_TOP - 18,
+        height: 36,
+      }}
+    >
+      <span
+        className="watch-scan absolute inset-y-0 left-0 w-2/5"
+        style={{
+          backgroundImage: `linear-gradient(90deg, transparent, ${tint(color, 30)}, transparent)`,
+        }}
+      />
+    </div>
+  );
+}
+
+/** Base track and the progress fill, which runs through each step's colour. */
+function TrackFill({
+  fill,
+  colors,
+}: Readonly<{ fill: number; colors: Record<PipelineStepKey, string> }>): ReactNode {
+  const reduceMotion = useReducedMotion();
+  return (
+    <>
+      <div
+        aria-hidden
+        className="absolute right-0 left-0 h-1 rounded-full bg-[var(--border)]"
+        style={{ top: TRACK_TOP }}
+      />
+      <motion.div
+        aria-hidden
+        className="absolute left-0 h-1 rounded-full"
+        style={{
+          top: TRACK_TOP,
+          backgroundImage: `linear-gradient(90deg, ${colors.screen}, ${colors.watch}, ${colors.prices}, ${colors.close}, ${colors.flows})`,
+          backgroundSize: `${fill > 0 ? (100 / fill) * 100 : 100}% 100%`,
+        }}
+        initial={reduceMotion ? false : { width: 0 }}
+        animate={{ width: `${fill}%` }}
+        transition={{ duration: reduceMotion ? 0 : 0.8, ease: "easeOut" }}
+      />
+    </>
+  );
+}
+
+/** The 28 checks: filled once run, taller and coloured when something met its conditions. */
+function CheckTicks({
+  checked,
+  color,
+}: Readonly<{ checked: ReadonlyMap<string, StrategyWatchSlot>; color: string }>): ReactNode {
+  return SESSION_SLOTS.map((slot, index) => (
+    <CheckTick key={slot} slot={slot} index={index} run={checked.get(slot)} color={color} />
+  ));
+}
+
+function CheckTick({
+  slot,
+  index,
+  run,
+  color,
+}: Readonly<{
+  slot: string;
+  index: number;
+  run: StrategyWatchSlot | undefined;
+  color: string;
+}>): ReactNode {
+  const t = useTranslations("watch");
+  const reduceMotion = useReducedMotion();
+  const left = positionOf(minutesOf(slot));
+  const hit = run !== undefined && run.all_met > 0;
+  return (
+    // The ticks grow in left to right once (the day's checks replaying), a hit glows,
+    // and a tick lifts under the pointer.
+    <motion.span
+      aria-hidden
+      initial={reduceMotion ? false : { scaleY: 0, opacity: 0 }}
+      animate={{ scaleY: 1, opacity: run ? 1 : 0.5 }}
+      transition={{
+        duration: reduceMotion ? 0 : 0.28,
+        delay: reduceMotion ? 0 : 0.35 + index * 0.022,
+        ease: "easeOut",
+      }}
+      title={
+        run
+          ? t("pipeline.hitsAt", {
+              slot,
+              checked: run.checked,
+              met: run.all_met,
+              alerted: run.alertable,
+            })
+          : slot
+      }
+      className="absolute w-[3px] -translate-x-1/2 cursor-default rounded-full transition-[scale,filter] duration-150 hover:scale-y-125 hover:brightness-125 motion-reduce:transition-none motion-reduce:hover:scale-y-100"
+      style={{
+        left: `${left}%`,
+        top: hit ? TRACK_TOP - 12 : TRACK_TOP - 7,
+        height: hit ? 28 : 18,
+        backgroundColor: tickColor(run !== undefined, hit, color),
+        boxShadow: hit ? `0 0 8px ${tint(color, 70)}` : undefined,
+      }}
+    />
+  );
+}
+
+/** A moving dash from the last finished step to the next one; amber and still when the next
+ * step's data is stale. */
+function FlowConnector({
+  views,
+  lastDone,
+  next,
+  live,
+}: Readonly<{
+  views: readonly StepView[];
+  lastDone: number;
+  next: StepView | null;
+  live: boolean;
+}>): ReactNode {
+  if (next === null || lastDone < 0) return null;
+  const from = views[lastDone]?.position ?? 0;
+  return (
+    <span
+      aria-hidden
+      className={cn("absolute h-1 rounded-full", live && !next.stale && "watch-flow")}
+      style={{
+        top: TRACK_TOP,
+        left: `${from}%`,
+        width: `${next.position - from}%`,
+        ...flowStyle({ next, live }),
+      }}
+    />
+  );
+}
+
+/** Now. */
+function NowMarker({
+  nowPosition,
+  minutes,
+}: Readonly<{ nowPosition: number | null; minutes: number }>): ReactNode {
+  const t = useTranslations("watch");
+  if (nowPosition === null) return null;
+  return (
+    <div
+      className="absolute flex -translate-x-1/2 flex-col items-center"
+      style={{ left: `${nowPosition}%`, top: 0 }}
+    >
+      <span className="whitespace-nowrap rounded-[var(--radius-pill)] bg-[var(--text)] px-1.5 py-px font-num text-[10.5px] text-[var(--bg)] tabular-nums">
+        {t("pipeline.now", { time: hhmm(minutes) })}
+      </span>
+      <span aria-hidden className="h-[38px] w-px bg-[var(--text)] opacity-60" />
+    </div>
+  );
+}
+
+/** The next check, while the session is on (or about to be). */
+function NextCheckPill({
+  upcoming,
+  left,
+  right,
+  color,
+}: Readonly<{ upcoming: Upcoming; left: number; right: number; color: string }>): ReactNode {
+  const t = useTranslations("watch");
+  if (upcoming === null) return null;
+  return (
+    <span
+      className="absolute -translate-x-1/2 whitespace-nowrap rounded-[var(--radius-pill)] px-2 py-0.5 text-[11px] text-[var(--text)]"
+      style={{
+        left: `${(left + right) / 2}%`,
+        top: TRACK_TOP + 20,
+        backgroundColor: tint(color, 18),
+      }}
+    >
+      {t("pipeline.nextCheck", { time: upcoming.slot, minutes: upcoming.inMinutes })}
+    </span>
+  );
+}
+
+/** The detail card of the step that is open on the wide track. */
+function OpenStepCard({
+  openView,
+  data,
+}: Readonly<{ openView: StepView | null; data: StrategyWatchToday }>): ReactNode {
+  const reduceMotion = useReducedMotion();
+  if (openView === null) return null;
+  return (
+    <motion.div
+      key={openView.key}
+      initial={reduceMotion ? false : { opacity: 0, y: -4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: reduceMotion ? 0 : 0.18 }}
+      className="mt-1 rounded-[var(--radius-input)] p-3 text-[12px]"
+      style={{
+        backgroundColor: tint(openView.stale ? "var(--warn)" : openView.color, 8),
+        borderLeft: `3px solid ${openView.stale ? "var(--warn)" : openView.color}`,
+      }}
+    >
+      <StepDetails view={openView} data={data} />
+    </motion.div>
   );
 }
 

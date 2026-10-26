@@ -220,3 +220,146 @@ describe("ThemePage Pro preview", () => {
     expect(document.querySelector("[data-feature-lock]")).toBeNull();
   });
 });
+
+describe("ThemePage branches", () => {
+  const themeOf = (key: string, over: Record<string, unknown> = {}) => ({
+    key,
+    name_zh: `名稱 ${key}`,
+    name_en: "",
+    kind: "concept" as const,
+    status: "active",
+    member_count: 1,
+    description: "",
+    related_keys: [] as string[],
+    ...over,
+  });
+
+  it("renders a full page snapshot with a chain, a related strip and every header part", async () => {
+    vi.mocked(getThemeMembers).mockResolvedValue(
+      response([
+        member("1001", "upstream"),
+        member("1002", "midstream"),
+        member("1003", "downstream"),
+        member("1004", null),
+      ]),
+    );
+    renderPage();
+    await screen.findByRole("region", { name: copy.boardAria });
+    expect(document.body.innerHTML).toMatchSnapshot();
+  });
+
+  it("omits the English name when there is none", async () => {
+    vi.mocked(getThemeMembers).mockResolvedValue(
+      response([member("1001", "upstream")], { name_en: "" }),
+    );
+    renderPage();
+    await screen.findByRole("region", { name: copy.boardAria });
+    expect(screen.queryByText("Laser Module EN")).toBeNull();
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Laser Module");
+  });
+
+  it("falls back to the theme list for the description and related themes", async () => {
+    vi.mocked(getThemes).mockResolvedValue({
+      theme_count: 2,
+      concept_locked: false,
+      themes: [
+        themeOf("laser-module", { description: "From the list.", related_keys: ["film-coating"] }),
+        themeOf("film-coating"),
+      ],
+    });
+    vi.mocked(getThemeMembers).mockResolvedValue(
+      response([member("1001", "upstream")], { description: "", related_keys: [] }),
+    );
+    renderPage();
+    expect(await screen.findByText("From the list.")).toBeTruthy();
+    const link = await screen.findByRole("link", { name: "名稱 film-coating" });
+    expect(link.getAttribute("href")).toBe("/themes/film-coating");
+  });
+
+  it("shows neither description nor related themes when both sources are empty", async () => {
+    vi.mocked(getThemes).mockResolvedValue({ theme_count: 0, concept_locked: false, themes: [] });
+    vi.mocked(getThemeMembers).mockResolvedValue(
+      response([member("1001", "upstream")], { description: "", related_keys: [] }),
+    );
+    renderPage();
+    await screen.findByRole("region", { name: copy.boardAria });
+    expect(screen.queryByText(copy.relatedTitle)).toBeNull();
+    expect(document.querySelector("header p.max-w-prose")).toBeNull();
+  });
+
+  it("names a related theme by its key when the list does not know it", async () => {
+    vi.mocked(getThemeMembers).mockResolvedValue(
+      response([member("1001", "upstream")], { related_keys: ["unknown-theme"] }),
+    );
+    renderPage();
+    const link = await screen.findByRole("link", { name: "unknown-theme" });
+    expect(link.getAttribute("href")).toBe("/themes/unknown-theme");
+  });
+
+  it("keeps the page up while the theme list is still loading", async () => {
+    vi.mocked(getThemes).mockReturnValue(new Promise(() => undefined));
+    vi.mocked(getThemeMembers).mockResolvedValue(response([member("1001", "upstream")]));
+    renderPage();
+    await screen.findByRole("region", { name: copy.boardAria });
+    expect(screen.getByText("Modules that steer light.")).toBeTruthy();
+  });
+
+  it("asks US and other-market codes from the right quote source", async () => {
+    vi.mocked(getThemeMembers).mockResolvedValue(
+      response([
+        { ...member("AAPL", "upstream"), market: "US" },
+        { ...member("1001", "upstream"), market: "JP" },
+        member("1002", "upstream"),
+        member("1002", "midstream"),
+      ]),
+    );
+    renderPage();
+    await screen.findByRole("region", { name: copy.boardAria });
+    const last = (market: string): readonly string[] | undefined =>
+      vi
+        .mocked(useSymbolQuotes)
+        .mock.calls.filter(([, m]) => m === market)
+        .at(-1)?.[0];
+    expect(last("US")).toEqual(["AAPL"]);
+    // Duplicates collapse; an unknown market counts as TW.
+    expect(last("TW")).toEqual(["1001", "1002"]);
+    expect(screen.getAllByText("Name AAPL")).toHaveLength(1);
+  });
+
+  it("shows skeletons instead of changes while quotes load", async () => {
+    vi.mocked(useSymbolQuotes).mockReturnValue({ quotes: [], isLoading: true, isError: false });
+    vi.mocked(getThemeMembers).mockResolvedValue(response([member("1001", "upstream")]));
+    renderPage();
+    await screen.findByRole("region", { name: copy.boardAria });
+    expect(screen.queryByRole("img")).toBeNull();
+    expect(screen.queryByText("—")).toBeNull();
+  });
+
+  it("collapses back and toggles the related strip too", async () => {
+    const many = Array.from({ length: 14 }, (_, i) => member(`${3000 + i}`, null));
+    vi.mocked(getThemeMembers).mockResolvedValue(response(many));
+    renderPage();
+    const strip = await screen.findByRole("region", { name: copy.relatedCompanies });
+    expect(within(strip).getAllByRole("link")).toHaveLength(12);
+    fireEvent.click(screen.getByRole("button", { name: copy.showAll.replace("{count}", "2") }));
+    expect(within(strip).getAllByRole("link")).toHaveLength(14);
+    fireEvent.click(screen.getByRole("button", { name: copy.showFewer }));
+    expect(within(strip).getAllByRole("link")).toHaveLength(12);
+  });
+
+  it("offers no toggle when everything fits", async () => {
+    vi.mocked(getThemeMembers).mockResolvedValue(response([member("1001", "upstream")]));
+    renderPage();
+    await screen.findByRole("region", { name: copy.boardAria });
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("shows the empty card and no board, strip or toggle for a theme with no members", async () => {
+    vi.mocked(getThemeMembers).mockResolvedValue(response([]));
+    renderPage();
+    await screen.findByText(copy.emptyTitle);
+    expect(screen.queryByRole("region", { name: copy.boardAria })).toBeNull();
+    expect(screen.queryByRole("region", { name: copy.relatedCompanies })).toBeNull();
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+});

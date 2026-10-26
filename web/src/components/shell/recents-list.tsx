@@ -21,6 +21,81 @@ import { deleteThread, deleteThreads, listThreads, patchThread } from "@/lib/api
 import { cn } from "@/lib/cn";
 import type { Thread } from "@/types/conversation";
 
+type SelectMode = {
+  selecting: boolean;
+  selectedIds: Set<string>;
+  enter: () => void;
+  exit: () => void;
+  toggle: (threadId: string) => void;
+  setSelectedIds: (ids: Set<string>) => void;
+};
+
+/** `prev` with `threadId` added, or removed if it was there. */
+function toggledSelection(prev: Set<string>, threadId: string): Set<string> {
+  const next = new Set(prev);
+  if (next.has(threadId)) {
+    next.delete(threadId);
+  } else {
+    next.add(threadId);
+  }
+  return next;
+}
+
+/** What "select all" does next: clear everything when all are selected, else select them all. */
+
+// Multi-select ("Select" mode) is a separate mode from normal browsing, not a per-row toggle
+// always available — entering it hides every row's own star/rename/delete menu (those verbs
+// don't apply to a multi-selection) and repurposes row clicks from "navigate" to "toggle
+// selection". `selectedIds` is cleared whenever select mode is exited (Cancel, or after a
+// successful bulk delete) so a later "Select" always starts from zero, never a stale carry-over.
+function useSelectMode(): SelectMode {
+  const [selecting, setSelecting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  return {
+    selecting,
+    selectedIds,
+    enter: () => setSelecting(true),
+    exit: () => {
+      setSelecting(false);
+      setSelectedIds(new Set());
+    },
+    toggle: (threadId) => setSelectedIds((prev) => toggledSelection(prev, threadId)),
+    setSelectedIds,
+  };
+}
+
+type NewThreadSnapshot = { phase: string; revealed: boolean; threadId: string | null };
+
+/** Once the new thread's row has actually rendered (title present, revealed), the placeholder's
+ * job is done — reset so a later send starts clean rather than replaying a stale reveal. */
+function revealingThreadIdOf(newThread: NewThreadSnapshot): string | null {
+  return newThread.phase === "resolved" && !newThread.revealed ? newThread.threadId : null;
+}
+
+function needsPendingPlaceholder(
+  phase: string,
+  revealingThreadId: string | null,
+  threads: Thread[] | undefined,
+): boolean {
+  if (phase === "idle") return false;
+  if (revealingThreadId === null) return true;
+  return !threads?.some((thread) => thread.id === revealingThreadId);
+}
+
+/** The scroll container every state of the list shares, with the pending-thread placeholder on top
+ * while a new thread is starting. */
+function RecentsFrame({
+  showPlaceholder,
+  children,
+}: Readonly<{ showPlaceholder: boolean; children: ReactNode }>): ReactNode {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3">
+      {showPlaceholder ? <PendingThreadRow /> : null}
+      {children}
+    </div>
+  );
+}
+
 /** Recent conversations, folded directly into the primary sidebar (Claude-style "Recents") rather
  * than a separate Conversations panel next to the chat canvas. Hidden entirely when collapsed —
  * there's no icon-only representation of a conversation list that reads as anything but noise at
@@ -41,13 +116,7 @@ export function RecentsList(): ReactNode {
     queryFn: ({ signal }) => listThreads(signal),
   });
   const newThread = useNewThreadStore();
-  // Multi-select ("Select" mode) is a separate mode from normal browsing, not a per-row toggle
-  // always available — entering it hides every row's own star/rename/delete menu (those verbs
-  // don't apply to a multi-selection) and repurposes row clicks from "navigate" to "toggle
-  // selection". `selectedIds` is cleared whenever select mode is exited (Cancel, or after a
-  // successful bulk delete) so a later "Select" always starts from zero, never a stale carry-over.
-  const [selecting, setSelecting] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const select = useSelectMode();
   // Lives here, not inside `BulkDeleteDialog`, because a successful bulk delete calls
   // `exitSelecting` — which unmounts `BulkDeleteBar`/`BulkDeleteDialog` immediately — so a
   // partial-failure toast set inside either of those would never get a chance to render.
@@ -61,53 +130,32 @@ export function RecentsList(): ReactNode {
     void queryClient.invalidateQueries({ queryKey: queryKeys.threads });
   };
 
-  const toggleSelected = (threadId: string): void => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(threadId)) {
-        next.delete(threadId);
-      } else {
-        next.add(threadId);
-      }
-      return next;
-    });
-  };
-
-  const exitSelecting = (): void => {
-    setSelecting(false);
-    setSelectedIds(new Set());
-  };
-
-  // Once the new thread's row has actually rendered (title present, revealed), the placeholder's
-  // job is done — reset so a later send starts clean rather than replaying a stale reveal.
-  const revealingThreadId =
-    newThread.phase === "resolved" && !newThread.revealed ? newThread.threadId : null;
-  const showPendingPlaceholder =
-    newThread.phase !== "idle" &&
-    (revealingThreadId === null || !query.data?.some((thread) => thread.id === revealingThreadId));
+  const revealingThreadId = revealingThreadIdOf(newThread);
+  const showPendingPlaceholder = needsPendingPlaceholder(
+    newThread.phase,
+    revealingThreadId,
+    query.data,
+  );
 
   if (query.isPending) {
     return (
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3">
-        {showPendingPlaceholder ? <PendingThreadRow /> : null}
+      <RecentsFrame showPlaceholder={showPendingPlaceholder}>
         <RecentsSkeleton />
-      </div>
+      </RecentsFrame>
     );
   }
   if (query.isError) {
     return (
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3">
-        {showPendingPlaceholder ? <PendingThreadRow /> : null}
+      <RecentsFrame showPlaceholder={showPendingPlaceholder}>
         <p className="px-3 py-2 text-[13px] text-[var(--text-muted)]">{t("error")}</p>
-      </div>
+      </RecentsFrame>
     );
   }
   if (query.data.length === 0) {
     return (
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3">
-        {showPendingPlaceholder ? <PendingThreadRow /> : null}
+      <RecentsFrame showPlaceholder={showPendingPlaceholder}>
         <p className="px-3 py-2 text-[13px] text-[var(--text-muted)]">{t("empty")}</p>
-      </div>
+      </RecentsFrame>
     );
   }
 
@@ -115,56 +163,49 @@ export function RecentsList(): ReactNode {
   const unstarred = query.data.filter((thread) => !thread.starred);
   const groups = groupByRecency(unstarred);
   const allIds = query.data.map((thread) => thread.id);
-  const allSelected = allIds.length > 0 && allIds.every((id) => selectedIds.has(id));
+  const allSelected = allIds.length > 0 && allIds.every((id) => select.selectedIds.has(id));
+  const sectionProps = {
+    activeThreadId,
+    revealingThreadId,
+    selecting: select.selecting,
+    selectedIds: select.selectedIds,
+    onSelect,
+    onToggleSelected: select.toggle,
+    onChanged: invalidate,
+  };
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3">
       <RecentsHeader
         label={t("recents")}
-        selecting={selecting}
-        onEnterSelect={() => setSelecting(true)}
-        onExitSelect={exitSelecting}
+        selecting={select.selecting}
+        onEnterSelect={select.enter}
+        onExitSelect={select.exit}
       />
-      {selecting ? (
+      {select.selecting ? (
         <SelectAllRow
           checked={allSelected}
           count={allIds.length}
-          onToggle={() => setSelectedIds(allSelected ? new Set() : new Set(allIds))}
+          onToggle={() => select.setSelectedIds(allSelected ? new Set<string>() : new Set(allIds))}
         />
       ) : null}
       {showPendingPlaceholder ? <PendingThreadRow /> : null}
       {starred.length > 0 ? (
-        <ThreadSection
-          label={t("starred")}
-          threads={starred}
-          activeThreadId={activeThreadId}
-          revealingThreadId={revealingThreadId}
-          selecting={selecting}
-          selectedIds={selectedIds}
-          onSelect={onSelect}
-          onToggleSelected={toggleSelected}
-          onChanged={invalidate}
-        />
+        <ThreadSection label={t("starred")} threads={starred} {...sectionProps} />
       ) : null}
       {groups.map((group) => (
         <ThreadSection
           key={group.key}
           label={t(`groups.${group.key}`)}
           threads={group.threads}
-          activeThreadId={activeThreadId}
-          revealingThreadId={revealingThreadId}
-          selecting={selecting}
-          selectedIds={selectedIds}
-          onSelect={onSelect}
-          onToggleSelected={toggleSelected}
-          onChanged={invalidate}
+          {...sectionProps}
         />
       ))}
-      {selecting && selectedIds.size > 0 ? (
+      {select.selecting && select.selectedIds.size > 0 ? (
         <BulkDeleteBar
-          selectedIds={selectedIds}
+          selectedIds={select.selectedIds}
           onChanged={invalidate}
-          onDone={exitSelecting}
+          onDone={select.exit}
           onPartialFailure={setPartialFailureCount}
         />
       ) : null}
@@ -402,6 +443,41 @@ function RowCheckbox({ checked }: Readonly<{ checked: boolean }>): ReactNode {
   );
 }
 
+function rowButtonClass(selecting: boolean, active: boolean, checked: boolean): string {
+  return cn(
+    "flex min-h-9 w-full items-center gap-2.5 rounded-[var(--radius-button)] px-3 text-left transition-colors",
+    !selecting && "pr-8",
+    active || checked
+      ? "bg-[var(--accent-weak)] text-[var(--text)]"
+      : "text-[var(--text-muted)] hover:bg-[var(--surface-2)] hover:text-[var(--text)]",
+  );
+}
+
+/** The row's label: a pulsing bar before the first typed character of a title being revealed, else
+ * the (possibly part-typed) title with a blinking cursor until it is complete. */
+function ThreadTitle({
+  title,
+  fullTitle,
+  revealing,
+}: Readonly<{ title: string; fullTitle: string; revealing: boolean }>): ReactNode {
+  if (revealing && title.length === 0) {
+    return (
+      <span
+        aria-hidden
+        className="h-3.5 w-24 animate-pulse rounded-full bg-[var(--text-muted)]/30"
+      />
+    );
+  }
+  return (
+    <span className="min-w-0 flex-1 truncate text-[13px]">
+      {title}
+      {revealing && title.length < fullTitle.length ? (
+        <span aria-hidden className="ml-px inline-block w-px animate-pulse bg-current" />
+      ) : null}
+    </span>
+  );
+}
+
 function ThreadRow({
   thread,
   active,
@@ -451,109 +527,120 @@ function ThreadRow({
         aria-current={!selecting && active ? "true" : undefined}
         aria-pressed={selecting ? checked : undefined}
         title={title}
-        className={cn(
-          "flex min-h-9 w-full items-center gap-2.5 rounded-[var(--radius-button)] px-3 text-left transition-colors",
-          !selecting && "pr-8",
-          active || checked
-            ? "bg-[var(--accent-weak)] text-[var(--text)]"
-            : "text-[var(--text-muted)] hover:bg-[var(--surface-2)] hover:text-[var(--text)]",
-        )}
+        className={rowButtonClass(selecting, active, checked)}
       >
         {selecting ? <RowCheckbox checked={checked} /> : null}
-        {revealing && title.length === 0 ? (
-          <span
-            aria-hidden
-            className="h-3.5 w-24 animate-pulse rounded-full bg-[var(--text-muted)]/30"
-          />
-        ) : (
-          <span className="min-w-0 flex-1 truncate text-[13px]">
-            {title}
-            {revealing && title.length < fullTitle.length ? (
-              <span aria-hidden className="ml-px inline-block w-px animate-pulse bg-current" />
-            ) : null}
-          </span>
-        )}
+        <ThreadTitle title={title} fullTitle={fullTitle} revealing={revealing} />
       </button>
 
       {selecting ? null : (
-        <DropdownMenu.Root>
-          <DropdownMenu.Trigger asChild>
-            <button
-              type="button"
-              aria-label={t("menu.label")}
-              className={cn(
-                "absolute inset-y-0 right-1 inline-flex w-7 items-center justify-center rounded-[var(--radius-button)]",
-                "text-[var(--text-muted)] opacity-0 transition-opacity hover:bg-[var(--surface)] hover:text-[var(--text)]",
-                "focus-visible:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100",
-                "!outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]",
-              )}
-            >
-              <DotsThreeIcon size={16} weight="bold" aria-hidden />
-            </button>
-          </DropdownMenu.Trigger>
-          <DropdownMenu.Portal>
-            <DropdownMenu.Content
-              side="right"
-              align="start"
-              sideOffset={4}
-              className={cn(
-                "z-50 w-48 rounded-[var(--radius-card)] border border-[var(--border)]",
-                "bg-[var(--surface)] p-1.5 shadow-2xl",
-              )}
-            >
-              <DropdownMenu.Item
-                onSelect={() => starMutation.mutate()}
-                className={cn(
-                  "flex min-h-9 cursor-pointer items-center gap-2 rounded-[var(--radius-button)] px-2.5",
-                  "text-[var(--text)] text-sm outline-none transition-colors",
-                  "data-[highlighted]:bg-[var(--surface-2)]",
-                )}
-              >
-                <StarIcon
-                  size={16}
-                  weight={thread.starred ? "fill" : "regular"}
-                  aria-hidden
-                  className={thread.starred ? "text-[var(--accent)]" : undefined}
-                />
-                {thread.starred ? t("menu.unstar") : t("menu.star")}
-              </DropdownMenu.Item>
-              <DropdownMenu.Item
-                onSelect={() => setRenaming(true)}
-                className={cn(
-                  "flex min-h-9 cursor-pointer items-center gap-2 rounded-[var(--radius-button)] px-2.5",
-                  "text-[var(--text)] text-sm outline-none transition-colors",
-                  "data-[highlighted]:bg-[var(--surface-2)]",
-                )}
-              >
-                <PencilSimpleIcon size={16} weight="regular" aria-hidden />
-                {t("menu.rename")}
-              </DropdownMenu.Item>
-              <DropdownMenu.Separator className="my-1 h-px bg-[var(--border)]" />
-              <DropdownMenu.Item
-                onSelect={() => setDeleteOpen(true)}
-                className={cn(
-                  "flex min-h-9 cursor-pointer items-center gap-2 rounded-[var(--radius-button)] px-2.5",
-                  "text-[var(--warn)] text-sm outline-none transition-colors",
-                  "data-[highlighted]:bg-[var(--surface-2)]",
-                )}
-              >
-                <TrashIcon size={16} weight="regular" aria-hidden />
-                {t("menu.delete")}
-              </DropdownMenu.Item>
-            </DropdownMenu.Content>
-          </DropdownMenu.Portal>
-        </DropdownMenu.Root>
-      )}
-
-      {selecting ? null : (
-        <DeleteThreadDialog
+        <ThreadRowActions
           thread={thread}
-          open={deleteOpen}
-          onOpenChange={setDeleteOpen}
+          deleteOpen={deleteOpen}
+          onStar={() => starMutation.mutate()}
+          onRename={() => setRenaming(true)}
+          onDeleteOpenChange={setDeleteOpen}
           onChanged={onChanged}
         />
       )}
     </li>
+  );
+}
+
+/** The row's "more" menu (star, rename, delete) and the delete confirmation it opens. */
+function ThreadRowActions({
+  thread,
+  deleteOpen,
+  onStar,
+  onRename,
+  onDeleteOpenChange,
+  onChanged,
+}: Readonly<{
+  thread: Thread;
+  deleteOpen: boolean;
+  onStar: () => void;
+  onRename: () => void;
+  onDeleteOpenChange: (open: boolean) => void;
+  onChanged: () => void;
+}>): ReactNode {
+  const t = useTranslations("chat.threads");
+  return (
+    <>
+      <DropdownMenu.Root>
+        <DropdownMenu.Trigger asChild>
+          <button
+            type="button"
+            aria-label={t("menu.label")}
+            className={cn(
+              "absolute inset-y-0 right-1 inline-flex w-7 items-center justify-center rounded-[var(--radius-button)]",
+              "text-[var(--text-muted)] opacity-0 transition-opacity hover:bg-[var(--surface)] hover:text-[var(--text)]",
+              "focus-visible:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100",
+              "!outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]",
+            )}
+          >
+            <DotsThreeIcon size={16} weight="bold" aria-hidden />
+          </button>
+        </DropdownMenu.Trigger>
+        <DropdownMenu.Portal>
+          <DropdownMenu.Content
+            side="right"
+            align="start"
+            sideOffset={4}
+            className={cn(
+              "z-50 w-48 rounded-[var(--radius-card)] border border-[var(--border)]",
+              "bg-[var(--surface)] p-1.5 shadow-2xl",
+            )}
+          >
+            <DropdownMenu.Item
+              onSelect={onStar}
+              className={cn(
+                "flex min-h-9 cursor-pointer items-center gap-2 rounded-[var(--radius-button)] px-2.5",
+                "text-[var(--text)] text-sm outline-none transition-colors",
+                "data-[highlighted]:bg-[var(--surface-2)]",
+              )}
+            >
+              <StarIcon
+                size={16}
+                weight={thread.starred ? "fill" : "regular"}
+                aria-hidden
+                className={thread.starred ? "text-[var(--accent)]" : undefined}
+              />
+              {thread.starred ? t("menu.unstar") : t("menu.star")}
+            </DropdownMenu.Item>
+            <DropdownMenu.Item
+              onSelect={onRename}
+              className={cn(
+                "flex min-h-9 cursor-pointer items-center gap-2 rounded-[var(--radius-button)] px-2.5",
+                "text-[var(--text)] text-sm outline-none transition-colors",
+                "data-[highlighted]:bg-[var(--surface-2)]",
+              )}
+            >
+              <PencilSimpleIcon size={16} weight="regular" aria-hidden />
+              {t("menu.rename")}
+            </DropdownMenu.Item>
+            <DropdownMenu.Separator className="my-1 h-px bg-[var(--border)]" />
+            <DropdownMenu.Item
+              onSelect={() => onDeleteOpenChange(true)}
+              className={cn(
+                "flex min-h-9 cursor-pointer items-center gap-2 rounded-[var(--radius-button)] px-2.5",
+                "text-[var(--warn)] text-sm outline-none transition-colors",
+                "data-[highlighted]:bg-[var(--surface-2)]",
+              )}
+            >
+              <TrashIcon size={16} weight="regular" aria-hidden />
+              {t("menu.delete")}
+            </DropdownMenu.Item>
+          </DropdownMenu.Content>
+        </DropdownMenu.Portal>
+      </DropdownMenu.Root>
+
+      <DeleteThreadDialog
+        thread={thread}
+        open={deleteOpen}
+        onOpenChange={onDeleteOpenChange}
+        onChanged={onChanged}
+      />
+    </>
   );
 }
 

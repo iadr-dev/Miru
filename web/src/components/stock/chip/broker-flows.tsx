@@ -20,7 +20,7 @@ import { formatNumber } from "@/lib/format-number";
 import { directionColor, directionGlyph } from "@/lib/signed";
 import { isMaskedTeaser } from "@/types/market/shared";
 import type { Market } from "@/types/settings";
-import type { ChipBrokerTopRow } from "@/types/stock/chip";
+import type { ChipBrokerTopRow, ChipFlowsData } from "@/types/stock/chip";
 
 /** 分點's 買賣超 tab period selector — days back from today, mapped to `getStockChipFlows`'s
  * `start_date` param. `get_chip_flows`'s upstream (`TaiwanStockTradingDailyReport`) is
@@ -46,6 +46,23 @@ const BROKER_LOOKBACK_DAYS: Record<BrokerLookbackWindow, number> = {
 const BROKER_TOP_DIRECTIONS = ["buy", "sell"] as const;
 
 type BrokerTopDirection = (typeof BROKER_TOP_DIRECTIONS)[number];
+
+/** The latest reported `number_of_shares_issued`, the denominator for the 佔股本/成交 ratios. */
+function latestSharesIssued(
+  rows: readonly { trade_date: string; number_of_shares_issued: number }[] | undefined,
+): number | undefined {
+  return [...(rows ?? [])].sort((a, b) => a.trade_date.localeCompare(b.trade_date)).at(-1)
+    ?.number_of_shares_issued;
+}
+
+/** `numerator / denominator` in percent, or null when the denominator is missing or not positive. */
+function percentOf(numerator: number, denominator: number | undefined): number | null {
+  return denominator && denominator > 0 ? (numerator / denominator) * 100 : null;
+}
+
+function formatPercent(value: number | null | undefined, decimals: number): string {
+  return value != null ? `${value.toFixed(decimals)}%` : "—";
+}
 
 /** 分點's 買賣超 tab — period selector (近日/5日/10日, bounded to the backend's per-trading-day
  * fan-out cap — see `BROKER_LOOKBACK_WINDOWS`'s own docstring), a 主力籌碼 stat block, and a
@@ -111,13 +128,8 @@ export function ChipFlowsBody({
     return <p className="text-[13px] text-[var(--text-muted)]">{t("empty")}</p>;
   }
 
-  const sharesIssued = [...(shareholdingQuery.data?.rows ?? [])]
-    .sort((a, b) => a.trade_date.localeCompare(b.trade_date))
-    .at(-1)?.number_of_shares_issued;
-  const sharesOfCapital =
-    sharesIssued && sharesIssued > 0 ? (data.main_force_net / sharesIssued) * 100 : null;
-  const turnoverRatio =
-    sharesIssued && sharesIssued > 0 ? (data.total_volume / sharesIssued) * 100 : null;
+  const sharesIssued = latestSharesIssued(shareholdingQuery.data?.rows);
+  const isBuy = direction === "buy";
 
   return (
     <div>
@@ -127,46 +139,7 @@ export function ChipFlowsBody({
         onChange={setWindow}
         labelFor={(w) => t(`brokerLookbackWindow.${w}`)}
       />
-      <div className="mb-4 grid grid-cols-2 gap-3 font-num text-[13px] tabular-nums">
-        {/* `main_force_net`/`total_volume` are both sums of `get_chip_flows`'s (`get_chip_broker`
-         * → FinMind `TaiwanStockTradingDailyReport`) own `buy`/`sell` — that dataset's own doc
-         * note states plainly "buy/sell share counts are still correct" (raw 股), same as every
-         * other 分點/三大法人 shares field in this panel — divided to 張 before formatting.
-         * `sharesOfCapital`/`mainForceConcentration`/`turnoverRatio`/`concentrationDays` are all
-         * %, unaffected by the unit change (both sides of each ratio are shares, so the ratio
-         * itself doesn't change when both are scaled by the same 1000). */}
-        <SnapshotStat
-          label={t("mainForceNet")}
-          value={t("lotUnit", { value: formatSignedNumber(data.main_force_net / 1000, locale) })}
-          tone={data.main_force_net >= 0 ? "up" : "down"}
-        />
-        <SnapshotStat
-          label={t("mainForceConcentration")}
-          value={
-            data.total_volume > 0
-              ? `${((data.main_force_net / data.total_volume) * 100).toFixed(2)}%`
-              : "—"
-          }
-        />
-        <SnapshotStat
-          label={t("sharesOfCapital")}
-          value={sharesOfCapital != null ? `${sharesOfCapital.toFixed(2)}%` : "—"}
-        />
-        <SnapshotStat
-          label={t("concentrationDays")}
-          value={
-            data.concentration_days_pct != null ? `${data.concentration_days_pct.toFixed(0)}%` : "—"
-          }
-        />
-        <SnapshotStat
-          label={t("brokerTotalVolume")}
-          value={t("lotUnit", { value: formatNumber(data.total_volume / 1000, locale) })}
-        />
-        <SnapshotStat
-          label={t("turnoverRatio")}
-          value={turnoverRatio != null ? `${turnoverRatio.toFixed(2)}%` : "—"}
-        />
-      </div>
+      <BrokerStats data={data} sharesIssued={sharesIssued} locale={locale} />
       <div className="mb-2 flex items-center justify-between">
         <SubTabRow
           tabs={BROKER_TOP_DIRECTIONS}
@@ -181,10 +154,62 @@ export function ChipFlowsBody({
         ) : null}
       </div>
       <BrokerTopTable
-        title={t(direction === "buy" ? "buyTop15" : "sellTop15")}
-        rows={direction === "buy" ? data.buy_top : data.sell_top}
+        title={t(isBuy ? "buyTop15" : "sellTop15")}
+        rows={isBuy ? data.buy_top : data.sell_top}
         totalVolume={data.total_volume}
         locale={locale}
+      />
+    </div>
+  );
+}
+
+/** The 主力籌碼 stat block over the chosen window. */
+function BrokerStats({
+  data,
+  sharesIssued,
+  locale,
+}: {
+  readonly data: ChipFlowsData;
+  readonly sharesIssued: number | undefined;
+  readonly locale: string;
+}): ReactNode {
+  const t = useTranslations("stock.chipAnalysis");
+  return (
+    <div className="mb-4 grid grid-cols-2 gap-3 font-num text-[13px] tabular-nums">
+      {/* `main_force_net`/`total_volume` are both sums of `get_chip_flows`'s (`get_chip_broker`
+       * → FinMind `TaiwanStockTradingDailyReport`) own `buy`/`sell` — that dataset's own doc
+       * note states plainly "buy/sell share counts are still correct" (raw 股), same as every
+       * other 分點/三大法人 shares field in this panel — divided to 張 before formatting.
+       * `sharesOfCapital`/`mainForceConcentration`/`turnoverRatio`/`concentrationDays` are all
+       * %, unaffected by the unit change (both sides of each ratio are shares, so the ratio
+       * itself doesn't change when both are scaled by the same 1000). */}
+      <SnapshotStat
+        label={t("mainForceNet")}
+        value={t("lotUnit", { value: formatSignedNumber(data.main_force_net / 1000, locale) })}
+        tone={data.main_force_net >= 0 ? "up" : "down"}
+      />
+      <SnapshotStat
+        label={t("mainForceConcentration")}
+        value={formatPercent(
+          data.total_volume > 0 ? (data.main_force_net / data.total_volume) * 100 : null,
+          2,
+        )}
+      />
+      <SnapshotStat
+        label={t("sharesOfCapital")}
+        value={formatPercent(percentOf(data.main_force_net, sharesIssued), 2)}
+      />
+      <SnapshotStat
+        label={t("concentrationDays")}
+        value={formatPercent(data.concentration_days_pct, 0)}
+      />
+      <SnapshotStat
+        label={t("brokerTotalVolume")}
+        value={t("lotUnit", { value: formatNumber(data.total_volume / 1000, locale) })}
+      />
+      <SnapshotStat
+        label={t("turnoverRatio")}
+        value={formatPercent(percentOf(data.total_volume, sharesIssued), 2)}
       />
     </div>
   );
