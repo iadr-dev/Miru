@@ -286,19 +286,7 @@ class GetMyWatchlistsTool(BaseTool):
         """Join the latest close and change through the existing `get_symbol_quotes` tool, a
         batch per market, for the first MAX_QUOTED_SYMBOLS distinct symbols."""
         tool = self._registry.get_tool("get_symbol_quotes")
-        wanted: dict[UserMarket, list[str]] = {}
-        seen = 0
-        truncated = False
-        for group in groups:
-            for entry in group.items:
-                bucket = wanted.setdefault(entry.market, [])
-                if entry.symbol in bucket:
-                    continue
-                if seen >= MAX_QUOTED_SYMBOLS:
-                    truncated = True
-                    continue
-                bucket.append(entry.symbol)
-                seen += 1
+        wanted, truncated = _quote_requests(groups)
         if tool is None:
             return groups, truncated
         found: dict[tuple[str, str], WatchlistEntry] = {}
@@ -312,15 +300,7 @@ class GetMyWatchlistsTool(BaseTool):
                 )
                 if not isinstance(result, GetSymbolQuotesOutput):
                     continue  # a refusal or teaser: leave those rows without figures
-                for row in result.rows:
-                    found[(market.value, row.symbol)] = WatchlistEntry(
-                        symbol=row.symbol,
-                        market=market,
-                        name=row.name,
-                        trade_date=row.trade_date,
-                        close=row.close,
-                        change_pct=row.change_pct,
-                    )
+                found.update(_quoted_entries(market, result))
         merged = tuple(
             group.model_copy(
                 update={
@@ -330,6 +310,42 @@ class GetMyWatchlistsTool(BaseTool):
             for group in groups
         )
         return merged, truncated
+
+
+def _quote_requests(
+    groups: tuple[WatchlistGroupSummary, ...],
+) -> tuple[dict[UserMarket, list[str]], bool]:
+    """The distinct symbols to quote per market (first MAX_QUOTED_SYMBOLS in encounter order)
+    and whether any further distinct symbol was left out."""
+    wanted: dict[UserMarket, list[str]] = {}
+    seen = 0
+    truncated = False
+    for entry in (e for group in groups for e in group.items):
+        bucket = wanted.setdefault(entry.market, [])
+        if entry.symbol in bucket:
+            continue
+        if seen >= MAX_QUOTED_SYMBOLS:
+            truncated = True
+            continue
+        bucket.append(entry.symbol)
+        seen += 1
+    return wanted, truncated
+
+
+def _quoted_entries(
+    market: UserMarket, result: GetSymbolQuotesOutput
+) -> dict[tuple[str, str], WatchlistEntry]:
+    return {
+        (market.value, row.symbol): WatchlistEntry(
+            symbol=row.symbol,
+            market=market,
+            name=row.name,
+            trade_date=row.trade_date,
+            close=row.close,
+            change_pct=row.change_pct,
+        )
+        for row in result.rows
+    }
 
 
 # ---------------------------------------------------------------------------------------------
