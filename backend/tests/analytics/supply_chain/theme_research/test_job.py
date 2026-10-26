@@ -158,11 +158,11 @@ async def test_an_invalid_theme_file_fails_the_run_without_writing(tmp_path: Pat
     assert not claims_path(root).exists()
 
 
-def test_job_is_scheduled_weekly_once_next_to_the_other_supply_chain_jobs() -> None:
+def test_job_is_scheduled_monthly_once_next_to_the_other_supply_chain_jobs() -> None:
     names = [j.name for j in SCHEDULED_JOBS]
     assert names.count("sc_theme_research") == 1
     jobs = {j.name: j for j in SCHEDULED_JOBS}
-    assert jobs["sc_theme_research"].cadence is Cadence.WEEKLY
+    assert jobs["sc_theme_research"].cadence is Cadence.MONTHLY
     assert jobs["sc_theme_research"].fire_time > jobs["sc_research"].fire_time
     assert "sc_theme_candidates" in names
 

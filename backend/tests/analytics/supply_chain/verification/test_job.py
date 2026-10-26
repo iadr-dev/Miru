@@ -242,9 +242,9 @@ async def test_caps_from_settings_end_the_run_and_are_journaled(
     assert run.rows_written == 0
 
 
-def test_the_job_is_registered_weekly_and_off_by_default() -> None:
+def test_the_job_is_registered_monthly_and_off_by_default() -> None:
     [entry] = [j for j in SCHEDULED_JOBS if j.name == "sc_research"]
-    assert entry.cadence is Cadence.WEEKLY
+    assert entry.cadence is Cadence.MONTHLY
     assert entry.run is job_sc_research
     assert Settings(finmind_api_key="t").supply_chain_research_enabled is False
 
