@@ -224,24 +224,19 @@ def _dividend_fill_results(
     results: list[DividendFillResult] = []
     for idx, row in enumerate(ordered_rows):
         window_end = ordered_rows[idx + 1].trade_date if idx + 1 < len(ordered_rows) else date_.max
-        filled = False
-        filled_date: date_ | None = None
-        for bar in ordered_bars:
-            if bar.trade_date <= row.trade_date or bar.trade_date >= window_end:
-                continue
-            if bar.close >= row.before_price:
-                filled = True
-                filled_date = bar.trade_date
-                break
+        window = [b for b in ordered_bars if row.trade_date < b.trade_date < window_end]
+        filled_date = next((b.trade_date for b in window if b.close >= row.before_price), None)
         # No later bar at all within the window (the next event hasn't happened yet and no
         # price history reaches past this event) means "not yet resolved", not "failed" —
         # surfaced as `None` per this model's own docstring.
-        has_later_bar = any(row.trade_date < bar.trade_date < window_end for bar in ordered_bars)
+        filled: bool | None = filled_date is not None
+        if not filled and not window:
+            filled = None
         results.append(
             DividendFillResult(
                 trade_date=row.trade_date,
                 before_price=row.before_price,
-                filled=filled if (filled or has_later_bar) else None,
+                filled=filled,
                 filled_date=filled_date,
                 days_to_fill=(filled_date - row.trade_date).days if filled_date else None,
             )
