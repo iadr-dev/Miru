@@ -198,7 +198,7 @@ describe("ChipFlowsBody data", () => {
     await screen.findAllByText(copy.mainForceNet);
     await new Promise((r) => setTimeout(r, 0));
     const calls = vi.mocked(getStockChipFlows).mock.calls;
-    expect(calls.length).toBe(2);
+    expect(calls).toHaveLength(2);
     expect(calls[1]?.[2]?.startDate).not.toBe(first);
     expect(
       screen

@@ -177,8 +177,10 @@ function asRecord(data: unknown): Record<string, unknown> | null {
 }
 
 /** The scalar fields worth a cell in the stat grid, in payload order. */
-function statEntries(entity: Record<string, unknown>): [string, string | number | boolean][] {
-  const stats: [string, string | number | boolean][] = [];
+type StatEntry = [string, string | number | boolean];
+
+function statEntries(entity: Record<string, unknown>): StatEntry[] {
+  const stats: StatEntry[] = [];
   for (const [key, value] of Object.entries(entity)) {
     const isScalar =
       typeof value === "string" || typeof value === "number" || typeof value === "boolean";

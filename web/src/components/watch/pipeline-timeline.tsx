@@ -114,7 +114,7 @@ function fillOf(nowPosition: number | null, lastDone: number, views: readonly St
 
 type Upcoming = ReturnType<typeof nextCheck>;
 
-function upcomingCheck(live: boolean, minutes: number): Upcoming {
+function upcomingCheck({ live, minutes }: Readonly<{ live: boolean; minutes: number }>): Upcoming {
   return live && minutes <= SESSION_END ? nextCheck(minutes) : null;
 }
 
@@ -156,7 +156,7 @@ export function PipelineTimeline({
   const next = nextPending(views, lastDone);
   const nowPosition = live ? positionOf(clock.minutes) : null;
   const fill = fillOf(nowPosition, lastDone, views);
-  const upcoming = upcomingCheck(live, clock.minutes);
+  const upcoming = upcomingCheck({ live, minutes: clock.minutes });
   const checked = new Map(data.slots.map((s) => [s.slot, s]));
 
   useEffect(() => {
