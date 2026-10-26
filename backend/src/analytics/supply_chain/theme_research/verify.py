@@ -191,13 +191,20 @@ def _position(claims: Sequence[ThemeClaim]) -> str:
     return DEFAULT_POSITION
 
 
+HIGH_CONFIDENCE_SITES = 2  # independent reliable sites that make a non-primary claim `high`
+
+
 def _confidence(evidence: Sequence[Evidence]) -> str:
     """`high` needs a primary source, or two independent reliable sites; one passing mention on a
     single news site is `medium` (still reviewable, but not presented as settled)."""
     reliable = [e for e in evidence if e.trust in (Trust.PRIMARY, Trust.SECONDARY)]
     if any(e.trust is Trust.PRIMARY for e in reliable):
         return "high"
-    return "high" if len({independence_key(e) for e in reliable}) >= 2 else "medium"
+    return (
+        "high"
+        if len({independence_key(e) for e in reliable}) >= HIGH_CONFIDENCE_SITES
+        else "medium"
+    )
 
 
 def _second_messages(claim: ThemeClaim, company: Company, ctx: VerifyContext) -> list[Message]:
