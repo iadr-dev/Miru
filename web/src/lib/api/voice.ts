@@ -73,7 +73,7 @@ export function audioBase64ToObjectUrl(audioBase64: string, contentType: string)
   const binary = atob(audioBase64);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
+    bytes[i] = binary.codePointAt(i) ?? 0;
   }
   const blob = new Blob([bytes], { type: contentType });
   return URL.createObjectURL(blob);
