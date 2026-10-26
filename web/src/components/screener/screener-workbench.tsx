@@ -1,5 +1,6 @@
 "use client";
 
+import type { UseQueryResult } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useMemo, useState } from "react";
 import { ConditionBuilder } from "@/components/screener/condition-builder";
@@ -12,13 +13,19 @@ import { SavedScreens } from "@/components/screener/saved-screens";
 import { ScreenerEmptyState } from "@/components/screener/screener-empty-state";
 import { ScreenerError } from "@/components/screener/screener-error";
 import { ScreenerLoading } from "@/components/screener/screener-loading";
-import { SCREENER_MARKET_CONFIGS } from "@/components/screener/screener-market-config";
+import {
+  SCREENER_MARKET_CONFIGS,
+  type ScreenerColumn,
+} from "@/components/screener/screener-market-config";
 import { ScreenerTable } from "@/components/screener/screener-table";
 import { ThemeCards } from "@/components/screener/theme-cards";
 import { useFactorCatalog, useRunScreener, useScreenerPresets } from "@/hooks/use-screener";
 import type {
+  FactorCatalog,
+  RunScreenerResult,
   ScreenerGateOverrides,
   ScreenerMarket,
+  ScreenerPreset,
   ScreenerRunCondition,
   ScreenerScreen,
 } from "@/types/screener";
@@ -29,6 +36,67 @@ const DEFAULT_GATES: ScreenerGateOverrides = {
   exclude_attention: true,
   exclude_full_cash_delivery: true,
 };
+
+const RELAXED_GATES: ScreenerGateOverrides = {
+  exclude_disposition: false,
+  exclude_attention: false,
+  exclude_full_cash_delivery: false,
+};
+
+/** Split a saved screen's conditions into plain conditions and signal-tag factor keys. */
+function splitScreenConditions(
+  screen: ScreenerScreen,
+  catalog: FactorCatalog | undefined,
+): { conditions: ScreenerRunCondition[]; tags: string[] } {
+  const knownTags = new Set((catalog?.signals ?? []).map((signal) => signal.key));
+  const all = screen.conditions as ScreenerRunCondition[];
+  return {
+    conditions: all.filter((condition) => !knownTags.has(condition.factor)),
+    tags: all.filter((condition) => knownTags.has(condition.factor)).map((c) => c.factor),
+  };
+}
+
+function presetToConditions(preset: ScreenerPreset): ScreenerRunCondition[] {
+  return preset.conditions.map((c) => ({
+    factor: c.factor,
+    op: c.op,
+    value: c.value ?? undefined,
+    value2: c.value2 ?? undefined,
+  }));
+}
+
+/** Loading / error / empty / table block under the preset library. */
+function ScreenerResults({
+  runQuery,
+  columns,
+  market,
+  catalog,
+  onRelaxGates,
+}: {
+  runQuery: UseQueryResult<RunScreenerResult>;
+  columns: ScreenerColumn[];
+  market: ScreenerMarket;
+  catalog: FactorCatalog | undefined;
+  onRelaxGates: () => void;
+}): ReactNode {
+  return (
+    <>
+      {runQuery.isLoading ? <ScreenerLoading /> : null}
+      {runQuery.isError ? <ScreenerError onRetry={() => runQuery.refetch()} /> : null}
+      {runQuery.data?.survivors.length === 0 ? (
+        <ScreenerEmptyState onRelaxGates={onRelaxGates} />
+      ) : null}
+      {runQuery.data && runQuery.data.survivors.length > 0 ? (
+        <ScreenerTable
+          survivors={runQuery.data.survivors}
+          columns={columns}
+          market={market}
+          catalog={catalog}
+        />
+      ) : null}
+    </>
+  );
+}
 
 /** The screener funnel workbench: market tabs -> FunnelMeter ->
  * GateBar -> builder rail + results table. Client component — the whole surface is interactive
@@ -68,22 +136,14 @@ export function ScreenerWorkbench(): ReactNode {
   }
 
   function handleRelaxGates(): void {
-    setGateOverrides({
-      exclude_disposition: false,
-      exclude_attention: false,
-      exclude_full_cash_delivery: false,
-    });
+    setGateOverrides(RELAXED_GATES);
   }
 
   function loadScreen(screen: ScreenerScreen): void {
-    const catalog = catalogQuery.data;
-    const knownTags = new Set((catalog?.signals ?? []).map((signal) => signal.key));
-    const loadedConditions = (screen.conditions as ScreenerRunCondition[]).filter(
-      (condition) => !knownTags.has(condition.factor),
+    const { conditions: loadedConditions, tags: loadedTags } = splitScreenConditions(
+      screen,
+      catalogQuery.data,
     );
-    const loadedTags = (screen.conditions as ScreenerRunCondition[])
-      .filter((condition) => knownTags.has(condition.factor))
-      .map((condition) => condition.factor);
     setConditions(loadedConditions);
     setSelectedTags(loadedTags);
     setMatch(screen.match);
@@ -94,6 +154,7 @@ export function ScreenerWorkbench(): ReactNode {
   }
 
   const columns = SCREENER_MARKET_CONFIGS[market].columns;
+  const funnelKnown = runQuery.data !== undefined && isFunnelUniverseKnown(runQuery.data.funnel);
 
   return (
     <div className="flex min-h-full flex-col">
@@ -112,11 +173,7 @@ export function ScreenerWorkbench(): ReactNode {
           <GateBar
             overrides={gateOverrides}
             onChange={setGateOverrides}
-            passedCount={
-              runQuery.data && isFunnelUniverseKnown(runQuery.data.funnel)
-                ? runQuery.data.funnel.gated
-                : undefined
-            }
+            passedCount={funnelKnown ? runQuery.data?.funnel.gated : undefined}
             market={market}
           />
           <div className="flex flex-1 flex-col lg:flex-row">
@@ -141,7 +198,7 @@ export function ScreenerWorkbench(): ReactNode {
                   currentGateOverrides={gateOverrides}
                   onLoad={loadScreen}
                 />
-                {runQuery.data && isFunnelUniverseKnown(runQuery.data.funnel) ? (
+                {runQuery.data && funnelKnown ? (
                   <FunnelMatchRate funnel={runQuery.data.funnel} />
                 ) : null}
               </div>
@@ -151,14 +208,7 @@ export function ScreenerWorkbench(): ReactNode {
                 presets={presetsQuery.data ?? []}
                 activeKey={activePresetKey}
                 onSelect={(preset) => {
-                  setConditions(
-                    preset.conditions.map((c) => ({
-                      factor: c.factor,
-                      op: c.op,
-                      value: c.value ?? undefined,
-                      value2: c.value2 ?? undefined,
-                    })),
-                  );
+                  setConditions(presetToConditions(preset));
                   setSelectedTags([]);
                   setMatch(preset.match);
                   setActivePresetKey(preset.key);
@@ -169,19 +219,13 @@ export function ScreenerWorkbench(): ReactNode {
                 ⚠ {t("caveat")}
               </p>
 
-              {runQuery.isLoading ? <ScreenerLoading /> : null}
-              {runQuery.isError ? <ScreenerError onRetry={() => runQuery.refetch()} /> : null}
-              {runQuery.data?.survivors.length === 0 ? (
-                <ScreenerEmptyState onRelaxGates={handleRelaxGates} />
-              ) : null}
-              {runQuery.data && runQuery.data.survivors.length > 0 ? (
-                <ScreenerTable
-                  survivors={runQuery.data.survivors}
-                  columns={columns}
-                  market={market}
-                  catalog={catalogQuery.data}
-                />
-              ) : null}
+              <ScreenerResults
+                runQuery={runQuery}
+                columns={columns}
+                market={market}
+                catalog={catalogQuery.data}
+                onRelaxGates={handleRelaxGates}
+              />
             </div>
           </div>
         </>
