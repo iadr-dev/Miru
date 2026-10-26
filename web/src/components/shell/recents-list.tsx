@@ -42,9 +42,6 @@ function toggledSelection(prev: Set<string>, threadId: string): Set<string> {
 }
 
 /** What "select all" does next: clear everything when all are selected, else select them all. */
-function nextSelection(allSelected: boolean, allIds: string[]): Set<string> {
-  return allSelected ? new Set() : new Set(allIds);
-}
 
 // Multi-select ("Select" mode) is a separate mode from normal browsing, not a per-row toggle
 // always available — entering it hides every row's own star/rename/delete menu (those verbs
@@ -189,7 +186,7 @@ export function RecentsList(): ReactNode {
         <SelectAllRow
           checked={allSelected}
           count={allIds.length}
-          onToggle={() => select.setSelectedIds(nextSelection(allSelected, allIds))}
+          onToggle={() => select.setSelectedIds(allSelected ? new Set<string>() : new Set(allIds))}
         />
       ) : null}
       {showPendingPlaceholder ? <PendingThreadRow /> : null}

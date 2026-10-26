@@ -436,7 +436,7 @@ describe("ScheduleForm validation and submit", () => {
     expect(screen.getByRole("alert").textContent).toBe(message);
     expect(screen.getByRole("form")).toBeTruthy();
     // A stale version also refreshes the list.
-    expect(vi.mocked(listSchedules).mock.calls.length).toBe(code === "stale_version" ? 2 : 1);
+    expect(vi.mocked(listSchedules).mock.calls).toHaveLength(code === "stale_version" ? 2 : 1);
   });
 
   it("a non-API failure shows the generic message", async () => {

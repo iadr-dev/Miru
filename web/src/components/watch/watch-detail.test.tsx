@@ -138,7 +138,7 @@ describe("WatchDetail", () => {
         masked={false}
       />,
     );
-    expect(screen.getAllByText(/\//).length).toBe(1);
+    expect(screen.getAllByText(/\//)).toHaveLength(1);
   });
 
   it("draws the chart with the trigger level and the floor when history has loaded", () => {

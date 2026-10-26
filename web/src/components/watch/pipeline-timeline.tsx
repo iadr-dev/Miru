@@ -42,7 +42,10 @@ function useNow(): Date {
 
 /** The connector to the next step: amber dashes when its data is stale, a moving dash in its colour
  * on today's live list, and a still dash on a past day's list (nothing is in progress there). */
-function flowStyle(next: StepView, live: boolean): Record<string, string> {
+function flowStyle({
+  next,
+  live,
+}: Readonly<{ next: StepView; live: boolean }>): Record<string, string> {
   if (next.stale) {
     return {
       backgroundImage: "repeating-linear-gradient(90deg, var(--warn) 0 6px, transparent 6px 12px)",
@@ -382,7 +385,7 @@ function FlowConnector({
         top: TRACK_TOP,
         left: `${from}%`,
         width: `${next.position - from}%`,
-        ...flowStyle(next, live),
+        ...flowStyle({ next, live }),
       }}
     />
   );
