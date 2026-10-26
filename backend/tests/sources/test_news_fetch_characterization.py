@@ -67,7 +67,8 @@ async def test_one_failing_feed_among_good_ones_is_ok_with_a_partial_failure_not
     assert result.health.status is HealthStatus.OK
     assert result.health.detail == "ok (partial failures: bad_feed: HTTPStatusError)"
     items = result.payload["items"]
-    assert isinstance(items, list) and items
+    assert isinstance(items, list)
+    assert items
     assert {item["source"] for item in items} == {"good_feed"}  # type: ignore[index]
 
 
@@ -165,7 +166,8 @@ async def test_non_tw_finnhub_failure_is_unreachable_and_never_touches_rss(
         query="x", market=Market.US, tls_policy=TLSPolicy.STRICT
     )
 
-    assert len(requested) == 1 and "finnhub.io/api/v1/news" in requested[0]
+    assert len(requested) == 1
+    assert "finnhub.io/api/v1/news" in requested[0]
     assert result.health.status is HealthStatus.UNREACHABLE
     assert result.health.detail == "finnhub: HTTPStatusError"
 
@@ -181,7 +183,8 @@ async def test_tw_company_news_is_scoped_by_the_query_and_items_are_newest_first
 
     finnhub_urls = [u for u in requested if "finnhub.io" in u]
     assert len(finnhub_urls) == 1
-    assert "company-news" in finnhub_urls[0] and "symbol=2330" in finnhub_urls[0]
+    assert "company-news" in finnhub_urls[0]
+    assert "symbol=2330" in finnhub_urls[0]
     items = result.payload["items"]
     assert isinstance(items, list)
     stamps = [item["published_at"] for item in items]  # type: ignore[index]
