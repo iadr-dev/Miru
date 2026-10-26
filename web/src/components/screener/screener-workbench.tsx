@@ -72,13 +72,13 @@ function ScreenerResults({
   market,
   catalog,
   onRelaxGates,
-}: {
+}: Readonly<{
   runQuery: UseQueryResult<RunScreenerResult>;
   columns: ScreenerColumn[];
   market: ScreenerMarket;
   catalog: FactorCatalog | undefined;
   onRelaxGates: () => void;
-}): ReactNode {
+}>): ReactNode {
   return (
     <>
       {runQuery.isLoading ? <ScreenerLoading /> : null}

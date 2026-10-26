@@ -121,11 +121,11 @@ function StockRowView({
   row,
   closeLabel,
   onChange,
-}: {
+}: Readonly<{
   row: PerStockRow;
   closeLabel: string;
   onChange: (patch: Partial<PerStockRow>) => void;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("settings.alerts.perStock");
   const quick = (
     key: string,

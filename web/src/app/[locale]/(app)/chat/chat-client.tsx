@@ -178,7 +178,7 @@ function ChatTranscript({
   onSend,
   onRegenerate,
   onEdit,
-}: {
+}: Readonly<{
   thread: Thread | undefined;
   hasThread: boolean;
   loadFailed: boolean;
@@ -187,7 +187,7 @@ function ChatTranscript({
   onSend: (message: string, attachments?: AttachmentInput[]) => void;
   onRegenerate: (assistantTurnId: string, userText: string) => Promise<unknown>;
   onEdit: (userTurnId: string, newText: string) => void;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("chat.turn");
   if (!hasThread && activeTurn === null) {
     return <EmptyState onPick={onSend} />;

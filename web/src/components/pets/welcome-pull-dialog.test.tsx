@@ -203,7 +203,7 @@ describe("WelcomePullDialog", () => {
     mount("en");
     await screen.findByRole("dialog");
     fireEvent.click(screen.getByRole("button", { name: enMessages.settings.pets.welcome.pull }));
-    await screen.findByText("A calm cat");
+    expect(await screen.findByText("A calm cat")).toBeTruthy();
   });
 
   it("omits the description when the catalog entry is unknown (en)", async () => {

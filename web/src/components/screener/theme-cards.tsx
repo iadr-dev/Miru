@@ -38,10 +38,10 @@ function countSubIndustries(members: readonly ThemeMember[]): [string, number][]
 function KindTabs({
   kindFilter,
   onChange,
-}: {
+}: Readonly<{
   kindFilter: string;
   onChange: (key: KindFilter) => void;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("screener.themes");
   return (
     <div role="tablist" className="flex gap-1.5">
@@ -76,11 +76,11 @@ function ThemeChip({
   theme,
   active,
   onSelect,
-}: {
+}: Readonly<{
   theme: ThemeSummary;
   active: boolean;
   onSelect: (key: string) => void;
-}): ReactNode {
+}>): ReactNode {
   const token = hashToChartToken(theme.name_zh);
   return (
     <button
@@ -109,11 +109,11 @@ function SubIndustryButton({
   selected,
   onClick,
   children,
-}: {
+}: Readonly<{
   selected: boolean;
   onClick: () => void;
   children: ReactNode;
-}): ReactNode {
+}>): ReactNode {
   return (
     <button
       type="button"
@@ -135,11 +135,11 @@ function SubIndustryFilter({
   subIndustries,
   value,
   onChange,
-}: {
+}: Readonly<{
   subIndustries: [string, number][];
   value: string | null;
   onChange: (next: string | null) => void;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("screener.themes");
   return (
     <div className="flex flex-wrap items-center gap-1.5">
