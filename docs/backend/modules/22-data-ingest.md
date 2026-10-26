@@ -87,7 +87,7 @@ symbol's date range.
 - **Exchange-confirmed closures.** The internal calendar is learned from stored partitions (FinMind's
   trading calendar is not free), so it cannot know a closure such as Teachers' Day. The adapter
   tells an *explicit* "nothing published" (TWSE's no-data `stat`, a TPEx report without rows; the
-  parsers raise `NoDataPublished`) from trouble (HTTP error, 429, block page, wrong date, layout
+  parsers raise `NoDataPublishedError`) from trouble (HTTP error, 429, block page, wrong date, layout
   change). When BOTH exchanges answered explicitly, it returns STALE with the detail constant
   `sources.base.NO_DATA_PUBLISHED`. If the date is strictly before today (Taipei) the chain stops
   there without calling FinMind, writes nothing and the job journals `SKIPPED`
