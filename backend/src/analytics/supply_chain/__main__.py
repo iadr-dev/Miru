@@ -215,7 +215,7 @@ def _promote(files: list[Path], *, dry_run: bool, min_confidence: str) -> int:
     return 0
 
 
-def main(argv: list[str] | None = None) -> int:
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m analytics.supply_chain")
     parser.add_argument(
         "command",
@@ -292,41 +292,54 @@ def main(argv: list[str] | None = None) -> int:
         help="verify/research-themes/verify-themes: search and judge, write nothing; "
         "discover --themes: print, write nothing",
     )
+    return parser
+
+
+def _run_theme_command(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+    if args.command == "research-themes" and args.source in ("gaps", "stale"):
+        parser.error("research-themes --source is one of candidates|existing|all")
+    if not 0 < args.covered_threshold <= 1:
+        parser.error("--covered-threshold must be above 0 and at most 1")
+    return asyncio.run(
+        run_theme_command(
+            args.command,
+            limit=args.limit,
+            dry_run=args.dry_run,
+            source=args.source,
+            covered_threshold=args.covered_threshold,
+        )
+    )
+
+
+def _discover_themes(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+    if args.command != "discover":
+        parser.error("--themes applies to the discover command only")
+    groups = _fetch_industry_groups()
+    if groups is None:
+        sys.stdout.write("industry overlap skipped: database unavailable\n")
+    return run_themes_command(
+        industry_groups=groups,
+        min_companies=args.min_companies,
+        limit=args.limit,
+        dry_run=args.dry_run,
+        max_share=args.max_share,
+        overlap_threshold=args.overlap,
+    )
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = _build_parser()
     args = parser.parse_args(argv)
     if args.files and args.command != "promote":
         parser.error("proposal files apply to the promote command only")
     if args.command == "promote":
         return _promote(args.files, dry_run=args.dry_run, min_confidence=args.min_confidence)
     if args.command in ("research-themes", "verify-themes"):
-        if args.command == "research-themes" and args.source in ("gaps", "stale"):
-            parser.error("research-themes --source is one of candidates|existing|all")
-        if not 0 < args.covered_threshold <= 1:
-            parser.error("--covered-threshold must be above 0 and at most 1")
-        return asyncio.run(
-            run_theme_command(
-                args.command,
-                limit=args.limit,
-                dry_run=args.dry_run,
-                source=args.source,
-                covered_threshold=args.covered_threshold,
-            )
-        )
+        return _run_theme_command(parser, args)
     if args.source == "existing":
         parser.error("--source existing applies to research-themes only")
     if args.themes:
-        if args.command != "discover":
-            parser.error("--themes applies to the discover command only")
-        groups = _fetch_industry_groups()
-        if groups is None:
-            sys.stdout.write("industry overlap skipped: database unavailable\n")
-        return run_themes_command(
-            industry_groups=groups,
-            min_companies=args.min_companies,
-            limit=args.limit,
-            dry_run=args.dry_run,
-            max_share=args.max_share,
-            overlap_threshold=args.overlap,
-        )
+        return _discover_themes(parser, args)
     if args.command in ("discover", "verify"):
         return asyncio.run(
             run_research_command(
