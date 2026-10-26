@@ -111,6 +111,64 @@ class _StockAgg:
     per_etf_net: dict[str, int] = field(default_factory=dict[str, int])
 
 
+@dataclass
+class _ChangeWindow:
+    """The holding-change rows read for the (possibly fallen-back) window actually shown."""
+
+    raw_changes: list[dict[str, object]]
+    start_date: date_
+    end_date: date_
+    requested_end_date: date_ | None
+
+
+@dataclass
+class _HoldingStats:
+    """Per-stock figures from the latest ingested holdings snapshot on or before the window."""
+
+    holding_end_date: date_ | None
+    shares_outstanding: dict[str, float] = field(default_factory=dict[str, float])
+    holder_counts: dict[str, int] = field(default_factory=dict[str, int])
+    held_shares: dict[str, int] = field(default_factory=dict[str, int])
+    held_values: dict[str, float] = field(default_factory=dict[str, float])
+
+
+def _aggregate_changes(changes: Sequence[ActiveEtfHoldingChangeRow]) -> dict[str, _StockAgg]:
+    aggregates: dict[str, _StockAgg] = {}
+    for change in changes:
+        agg = aggregates.get(change.component_stock_id)
+        if agg is None:
+            agg = _StockAgg(component_stock_name=change.component_stock_name)
+            aggregates[change.component_stock_id] = agg
+        net = change.buy - change.sell
+        agg.per_etf_net[change.symbol] = agg.per_etf_net.get(change.symbol, 0) + net
+        agg.net_shares_flow += net
+    return aggregates
+
+
+def _flow_rows(aggregates: dict[str, _StockAgg], stats: _HoldingStats) -> list[EtfMoneyFlowRow]:
+    rows: list[EtfMoneyFlowRow] = []
+    for stock_id, agg in aggregates.items():
+        buying = sum(1 for net in agg.per_etf_net.values() if net > 0)
+        selling = sum(1 for net in agg.per_etf_net.values() if net < 0)
+        shares = stats.held_shares.get(stock_id)
+        outstanding = stats.shares_outstanding.get(stock_id)
+        shares_held_pct = shares / outstanding * 100 if shares is not None and outstanding else None
+        rows.append(
+            EtfMoneyFlowRow(
+                component_stock_id=stock_id,
+                component_stock_name=agg.component_stock_name,
+                active_etf_holder_count=stats.holder_counts.get(stock_id),
+                held_shares=shares,
+                held_market_value=stats.held_values.get(stock_id),
+                stock_shares_held_pct=shares_held_pct,
+                net_shares_flow=agg.net_shares_flow,
+                buying_etf_count=buying,
+                selling_etf_count=selling,
+            )
+        )
+    return rows
+
+
 _ETF_MONEY_FLOW_FREE_ROW_COUNT = 2  # governance.md §4 top-N-preview exception
 
 
@@ -179,6 +237,51 @@ class GetEtfMoneyFlowTool(SyncStoreTool):
 
     def run_sync(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
         typed = parse_args(GetEtfMoneyFlowInput, args)
+        window = self._read_change_window(typed)
+        if not window.raw_changes:
+            return GetEtfMoneyFlowOutput(
+                market=typed.market.value,
+                start_date=typed.start_date,
+                end_date=typed.end_date,
+                data_available=False,
+                unavailable_reason=(
+                    "No ingested active-ETF holding-change partition found for "
+                    f"{typed.market.value} in [{typed.start_date.isoformat()}, "
+                    f"{typed.end_date.isoformat()}] — the whole-market ingest job may not have "
+                    "run yet for this range."
+                ),
+            )
+        changes = rows_from_store(ActiveEtfHoldingChangeRow, window.raw_changes)
+        aggregates = _aggregate_changes(changes)
+        stats = self._holding_stats(typed.market.value, window.end_date)
+        rows = _flow_rows(aggregates, stats)
+
+        inflow = _ranked_etf_money_flow_rows(
+            sorted(rows, key=lambda r: r.net_shares_flow or 0, reverse=True)[: typed.top_n]
+        )
+        outflow = _ranked_etf_money_flow_rows(
+            sorted(rows, key=lambda r: r.net_shares_flow or 0)[: typed.top_n]
+        )
+
+        entitled = is_entitled(self.data_class, ctx.tier)
+        if not entitled:
+            inflow = _mask_etf_money_flow_rows_beyond(inflow, _ETF_MONEY_FLOW_FREE_ROW_COUNT)
+            outflow = _mask_etf_money_flow_rows_beyond(outflow, _ETF_MONEY_FLOW_FREE_ROW_COUNT)
+
+        return GetEtfMoneyFlowOutput(
+            market=typed.market.value,
+            start_date=window.start_date,
+            end_date=window.end_date,
+            holding_as_of=stats.holding_end_date,
+            requested_end_date=window.requested_end_date,
+            data_available=True,
+            total_stock_count=len(aggregates),
+            free_row_count=_ETF_MONEY_FLOW_FREE_ROW_COUNT,
+            inflow_ranking=inflow,
+            outflow_ranking=outflow,
+        )
+
+    def _read_change_window(self, typed: GetEtfMoneyFlowInput) -> _ChangeWindow:
         calendar = real_calendar(self._store, typed.market.value)
         start_date, end_date = typed.start_date, typed.end_date
         requested_end_date: date_ | None = None
@@ -200,110 +303,33 @@ class GetEtfMoneyFlowTool(SyncStoreTool):
                 typed.market.value,
                 calendar.business_days_between(start_date, end_date),
             )
-        if not raw_changes:
-            return GetEtfMoneyFlowOutput(
-                market=typed.market.value,
-                start_date=typed.start_date,
-                end_date=typed.end_date,
-                data_available=False,
-                unavailable_reason=(
-                    "No ingested active-ETF holding-change partition found for "
-                    f"{typed.market.value} in [{typed.start_date.isoformat()}, "
-                    f"{typed.end_date.isoformat()}] — the whole-market ingest job may not have "
-                    "run yet for this range."
-                ),
-            )
-        changes = rows_from_store(ActiveEtfHoldingChangeRow, raw_changes)
+        return _ChangeWindow(raw_changes, start_date, end_date, requested_end_date)
 
-        aggregates: dict[str, _StockAgg] = {}
-        for change in changes:
-            agg = aggregates.get(change.component_stock_id)
-            if agg is None:
-                agg = _StockAgg(component_stock_name=change.component_stock_name)
-                aggregates[change.component_stock_id] = agg
-            net = change.buy - change.sell
-            agg.per_etf_net[change.symbol] = agg.per_etf_net.get(change.symbol, 0) + net
-            agg.net_shares_flow += net
-
+    def _holding_stats(self, market: str, end_date: date_) -> _HoldingStats:
         holding_end_date = latest_ingested_date_on_or_before(
-            self._store, ACTIVE_ETF_HOLDING_JOB.dataset, typed.market.value, end_date
+            self._store, ACTIVE_ETF_HOLDING_JOB.dataset, market, end_date
         )
-        raw_holdings = (
-            self._store.read_partition(
-                ACTIVE_ETF_HOLDING_JOB.dataset, typed.market.value, holding_end_date
-            )
-            if holding_end_date is not None
-            else []
+        if holding_end_date is None:
+            return _HoldingStats(holding_end_date=None)
+        raw_holdings = self._store.read_partition(
+            ACTIVE_ETF_HOLDING_JOB.dataset, market, holding_end_date
         )
         holdings = rows_from_store(ActiveEtfHoldingRow, raw_holdings)
         # `holding.market_value` is FinMind's own field, hardcoded `0.0` for every row of this
         # dataset (see `_holdings_market_value`'s docstring) — recompute from shares x that day's
         # real close instead, the same fix `GetActiveEtfReportTool` already applies.
-        closes = (
-            closes_by_symbol(self._store, typed.market.value, holding_end_date)
-            if holding_end_date is not None
-            else {}
+        closes = closes_by_symbol(self._store, market, holding_end_date)
+        stats = _HoldingStats(
+            holding_end_date=holding_end_date,
+            shares_outstanding=shares_outstanding_by_symbol(self._store, market, holding_end_date),
         )
-        shares_outstanding = (
-            shares_outstanding_by_symbol(self._store, typed.market.value, holding_end_date)
-            if holding_end_date is not None
-            else {}
-        )
-        holder_counts: dict[str, int] = {}
-        held_shares: dict[str, int] = {}
-        held_values: dict[str, float] = {}
         for holding in holdings:
             stock_id = holding.component_stock_id
-            holder_counts[stock_id] = holder_counts.get(stock_id, 0) + 1
-            held_shares[stock_id] = held_shares.get(stock_id, 0) + holding.shares
+            stats.holder_counts[stock_id] = stats.holder_counts.get(stock_id, 0) + 1
+            stats.held_shares[stock_id] = stats.held_shares.get(stock_id, 0) + holding.shares
             close = closes.get(stock_id)
             if close is not None:
-                held_values[stock_id] = held_values.get(stock_id, 0.0) + holding.shares * close
-
-        rows: list[EtfMoneyFlowRow] = []
-        for stock_id, agg in aggregates.items():
-            buying = sum(1 for net in agg.per_etf_net.values() if net > 0)
-            selling = sum(1 for net in agg.per_etf_net.values() if net < 0)
-            shares = held_shares.get(stock_id)
-            outstanding = shares_outstanding.get(stock_id)
-            shares_held_pct = (
-                shares / outstanding * 100 if shares is not None and outstanding else None
-            )
-            rows.append(
-                EtfMoneyFlowRow(
-                    component_stock_id=stock_id,
-                    component_stock_name=agg.component_stock_name,
-                    active_etf_holder_count=holder_counts.get(stock_id),
-                    held_shares=shares,
-                    held_market_value=held_values.get(stock_id),
-                    stock_shares_held_pct=shares_held_pct,
-                    net_shares_flow=agg.net_shares_flow,
-                    buying_etf_count=buying,
-                    selling_etf_count=selling,
+                stats.held_values[stock_id] = (
+                    stats.held_values.get(stock_id, 0.0) + holding.shares * close
                 )
-            )
-
-        inflow = _ranked_etf_money_flow_rows(
-            sorted(rows, key=lambda r: r.net_shares_flow or 0, reverse=True)[: typed.top_n]
-        )
-        outflow = _ranked_etf_money_flow_rows(
-            sorted(rows, key=lambda r: r.net_shares_flow or 0)[: typed.top_n]
-        )
-
-        entitled = is_entitled(self.data_class, ctx.tier)
-        if not entitled:
-            inflow = _mask_etf_money_flow_rows_beyond(inflow, _ETF_MONEY_FLOW_FREE_ROW_COUNT)
-            outflow = _mask_etf_money_flow_rows_beyond(outflow, _ETF_MONEY_FLOW_FREE_ROW_COUNT)
-
-        return GetEtfMoneyFlowOutput(
-            market=typed.market.value,
-            start_date=start_date,
-            end_date=end_date,
-            holding_as_of=holding_end_date,
-            requested_end_date=requested_end_date,
-            data_available=True,
-            total_stock_count=len(aggregates),
-            free_row_count=_ETF_MONEY_FLOW_FREE_ROW_COUNT,
-            inflow_ranking=inflow,
-            outflow_ranking=outflow,
-        )
+        return stats
