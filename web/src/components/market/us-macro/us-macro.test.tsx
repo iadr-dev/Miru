@@ -83,8 +83,8 @@ describe("IndicatorGroupCard", () => {
     expect(screen.getByText("159,800")).toBeTruthy();
     expect(screen.getByText("較前期 +0.20")).toBeTruthy();
     expect(screen.getByText("較前期 +150")).toBeTruthy();
-    expect(screen.getAllByText(/下次發布/).length).toBe(2);
-    expect(container.querySelectorAll("svg polyline").length).toBe(2);
+    expect(screen.getAllByText(/下次發布/)).toHaveLength(2);
+    expect(container.querySelectorAll("svg polyline")).toHaveLength(2);
     // The change is muted text, never a direction glyph.
     expect(container.textContent).not.toMatch(/[▲▼]/);
 
@@ -131,7 +131,7 @@ describe("YieldCurvePanel", () => {
       expect(container.querySelector(".recharts-line")).not.toBeNull();
     });
     // Both bands overlap the visible window (the ongoing one runs to the last point).
-    expect(container.querySelectorAll(".recharts-reference-area").length).toBe(2);
+    expect(container.querySelectorAll(".recharts-reference-area")).toHaveLength(2);
     expect(container.querySelector(".recharts-reference-line")).not.toBeNull();
     expect(screen.getByRole("img", { name: /利差的歷史走勢/ })).toBeTruthy();
   });
@@ -244,10 +244,10 @@ describe("EconomicReleasesFeed", () => {
     expect(screen.getByText("Consumer Price Index")).toBeTruthy();
     expect(screen.getByText("待發布")).toBeTruthy();
     expect(screen.getByText("已發布")).toBeTruthy();
-    expect(screen.getAllByText(/變化\s*\+0\.20/).length).toBe(2);
+    expect(screen.getAllByText(/變化\s*\+0\.20/)).toHaveLength(2);
     // Upcoming days come first, then the recent past.
     const headings = screen.getAllByRole("heading", { level: 3 });
-    expect(headings.length).toBe(2);
+    expect(headings).toHaveLength(2);
     const names = screen.getAllByRole("heading", { level: 4 }).map((node) => node.textContent);
     expect(names).toEqual(["Employment Situation", "Consumer Price Index"]);
   });
