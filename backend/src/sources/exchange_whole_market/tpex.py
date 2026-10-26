@@ -16,29 +16,29 @@ from collections.abc import Callable
 from datetime import date as date_
 from typing import Final
 
-import structlog
-
 from schemas.enums import Capability
 
 from ._common import (
-    TAIWAN_MARKET,
+    BarColumns,
     Endpoint,
     ExchangeFetchError,
     JsonObject,
     Row,
+    ValuationColumns,
     as_list,
     as_object,
+    bars_from_rows,
     cell,
     check_response_date,
     clean_cell,
     column_index,
+    flows_from_rows,
     is_symbol,
+    margin_row,
     table_rows,
     to_count,
-    to_number,
+    valuations_from_rows,
 )
-
-logger = structlog.get_logger(__name__)
 
 _BASE: Final = "https://www.tpex.org.tw/www/zh-tw"
 _INSTITUTIONAL_COLUMNS: Final = 24
@@ -52,6 +52,12 @@ _INVESTOR_BUY_COLUMN: Final = {
     "Dealer_self": 14,
     "Dealer_Hedging": 17,
 }
+
+
+_MARGIN_BLOCK: Final = ("資買", "資賣", "現償", "前資餘額(張)", "資餘額", "資限額")
+# TPEx lists 券賣 before 券買: buy (cover) first, the order the margin block and FinMind use.
+_SHORT_BLOCK: Final = ("券買", "券賣", "券償", "前券餘額(張)", "券餘額", "券限額")
+_MARGIN_HEADERS: Final = ("代號", *_MARGIN_BLOCK, *_SHORT_BLOCK, "資券相抵(張)", "備註")
 
 
 def _first_table(body: JsonObject, label: str) -> tuple[list[object], list[list[object]]] | None:
@@ -74,34 +80,16 @@ def parse_price(body: JsonObject, run_date: date_) -> list[Row]:
         return []
     check_response_date(body, run_date, "otc")
     fields, rows = report
-    code = column_index(fields, "代號")
-    close = column_index(fields, "收盤")
-    open_ = column_index(fields, "開盤")
-    high = column_index(fields, "最高")
-    low = column_index(fields, "最低")
-    volume = column_index(fields, "成交股數")
-    turnover = column_index(fields, "成交金額(元)")
-    bars: list[Row] = []
-    for row in rows:
-        symbol = clean_cell(cell(row, code))
-        prices = [to_number(cell(row, i)) for i in (open_, high, low, close)]
-        shares = to_count(cell(row, volume))
-        if not is_symbol(symbol) or any(p is None or p <= 0 for p in prices) or shares is None:
-            continue  # did not trade: the prices print as '---'
-        bars.append(
-            {
-                "symbol": symbol,
-                "market": TAIWAN_MARKET,
-                "trade_date": run_date.isoformat(),
-                "open": prices[0],
-                "high": prices[1],
-                "low": prices[2],
-                "close": prices[3],
-                "volume": shares,
-                "turnover": to_count(cell(row, turnover)),
-            }
-        )
-    return bars
+    columns = BarColumns(
+        code=column_index(fields, "代號"),
+        open=column_index(fields, "開盤"),
+        high=column_index(fields, "最高"),
+        low=column_index(fields, "最低"),
+        close=column_index(fields, "收盤"),
+        volume=column_index(fields, "成交股數"),
+        turnover=column_index(fields, "成交金額(元)"),
+    )
+    return bars_from_rows(rows, run_date, columns)
 
 
 def parse_institutional(body: JsonObject, run_date: date_) -> list[Row]:
@@ -112,30 +100,8 @@ def parse_institutional(body: JsonObject, run_date: date_) -> list[Row]:
     fields, rows = report
     if len(fields) != _INSTITUTIONAL_COLUMNS:
         raise ExchangeFetchError("dailyTrade: unexpected column layout")
-    flows: list[Row] = []
-    for row in rows:
-        symbol = clean_cell(cell(row, 0))
-        if not is_symbol(symbol):
-            continue
-        counts = {
-            investor: (to_count(cell(row, at)), to_count(cell(row, at + 1)))
-            for investor, at in _INVESTOR_BUY_COLUMN.items()
-        }
-        if any(b is None or s is None for b, s in counts.values()):
-            logger.warning("exchange_row_dropped", report="dailyTrade", symbol=symbol)
-            continue
-        flows.extend(
-            {
-                "symbol": symbol,
-                "market": TAIWAN_MARKET,
-                "trade_date": run_date.isoformat(),
-                "investor": investor,
-                "buy": buy,
-                "sell": sell,
-            }
-            for investor, (buy, sell) in counts.items()
-        )
-    return flows
+    columns = {investor: (at, at + 1) for investor, at in _INVESTOR_BUY_COLUMN.items()}
+    return flows_from_rows(rows, run_date, code=0, columns=columns, report="dailyTrade")
 
 
 def parse_margin(body: JsonObject, run_date: date_) -> list[Row]:
@@ -144,13 +110,7 @@ def parse_margin(body: JsonObject, run_date: date_) -> list[Row]:
         return []
     check_response_date(body, run_date, "balance")
     fields, rows = report
-    at = {
-        name: column_index(fields, name)
-        for name in (
-            "代號", "資買", "資賣", "現償", "前資餘額(張)", "資餘額", "資限額",
-            "券買", "券賣", "券償", "前券餘額(張)", "券餘額", "券限額", "資券相抵(張)", "備註",
-        )
-    }  # fmt: skip
+    at = {name: column_index(fields, name) for name in _MARGIN_HEADERS}
     out: list[Row] = []
     for row in rows:
         symbol = clean_cell(cell(row, at["代號"]))
@@ -161,25 +121,23 @@ def parse_margin(body: JsonObject, run_date: date_) -> list[Row]:
             return to_count(cell(source, at[name])) or 0
 
         out.append(
-            {
-                "symbol": symbol,
-                "market": TAIWAN_MARKET,
-                "trade_date": run_date.isoformat(),
-                "margin_purchase_buy": count("資買"),
-                "margin_purchase_sell": count("資賣"),
-                "margin_purchase_cash_repayment": count("現償"),
-                "margin_purchase_yesterday_balance": count("前資餘額(張)"),
-                "margin_purchase_today_balance": count("資餘額"),
-                "margin_purchase_limit": count("資限額"),
-                "short_sale_buy": count("券買"),
-                "short_sale_sell": count("券賣"),
-                "short_sale_cash_repayment": count("券償"),
-                "short_sale_yesterday_balance": count("前券餘額(張)"),
-                "short_sale_today_balance": count("券餘額"),
-                "short_sale_limit": count("券限額"),
-                "offset_loan_and_short": count("資券相抵(張)"),
-                "note": clean_cell(cell(row, at["備註"])) or None,
-            }
+            margin_row(
+                symbol,
+                run_date,
+                (
+                    [
+                        count(n)
+                        for n in ("資買", "資賣", "現償", "前資餘額(張)", "資餘額", "資限額")
+                    ],
+                    # TPEx lists 券賣 before 券買: buy (cover) first, as the margin block does
+                    [
+                        count(n)
+                        for n in ("券買", "券賣", "券償", "前券餘額(張)", "券餘額", "券限額")
+                    ],
+                ),
+                offset=count("資券相抵(張)"),
+                note=clean_cell(cell(row, at["備註"])) or None,
+            )
         )
     return out
 
@@ -190,26 +148,13 @@ def parse_valuation(body: JsonObject, run_date: date_) -> list[Row]:
         return []
     check_response_date(body, run_date, "peQryDate")
     fields, rows = report
-    code = column_index(fields, "股票代號")
-    per = column_index(fields, "本益比")
-    yield_ = column_index(fields, "殖利率(%)")
-    pbr = column_index(fields, "股價淨值比")
-    ratios: list[Row] = []
-    for row in rows:
-        symbol = clean_cell(cell(row, code))
-        if not is_symbol(symbol):
-            continue
-        ratios.append(
-            {
-                "symbol": symbol,
-                "market": TAIWAN_MARKET,
-                "trade_date": run_date.isoformat(),
-                "dividend_yield": to_number(cell(row, yield_)) or 0.0,
-                "per": to_number(cell(row, per)) or 0.0,
-                "pbr": to_number(cell(row, pbr)) or 0.0,
-            }
-        )
-    return ratios
+    columns = ValuationColumns(
+        code=column_index(fields, "股票代號"),
+        dividend_yield=column_index(fields, "殖利率(%)"),
+        per=column_index(fields, "本益比"),
+        pbr=column_index(fields, "股價淨值比"),
+    )
+    return valuations_from_rows(rows, run_date, columns)
 
 
 def _query(**fixed: str) -> Callable[[date_], dict[str, str]]:

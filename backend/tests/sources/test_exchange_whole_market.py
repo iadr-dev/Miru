@@ -211,7 +211,8 @@ async def test_request_carries_date_params_user_agent_and_tls_policy(
     }
     assert all(k["tls_policy"] is TLSPolicy.STRICT for k in seen)
     headers = seen[0]["headers"]
-    assert isinstance(headers, dict) and headers["User-Agent"] == USER_AGENT
+    assert isinstance(headers, dict)
+    assert headers["User-Agent"] == USER_AGENT
     assert seen[0]["timeout"] == 20.0
 
 
@@ -283,7 +284,8 @@ async def test_margin_short_maps_both_blocks_and_skips_the_total_row(web: FakeWe
         0,
         91,
     )
-    assert etf["margin_purchase_buy"] == 184 and etf["margin_purchase_sell"] == 1417
+    assert etf["margin_purchase_buy"] == 184
+    assert etf["margin_purchase_sell"] == 1417
     assert etf["margin_purchase_today_balance"] == 13476
 
 
@@ -342,7 +344,8 @@ async def test_one_exchange_empty_while_the_other_has_rows_is_not_a_result(
     result = await _fetch(Capability.PRICE_EOD)
 
     assert result.health.status is HealthStatus.UNREACHABLE
-    assert "partial" in result.health.detail and "TPEx" in result.health.detail
+    assert "partial" in result.health.detail
+    assert "TPEx" in result.health.detail
     assert _rows(result) == []  # never half a market
 
 
@@ -352,7 +355,8 @@ async def test_http_403_is_not_retried_and_reports_which_exchange(web: FakeWeb) 
     result = await _fetch(Capability.PRICE_EOD)
 
     assert result.health.status is HealthStatus.UNREACHABLE
-    assert "TPEx" in result.health.detail and "403" in result.health.detail
+    assert "TPEx" in result.health.detail
+    assert "403" in result.health.detail
     assert "TWSE" not in result.health.detail
     assert web.hosts().count("www.tpex.org.tw") == 1
 
@@ -433,7 +437,8 @@ async def test_gives_up_after_the_bounded_number_of_tries(web: FakeWeb) -> None:
     result = await _fetch(Capability.VALUATION_RATIOS)
 
     assert result.health.status is HealthStatus.UNREACHABLE
-    assert "HTTP 503" in result.health.detail and "3 tries" in result.health.detail
+    assert "HTTP 503" in result.health.detail
+    assert "3 tries" in result.health.detail
     assert web.hosts().count("www.twse.com.tw") == 3
 
 

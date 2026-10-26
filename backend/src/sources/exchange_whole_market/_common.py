@@ -7,7 +7,11 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date as date_
-from typing import Final, cast
+from typing import Final, NamedTuple, cast
+
+import structlog
+
+logger = structlog.get_logger(__name__)
 
 type Row = dict[str, object]
 type JsonObject = dict[str, object]
@@ -104,20 +108,165 @@ def is_symbol(code: str) -> bool:
     return code[:1].isdigit()
 
 
+class BarColumns(NamedTuple):
+    """Column indexes of a daily-quotes table."""
+
+    code: int
+    open: int
+    high: int
+    low: int
+    close: int
+    volume: int
+    turnover: int
+
+
+def bars_from_rows(rows: list[list[object]], run_date: date_, columns: BarColumns) -> list[Row]:
+    """EOD bars (FinMind's price row shape). A row with no valid price (a stock that did not
+    trade prints '--'), no volume, or a code that is not a security (an index label) is skipped."""
+    bars: list[Row] = []
+    for row in rows:
+        symbol = clean_cell(cell(row, columns.code))
+        prices = [
+            to_number(cell(row, i))
+            for i in (columns.open, columns.high, columns.low, columns.close)
+        ]
+        shares = to_count(cell(row, columns.volume))
+        if not is_symbol(symbol) or any(p is None or p <= 0 for p in prices) or shares is None:
+            continue
+        bars.append(
+            {
+                "symbol": symbol,
+                "market": TAIWAN_MARKET,
+                "trade_date": run_date.isoformat(),
+                "open": prices[0],
+                "high": prices[1],
+                "low": prices[2],
+                "close": prices[3],
+                "volume": shares,
+                "turnover": to_count(cell(row, columns.turnover)),
+            }
+        )
+    return bars
+
+
+def flows_from_rows(
+    rows: list[list[object]],
+    run_date: date_,
+    *,
+    code: int,
+    columns: dict[str, tuple[int, int]],
+    report: str,
+) -> list[Row]:
+    """Institutional flow in FinMind's long shape: one row per stock per investor category, from
+    `columns` = `{investor: (buy column, sell column)}`. A stock with an unreadable count is
+    dropped whole (logged) rather than written with some categories missing."""
+    flows: list[Row] = []
+    for row in rows:
+        symbol = clean_cell(cell(row, code))
+        if not is_symbol(symbol):
+            continue
+        counts = {
+            investor: (to_count(cell(row, buy)), to_count(cell(row, sell)))
+            for investor, (buy, sell) in columns.items()
+        }
+        if any(b is None or s is None for b, s in counts.values()):
+            logger.warning("exchange_row_dropped", report=report, symbol=symbol)
+            continue
+        flows.extend(
+            {
+                "symbol": symbol,
+                "market": TAIWAN_MARKET,
+                "trade_date": run_date.isoformat(),
+                "investor": investor,
+                "buy": buy,
+                "sell": sell,
+            }
+            for investor, (buy, sell) in counts.items()
+        )
+    return flows
+
+
+def margin_row(
+    symbol: str,
+    run_date: date_,
+    blocks: tuple[list[int], list[int]],
+    *,
+    offset: int,
+    note: str | None,
+) -> Row:
+    """A margin/short row. `blocks` is (margin purchase, short sale), each in this order: buy,
+    sell, cash (or securities) repayment, yesterday's balance, today's balance, next-day limit."""
+    margin, short = blocks
+    return {
+        "symbol": symbol,
+        "market": TAIWAN_MARKET,
+        "trade_date": run_date.isoformat(),
+        "margin_purchase_buy": margin[0],
+        "margin_purchase_sell": margin[1],
+        "margin_purchase_cash_repayment": margin[2],
+        "margin_purchase_yesterday_balance": margin[3],
+        "margin_purchase_today_balance": margin[4],
+        "margin_purchase_limit": margin[5],
+        "short_sale_buy": short[0],
+        "short_sale_sell": short[1],
+        "short_sale_cash_repayment": short[2],
+        "short_sale_yesterday_balance": short[3],
+        "short_sale_today_balance": short[4],
+        "short_sale_limit": short[5],
+        "offset_loan_and_short": offset,
+        "note": note,
+    }
+
+
+class ValuationColumns(NamedTuple):
+    code: int
+    dividend_yield: int
+    per: int
+    pbr: int
+
+
+def valuations_from_rows(
+    rows: list[list[object]], run_date: date_, columns: ValuationColumns
+) -> list[Row]:
+    """PER/PBR/yield rows; a '-' (loss-making PER, no dividend) is 0.0, as FinMind's mapper."""
+    ratios: list[Row] = []
+    for row in rows:
+        symbol = clean_cell(cell(row, columns.code))
+        if not is_symbol(symbol):
+            continue
+        ratios.append(
+            {
+                "symbol": symbol,
+                "market": TAIWAN_MARKET,
+                "trade_date": run_date.isoformat(),
+                "dividend_yield": to_number(cell(row, columns.dividend_yield)) or 0.0,
+                "per": to_number(cell(row, columns.per)) or 0.0,
+                "pbr": to_number(cell(row, columns.pbr)) or 0.0,
+            }
+        )
+    return ratios
+
+
 __all__ = [
     "TAIWAN_MARKET",
+    "BarColumns",
     "Endpoint",
     "ExchangeFetchError",
     "JsonObject",
     "Row",
+    "ValuationColumns",
     "as_list",
     "as_object",
+    "bars_from_rows",
     "cell",
     "check_response_date",
     "clean_cell",
     "column_index",
+    "flows_from_rows",
     "is_symbol",
+    "margin_row",
     "table_rows",
     "to_count",
     "to_number",
+    "valuations_from_rows",
 ]

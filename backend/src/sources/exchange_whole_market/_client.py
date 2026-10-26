@@ -80,7 +80,7 @@ class ThrottledJsonClient:
         *,
         host: str,
         min_gap_seconds: float,
-        policy: RequestPolicy = RequestPolicy(),  # noqa: B008 - frozen, shared by design
+        policy: RequestPolicy = RequestPolicy(),  # noqa: B008
         clock: Clock = time.monotonic,
         sleep: Sleep = asyncio.sleep,
     ) -> None:

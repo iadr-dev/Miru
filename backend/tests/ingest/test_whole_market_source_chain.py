@@ -91,7 +91,8 @@ async def test_official_source_serves_and_finmind_is_never_called(tmp_path: obje
     assert run.status is RunStatus.SUCCESS
     assert run.detail == f"served by {EXCHANGE_ID}: {OFFICIAL_DETAIL}"
     assert _symbols(ctx) == ["1101"]
-    assert len(official.calls) == 1 and finmind.calls == []
+    assert len(official.calls) == 1
+    assert finmind.calls == []
     assert official.calls[0][1]["start_date"] == "2024-01-02"
 
 
@@ -105,7 +106,8 @@ async def test_official_empty_falls_back_to_finmind(tmp_path: object) -> None:
     assert run.status is RunStatus.SUCCESS
     assert run.detail == f"served by {FINMIND_ID}: ok (after {EXCHANGE_ID}: no rows)"
     assert _symbols(ctx) == ["2330"]
-    assert len(official.calls) == 1 and len(finmind.calls) == 1
+    assert len(official.calls) == 1
+    assert len(finmind.calls) == 1
 
 
 async def test_official_error_falls_back_to_finmind_and_says_why(tmp_path: object) -> None:
@@ -148,7 +150,8 @@ async def test_official_empty_and_finmind_failing_is_failed_not_an_empty_day(
     run = await run_whole_market_job(PRICE_EOD_JOB, TRADING_DAY, ctx)
 
     assert run.status is RunStatus.FAILED
-    assert FINMIND_ID in run.detail and EXCHANGE_ID in run.detail
+    assert FINMIND_ID in run.detail
+    assert EXCHANGE_ID in run.detail
     assert not ctx.store.has_partition(PRICE_EOD_JOB.dataset, "TW", TRADING_DAY)
 
 
@@ -193,7 +196,8 @@ async def test_non_trading_day_asks_no_source(tmp_path: object) -> None:
     run = await run_whole_market_job(PRICE_EOD_JOB, date(2024, 1, 6), ctx)
 
     assert run.status is RunStatus.SKIPPED
-    assert finmind.calls == [] and official.calls == []
+    assert finmind.calls == []
+    assert official.calls == []
 
 
 async def test_non_leader_asks_no_source(tmp_path: object) -> None:
@@ -203,7 +207,8 @@ async def test_non_leader_asks_no_source(tmp_path: object) -> None:
     run = await run_whole_market_job(PRICE_EOD_JOB, TRADING_DAY, ctx)
 
     assert run.status is RunStatus.SKIPPED
-    assert finmind.calls == [] and official.calls == []
+    assert finmind.calls == []
+    assert official.calls == []
 
 
 async def test_a_dataset_the_exchanges_do_not_cover_goes_straight_to_finmind(

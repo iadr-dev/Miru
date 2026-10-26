@@ -19,29 +19,29 @@ from collections.abc import Callable
 from datetime import date as date_
 from typing import Final
 
-import structlog
-
 from schemas.enums import Capability
 
 from ._common import (
-    TAIWAN_MARKET,
+    BarColumns,
     Endpoint,
     ExchangeFetchError,
     JsonObject,
     Row,
+    ValuationColumns,
     as_list,
     as_object,
+    bars_from_rows,
     cell,
     check_response_date,
     clean_cell,
     column_index,
+    flows_from_rows,
     is_symbol,
+    margin_row,
     table_rows,
     to_count,
-    to_number,
+    valuations_from_rows,
 )
-
-logger = structlog.get_logger(__name__)
 
 _BASE: Final = "https://www.twse.com.tw/rwd/zh"
 # What TWSE answers (HTTP 200) on a day it published nothing: no trading, or not out yet.
@@ -111,34 +111,16 @@ def parse_price(body: JsonObject, run_date: date_) -> list[Row]:
         return []
     check_response_date(body, run_date, "MI_INDEX")
     fields, rows = report
-    code = column_index(fields, "證券代號")
-    volume = column_index(fields, "成交股數")
-    turnover = column_index(fields, "成交金額")
-    open_ = column_index(fields, "開盤價")
-    high = column_index(fields, "最高價")
-    low = column_index(fields, "最低價")
-    close = column_index(fields, "收盤價")
-    bars: list[Row] = []
-    for row in rows:
-        symbol = clean_cell(cell(row, code))
-        prices = [to_number(cell(row, i)) for i in (open_, high, low, close)]
-        shares = to_count(cell(row, volume))
-        if not is_symbol(symbol) or any(p is None or p <= 0 for p in prices) or shares is None:
-            continue  # an index label, or a stock that did not trade (prices print as '--')
-        bars.append(
-            {
-                "symbol": symbol,
-                "market": TAIWAN_MARKET,
-                "trade_date": run_date.isoformat(),
-                "open": prices[0],
-                "high": prices[1],
-                "low": prices[2],
-                "close": prices[3],
-                "volume": shares,
-                "turnover": to_count(cell(row, turnover)),
-            }
-        )
-    return bars
+    columns = BarColumns(
+        code=column_index(fields, "證券代號"),
+        open=column_index(fields, "開盤價"),
+        high=column_index(fields, "最高價"),
+        low=column_index(fields, "最低價"),
+        close=column_index(fields, "收盤價"),
+        volume=column_index(fields, "成交股數"),
+        turnover=column_index(fields, "成交金額"),
+    )
+    return bars_from_rows(rows, run_date, columns)
 
 
 def parse_institutional(body: JsonObject, run_date: date_) -> list[Row]:
@@ -147,35 +129,12 @@ def parse_institutional(body: JsonObject, run_date: date_) -> list[Row]:
         return []
     check_response_date(body, run_date, "T86")
     fields, rows = report
-    code = column_index(fields, "證券代號")
     columns = {
         investor: (column_index(fields, buy), column_index(fields, sell))
         for investor, (buy, sell) in _INVESTORS.items()
     }
-    flows: list[Row] = []
-    for row in rows:
-        symbol = clean_cell(cell(row, code))
-        if not is_symbol(symbol):
-            continue
-        counts = {
-            investor: (to_count(cell(row, buy)), to_count(cell(row, sell)))
-            for investor, (buy, sell) in columns.items()
-        }
-        if any(b is None or s is None for b, s in counts.values()):
-            logger.warning("exchange_row_dropped", report="T86", symbol=symbol)
-            continue
-        flows.extend(
-            {
-                "symbol": symbol,
-                "market": TAIWAN_MARKET,
-                "trade_date": run_date.isoformat(),
-                "investor": investor,
-                "buy": buy,
-                "sell": sell,
-            }
-            for investor, (buy, sell) in counts.items()
-        )
-    return flows
+    code = column_index(fields, "證券代號")
+    return flows_from_rows(rows, run_date, code=code, columns=columns, report="T86")
 
 
 def parse_margin(body: JsonObject, run_date: date_) -> list[Row]:
@@ -193,28 +152,17 @@ def parse_margin(body: JsonObject, run_date: date_) -> list[Row]:
         symbol = clean_cell(cell(row, 0))
         if not is_symbol(symbol):
             continue  # the 合計 (total) row
-        margin = [to_count(cell(row, _MARGIN_FIRST + i)) or 0 for i in range(6)]
-        short = [to_count(cell(row, _SHORT_FIRST + i)) or 0 for i in range(6)]
         out.append(
-            {
-                "symbol": symbol,
-                "market": TAIWAN_MARKET,
-                "trade_date": run_date.isoformat(),
-                "margin_purchase_buy": margin[0],
-                "margin_purchase_sell": margin[1],
-                "margin_purchase_cash_repayment": margin[2],
-                "margin_purchase_yesterday_balance": margin[3],
-                "margin_purchase_today_balance": margin[4],
-                "margin_purchase_limit": margin[5],
-                "short_sale_buy": short[0],
-                "short_sale_sell": short[1],
-                "short_sale_cash_repayment": short[2],
-                "short_sale_yesterday_balance": short[3],
-                "short_sale_today_balance": short[4],
-                "short_sale_limit": short[5],
-                "offset_loan_and_short": to_count(cell(row, 14)) or 0,
-                "note": clean_cell(cell(row, 15)) or None,
-            }
+            margin_row(
+                symbol,
+                run_date,
+                (
+                    [to_count(cell(row, _MARGIN_FIRST + i)) or 0 for i in range(6)],
+                    [to_count(cell(row, _SHORT_FIRST + i)) or 0 for i in range(6)],
+                ),
+                offset=to_count(cell(row, 14)) or 0,
+                note=clean_cell(cell(row, 15)) or None,
+            )
         )
     return out
 
@@ -225,26 +173,13 @@ def parse_valuation(body: JsonObject, run_date: date_) -> list[Row]:
         return []
     check_response_date(body, run_date, "BWIBBU_d")
     fields, rows = report
-    code = column_index(fields, "證券代號")
-    yield_ = column_index(fields, "殖利率(%)")
-    per = column_index(fields, "本益比")
-    pbr = column_index(fields, "股價淨值比")
-    ratios: list[Row] = []
-    for row in rows:
-        symbol = clean_cell(cell(row, code))
-        if not is_symbol(symbol):
-            continue
-        ratios.append(
-            {
-                "symbol": symbol,
-                "market": TAIWAN_MARKET,
-                "trade_date": run_date.isoformat(),
-                "dividend_yield": to_number(cell(row, yield_)) or 0.0,
-                "per": to_number(cell(row, per)) or 0.0,
-                "pbr": to_number(cell(row, pbr)) or 0.0,
-            }
-        )
-    return ratios
+    columns = ValuationColumns(
+        code=column_index(fields, "證券代號"),
+        dividend_yield=column_index(fields, "殖利率(%)"),
+        per=column_index(fields, "本益比"),
+        pbr=column_index(fields, "股價淨值比"),
+    )
+    return valuations_from_rows(rows, run_date, columns)
 
 
 def _query(**fixed: str) -> Callable[[date_], dict[str, str]]:
