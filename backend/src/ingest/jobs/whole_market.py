@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from calendar.trading_days import TradingDayCalendar
 from datetime import date as date_
-from typing import cast
 
 import structlog
 from pydantic import BaseModel, ValidationError
 
 from ingest.context import IngestContext
+from ingest.jobs.source_chain import ChainOutcome, result_rows, walk_chain
 from ingest.jobs.specs import (
     ACTIVE_ETF_HOLDING_CHANGE_JOB,
     ACTIVE_ETF_HOLDING_JOB,
@@ -100,6 +100,29 @@ def validate_rows(
     return validate_rows_against(spec.row_model, spec.dataset, raw_rows, run_date)
 
 
+def _failure_detail(outcome: ChainOutcome) -> str:
+    """The journal reason of a day no source served. With a single source this is that source's
+    own reason, unchanged; with several, every source's reason, so the journal shows why the
+    official report failed as well as why the fallback did."""
+    if len(outcome.chain_ids) == 1 and outcome.last is not None:
+        return outcome.last.health.detail
+    return f"no source served: {outcome.attempts_note()}"
+
+
+def _success_detail(outcome: ChainOutcome, result: SourceResult) -> str:
+    """The journal detail of a written partition: which source served it. A single-source chain
+    keeps the source's own detail untouched; otherwise it is named, and a fallback says why the
+    earlier sources did not serve."""
+    if len(outcome.chain_ids) == 1:
+        return result.health.detail
+    if outcome.winner_id is None:  # every source healthy and empty
+        return f"no rows from {', '.join(outcome.chain_ids)}"
+    detail = f"served by {outcome.winner_id}: {result.health.detail}"
+    if outcome.fell_back:
+        detail += f" (after {outcome.attempts_note()})"
+    return detail
+
+
 async def run_whole_market_job(
     spec: WholeMarketJobSpec,
     run_date: date_,
@@ -129,32 +152,32 @@ async def run_whole_market_job(
         )
 
     date_str = run_date.isoformat()
-    result = await ctx.finmind.fetch_whole_market(
-        spec.capability, tls_policy=ctx.tls_policy, start_date=date_str
-    )
-    if fetch_error_status(result) is RunStatus.FAILED:
-        # Never retry-loop tightly — journal the failure and let the next scheduled run (or
-        # an explicit gap-fill) retry.
+    # The sources are asked in the configured order (official exchange reports, then FinMind);
+    # the first healthy answer with rows wins. Never retry-loop tightly - a day no source could
+    # serve journals FAILED and the next scheduled run (or an explicit gap-fill) retries.
+    outcome = await walk_chain(ctx, spec.capability, run_date)
+    if outcome.winner is None and outcome.failures:
+        detail = _failure_detail(outcome)
         logger.warning(
             "ingest_whole_market_fetch_failed",
             dataset=spec.dataset,
             run_date=date_str,
-            detail=result.health.detail,
+            detail=detail,
         )
         return journal_run(
             spec.dataset,
             run_date,
             rows_written=0,
             status=RunStatus.FAILED,
-            detail=result.health.detail,
+            detail=detail,
         )
 
-    row_key = next(iter(result.payload), None)
-    rows_obj: object = result.payload.get(row_key, []) if row_key else []
-    raw_rows: list[dict[str, object]] = (
-        cast("list[dict[str, object]]", rows_obj) if isinstance(rows_obj, list) else []
-    )
-    rows = validate_rows(spec, raw_rows, run_date)
+    # A winner, or every source answered healthy with nothing (a legitimate empty trading day):
+    # the latter writes the empty partition from the last answer, as a single source always did.
+    result = outcome.winner or outcome.last
+    if result is None:  # pragma: no cover - a chain always has at least one link
+        raise RuntimeError(f"no whole-market source for {spec.dataset}")
+    rows = validate_rows(spec, result_rows(result), run_date)
     rows_written = ctx.store.write_partition(spec.dataset, ctx.market.value, run_date, rows)
     # The partition has landed atomically — signal it so a subscribed client revalidates exactly
     # the affected keys now, rather than waiting out a fixed time boundary. Leader-only: this line
@@ -171,7 +194,7 @@ async def run_whole_market_job(
         run_date,
         rows_written=rows_written,
         status=RunStatus.SUCCESS,
-        detail=result.health.detail,
+        detail=_success_detail(outcome, result),
     )
 
 

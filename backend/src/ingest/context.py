@@ -16,6 +16,7 @@ from ingest.data_updates import DataUpdatePublisher, NoOpDataUpdatePublisher
 from ingest.leader import LeaderElection
 from ingest.store import ParquetStore
 from schemas.enums import Market, TLSPolicy
+from sources.base import WholeMarketSource
 from sources.finmind import FinMindAdapter
 from sources.yfinance import YFinanceAdapter
 
@@ -52,6 +53,11 @@ class IngestContext:
     # Only `ingest/jobs/fred.py` uses this (US macro statistics). `None` or an unconfigured API
     # key makes that job journal SKIPPED.
     fred: FredGateway | None = None
+    # The free official TWSE + TPEx reports, asked BEFORE FinMind for the datasets they cover (the
+    # order is `config/whole_market_source_priority.yaml`; `ingest/jobs/source_chain.py` walks it).
+    # `None` leaves FinMind as the only source - the default, so a test or caller that never wires
+    # it makes no exchange request.
+    exchange: WholeMarketSource | None = None
 
 
 __all__ = ["IngestContext"]

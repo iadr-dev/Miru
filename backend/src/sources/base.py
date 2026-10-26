@@ -53,3 +53,15 @@ class SourceAdapter(Protocol):
         malformed data.
         """
         ...
+
+
+class WholeMarketSource(Protocol):
+    """An ingest-only whole-market-by-date source (`FinMindAdapter`, the exchange reports).
+
+    Not part of `SourceAdapter`: never reachable through the per-symbol router. The payload is
+    `{row_key: [rows]}`; a healthy but empty answer is `HealthStatus.STALE`, a failure anything
+    else but `OK`."""
+
+    async def fetch_whole_market(
+        self, cap: Capability, *, tls_policy: TLSPolicy, **params: object
+    ) -> SourceResult: ...

@@ -1,0 +1,16 @@
+# config/whole_market_source_priority.yaml - which sources the ingest runner asks for the
+# whole-market-by-date datasets, in order. The first source that answers healthy WITH rows wins;
+# a source that fails or returns nothing hands over to the next. Per-symbol routing lives in
+# source_priority.yaml and is untouched: the exchange reports have no per-symbol form and no
+# history per symbol, so FinMind stays what serves a symbol's range.
+#
+# Source ids (resolved in ingest/jobs/source_chain.py):
+#   exchange_official  free TWSE + TPEx daily reports (sources/exchange_whole_market)
+#   finmind            FinMind whole-table form (metered; the free tier is 600 requests/hour)
+#
+# A capability not listed here is served by finmind alone.
+TW:
+  price_eod: [exchange_official, finmind]
+  institutional_flow: [exchange_official, finmind]
+  margin_short: [exchange_official, finmind]
+  valuation_ratios: [exchange_official, finmind]
