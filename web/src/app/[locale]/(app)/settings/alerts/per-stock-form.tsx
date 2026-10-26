@@ -6,6 +6,7 @@ import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "re
 import { Select, TextInput } from "@/components/settings/form-controls";
 import { Button } from "@/components/ui/button";
 import {
+  type BatchCheck,
   buildBatch,
   fillBlankRows,
   type PerStockRow,
@@ -18,6 +19,7 @@ import { createAlertsBatch, SettingsApiError } from "@/lib/api/settings";
 import { getWatchlists } from "@/lib/api/watchlist";
 import { FRESHNESS } from "@/lib/freshness";
 import { groupNameStyle } from "@/lib/watchlist-color";
+import type { PriceHistoryBar } from "@/types/market/quotes";
 import type { WatchlistItem } from "@/types/watchlist";
 
 /** The most stocks one batch can hold (mirrors the backend's `_MAX_BATCH`). */
@@ -33,6 +35,18 @@ function asMarket(value: string): Market | null {
   return value === "TW" || value === "US" ? value : null;
 }
 
+/** The newest bar's close per symbol. */
+function latestCloseBySymbol(bars: readonly PriceHistoryBar[]): Map<string, number> {
+  const latest = new Map<string, { date: string; close: number }>();
+  for (const bar of bars) {
+    const seen = latest.get(bar.symbol);
+    if (!seen || bar.trade_date > seen.date) {
+      latest.set(bar.symbol, { date: bar.trade_date, close: bar.close });
+    }
+  }
+  return new Map(Array.from(latest, ([symbol, bar]) => [symbol, bar.close]));
+}
+
 /** Latest close per `market:symbol`, read in batches of 20 (the price endpoint's limit). */
 async function loadCloses(items: readonly WatchlistItem[]): Promise<Record<string, number>> {
   const out: Record<string, number> = {};
@@ -40,19 +54,132 @@ async function loadCloses(items: readonly WatchlistItem[]): Promise<Record<strin
     const symbols = items.filter((i) => i.market === market).map((i) => i.symbol);
     for (let i = 0; i < symbols.length; i += PRICE_BATCH) {
       const history = await getPriceHistory(symbols.slice(i, i + PRICE_BATCH), market, 5);
-      const latest = new Map<string, { date: string; close: number }>();
-      for (const bar of history.rows) {
-        const seen = latest.get(bar.symbol);
-        if (!seen || bar.trade_date > seen.date) {
-          latest.set(bar.symbol, { date: bar.trade_date, close: bar.close });
-        }
-      }
-      for (const [symbol, bar] of latest) {
-        out[`${market}:${symbol}`] = bar.close;
+      for (const [symbol, close] of latestCloseBySymbol(history.rows)) {
+        out[`${market}:${symbol}`] = close;
       }
     }
   }
   return out;
+}
+
+/** The sheet rows for the group's members, keeping whatever was already typed for a stock. */
+function buildRows(
+  members: readonly WatchlistItem[],
+  previous: readonly PerStockRow[],
+  closes: Record<string, number> | undefined,
+): PerStockRow[] {
+  return members.flatMap((item) => {
+    const market = asMarket(item.market);
+    if (market === null) {
+      return [];
+    }
+    const kept = previous.find((r) => r.symbol === item.symbol && r.market === market);
+    return [
+      {
+        symbol: item.symbol,
+        market,
+        close: closes?.[`${market}:${item.symbol}`] ?? null,
+        comparator: kept?.comparator ?? "above",
+        level: kept?.level ?? "",
+      },
+    ];
+  });
+}
+
+type ErrorKind = "cap" | "generic" | "invalid" | "nothing";
+
+/** Which error line (if any) the sheet shows: a failed save wins over local validation. */
+function resolveErrorKind(
+  save: { failed: boolean; error: unknown },
+  submitted: boolean,
+  check: BatchCheck,
+): ErrorKind | null {
+  if (save.failed) {
+    const code = save.error instanceof SettingsApiError ? save.error.code : "";
+    return code === "cap_reached" ? "cap" : "generic";
+  }
+  if (submitted && !check.ok) {
+    return check.reason === "invalid" ? "invalid" : "nothing";
+  }
+  return null;
+}
+
+const QUICK_FILL_CLASS =
+  "rounded-full border border-[var(--border)] px-2 py-0.5 text-[12px] text-[var(--text-muted)] hover:text-[var(--text)] disabled:opacity-40";
+
+function ComparatorOptions(): ReactNode {
+  const tf = useTranslations("settings.alerts.form");
+  return (
+    <>
+      <option value="above">{tf("comparatorOption.above")}</option>
+      <option value="below">{tf("comparatorOption.below")}</option>
+    </>
+  );
+}
+
+function StockRowView({
+  row,
+  closeLabel,
+  onChange,
+}: Readonly<{
+  row: PerStockRow;
+  closeLabel: string;
+  onChange: (patch: Partial<PerStockRow>) => void;
+}>): ReactNode {
+  const t = useTranslations("settings.alerts.perStock");
+  const quick = (
+    key: string,
+    comparator: RowComparator,
+    percent: number,
+    sign: "+" | "-",
+  ): ReactNode => (
+    <button
+      key={key}
+      type="button"
+      disabled={row.close === null}
+      onClick={() =>
+        onChange({ comparator, level: quickFillLevel(row.close, comparator, percent) })
+      }
+      className={QUICK_FILL_CLASS}
+    >
+      {sign}
+      {percent}%
+    </button>
+  );
+  return (
+    <tr>
+      <td className="py-2 pr-3 font-medium text-[var(--text)]">{row.symbol}</td>
+      <td className="py-2 pr-3 text-right font-num tabular-nums">{closeLabel}</td>
+      <td className="py-2 pr-3">
+        <div className="w-28">
+          <Select
+            aria-label={t("rowComparator", { symbol: row.symbol })}
+            value={row.comparator}
+            onChange={(e) => onChange({ comparator: e.target.value as RowComparator })}
+          >
+            <ComparatorOptions />
+          </Select>
+        </div>
+      </td>
+      <td className="py-2 pr-3">
+        <div className="w-28">
+          <TextInput
+            inputMode="decimal"
+            aria-label={t("rowLevel", { symbol: row.symbol })}
+            value={row.level}
+            onChange={(e) => onChange({ level: e.target.value })}
+            className="font-num tabular-nums"
+          />
+        </div>
+      </td>
+      <td className="py-2">
+        <div className="flex flex-wrap gap-1 whitespace-nowrap">
+          {QUICK_UP.map((p) => quick(`up${p}`, "above", p, "+"))}
+          {QUICK_DOWN.map((p) => quick(`down${p}`, "below", p, "-"))}
+        </div>
+      </td>
+    </tr>
+  );
 }
 
 /** 逐檔設定 — a price alert for each stock of a watchlist group, each with its own level. A group
@@ -98,24 +225,7 @@ export function PerStockForm({
 
   // Rebuild the sheet when the group (or its reference closes) change; keep what was typed.
   useEffect(() => {
-    setRows((previous) =>
-      members.flatMap((item) => {
-        const market = asMarket(item.market);
-        if (market === null) {
-          return [];
-        }
-        const kept = previous.find((r) => r.symbol === item.symbol && r.market === market);
-        return [
-          {
-            symbol: item.symbol,
-            market,
-            close: closes.data?.[`${market}:${item.symbol}`] ?? null,
-            comparator: kept?.comparator ?? "above",
-            level: kept?.level ?? "",
-          },
-        ];
-      }),
-    );
+    setRows((previous) => buildRows(members, previous, closes.data));
   }, [members, closes.data]);
 
   const mutation = useMutation({
@@ -151,15 +261,17 @@ export function PerStockForm({
     ? check.items.length
     : rows.filter((r) => r.level.trim() !== "").length;
 
+  const errorKind = resolveErrorKind(
+    { failed: mutation.isError, error: mutation.error },
+    submitted,
+    check,
+  );
   let errorText: string | null = null;
-  if (mutation.isError) {
-    const code = mutation.error instanceof SettingsApiError ? mutation.error.code : "";
-    errorText = code === "cap_reached" ? t("errorCap") : t("errorGeneric");
-  } else if (submitted && !check.ok) {
-    errorText =
-      check.reason === "invalid"
-        ? t("errorInvalid", { symbols: check.badSymbols.join("、") })
-        : t("errorNothing");
+  if (errorKind === "cap") errorText = t("errorCap");
+  else if (errorKind === "generic") errorText = t("errorGeneric");
+  else if (errorKind === "nothing") errorText = t("errorNothing");
+  else if (errorKind === "invalid" && !check.ok) {
+    errorText = t("errorInvalid", { symbols: check.badSymbols.join("、") });
   }
 
   return (
@@ -203,8 +315,7 @@ export function PerStockForm({
                 value={bulkComparator}
                 onChange={(e) => setBulkComparator(e.target.value as RowComparator)}
               >
-                <option value="above">{tf("comparatorOption.above")}</option>
-                <option value="below">{tf("comparatorOption.below")}</option>
+                <ComparatorOptions />
               </Select>
             </div>
             <span className="text-[var(--text-muted)]">{t("bulkFromClose")}</span>
@@ -255,73 +366,12 @@ export function PerStockForm({
               </thead>
               <tbody className="divide-y divide-[var(--border)]">
                 {rows.map((row, index) => (
-                  <tr key={`${row.market}:${row.symbol}`}>
-                    <td className="py-2 pr-3 font-medium text-[var(--text)]">{row.symbol}</td>
-                    <td className="py-2 pr-3 text-right font-num tabular-nums">
-                      {fmtClose(row.close)}
-                    </td>
-                    <td className="py-2 pr-3">
-                      <div className="w-28">
-                        <Select
-                          aria-label={t("rowComparator", { symbol: row.symbol })}
-                          value={row.comparator}
-                          onChange={(e) =>
-                            update(index, { comparator: e.target.value as RowComparator })
-                          }
-                        >
-                          <option value="above">{tf("comparatorOption.above")}</option>
-                          <option value="below">{tf("comparatorOption.below")}</option>
-                        </Select>
-                      </div>
-                    </td>
-                    <td className="py-2 pr-3">
-                      <div className="w-28">
-                        <TextInput
-                          inputMode="decimal"
-                          aria-label={t("rowLevel", { symbol: row.symbol })}
-                          value={row.level}
-                          onChange={(e) => update(index, { level: e.target.value })}
-                          className="font-num tabular-nums"
-                        />
-                      </div>
-                    </td>
-                    <td className="py-2">
-                      <div className="flex flex-wrap gap-1 whitespace-nowrap">
-                        {QUICK_UP.map((p) => (
-                          <button
-                            key={`up${p}`}
-                            type="button"
-                            disabled={row.close === null}
-                            onClick={() =>
-                              update(index, {
-                                comparator: "above",
-                                level: quickFillLevel(row.close, "above", p),
-                              })
-                            }
-                            className="rounded-full border border-[var(--border)] px-2 py-0.5 text-[12px] text-[var(--text-muted)] hover:text-[var(--text)] disabled:opacity-40"
-                          >
-                            +{p}%
-                          </button>
-                        ))}
-                        {QUICK_DOWN.map((p) => (
-                          <button
-                            key={`down${p}`}
-                            type="button"
-                            disabled={row.close === null}
-                            onClick={() =>
-                              update(index, {
-                                comparator: "below",
-                                level: quickFillLevel(row.close, "below", p),
-                              })
-                            }
-                            className="rounded-full border border-[var(--border)] px-2 py-0.5 text-[12px] text-[var(--text-muted)] hover:text-[var(--text)] disabled:opacity-40"
-                          >
-                            -{p}%
-                          </button>
-                        ))}
-                      </div>
-                    </td>
-                  </tr>
+                  <StockRowView
+                    key={`${row.market}:${row.symbol}`}
+                    row={row}
+                    closeLabel={fmtClose(row.close)}
+                    onChange={(patch) => update(index, patch)}
+                  />
                 ))}
               </tbody>
             </table>

@@ -9,8 +9,153 @@ import { useThemeMembers, useThemes } from "@/hooks/use-themes";
 import { Link } from "@/i18n/navigation";
 import { hashToChartToken } from "@/lib/chart-token-hash";
 import { cn } from "@/lib/cn";
+import type { ThemeKind, ThemeMember, ThemeSummary } from "@/types/theme";
 
 const ALL_KIND = "__all__";
+
+type KindFilter = typeof ALL_KIND | ThemeKind;
+
+function matchesKind(theme: ThemeSummary, kindFilter: string): boolean {
+  return kindFilter === ALL_KIND || theme.kind === kindFilter;
+}
+
+function matchesSearch(theme: ThemeSummary, search: string): boolean {
+  if (search.trim().length === 0) return true;
+  return (
+    theme.name_zh.includes(search) || theme.name_en.toLowerCase().includes(search.toLowerCase())
+  );
+}
+
+function countSubIndustries(members: readonly ThemeMember[]): [string, number][] {
+  const counts = new Map<string, number>();
+  for (const member of members) {
+    if (!member.sub_industry) continue;
+    counts.set(member.sub_industry, (counts.get(member.sub_industry) ?? 0) + 1);
+  }
+  return Array.from(counts.entries());
+}
+
+function KindTabs({
+  kindFilter,
+  onChange,
+}: Readonly<{
+  kindFilter: string;
+  onChange: (key: KindFilter) => void;
+}>): ReactNode {
+  const t = useTranslations("screener.themes");
+  return (
+    <div role="tablist" className="flex gap-1.5">
+      {(
+        [
+          [ALL_KIND, t("allKinds")],
+          ["industry", t("kindIndustry")],
+          ["concept", t("kindConcept")],
+        ] as const
+      ).map(([key, label]) => (
+        <button
+          key={key}
+          type="button"
+          role="tab"
+          aria-selected={kindFilter === key}
+          onClick={() => onChange(key)}
+          className={cn(
+            "min-h-9 rounded-[var(--radius-pill)] px-3 text-[12px] transition-colors",
+            kindFilter === key
+              ? "bg-[var(--accent-weak)] text-[var(--accent-text)]"
+              : "border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)]",
+          )}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ThemeChip({
+  theme,
+  active,
+  onSelect,
+}: Readonly<{
+  theme: ThemeSummary;
+  active: boolean;
+  onSelect: (key: string) => void;
+}>): ReactNode {
+  const token = hashToChartToken(theme.name_zh);
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={() => onSelect(theme.key)}
+      className={cn(
+        "flex min-h-11 items-center gap-1.5 rounded-[var(--radius-pill)] border px-3 font-medium text-[13px] transition-colors",
+        active
+          ? "border-[var(--accent)] bg-[var(--accent-weak)] text-[var(--text)]"
+          : "border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)]",
+      )}
+    >
+      <span
+        className="size-1.5 rounded-full"
+        style={{ backgroundColor: token }}
+        aria-hidden="true"
+      />
+      {theme.name_zh}
+      <span className="font-num text-[11px] tabular-nums opacity-70">{theme.member_count}</span>
+    </button>
+  );
+}
+
+function SubIndustryButton({
+  selected,
+  onClick,
+  children,
+}: Readonly<{
+  selected: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}>): ReactNode {
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      onClick={onClick}
+      className={cn(
+        "min-h-8 rounded-[var(--radius-pill)] px-2.5 text-[12px] transition-colors",
+        selected
+          ? "bg-[var(--accent-weak)] text-[var(--accent)]"
+          : "border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)]",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function SubIndustryFilter({
+  subIndustries,
+  value,
+  onChange,
+}: Readonly<{
+  subIndustries: [string, number][];
+  value: string | null;
+  onChange: (next: string | null) => void;
+}>): ReactNode {
+  const t = useTranslations("screener.themes");
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span className="text-[12px] text-[var(--text-muted)]">{t("subIndustry")}</span>
+      <SubIndustryButton selected={value === null} onClick={() => onChange(null)}>
+        {t("allSubIndustries")}
+      </SubIndustryButton>
+      {subIndustries.map(([name, count]) => (
+        <SubIndustryButton key={name} selected={value === name} onClick={() => onChange(name)}>
+          {name}
+          <span className="ml-1 font-num tabular-nums opacity-70">{count}</span>
+        </SubIndustryButton>
+      ))}
+    </div>
+  );
+}
 
 /** 主題 Themes sub-tab (README.md §6): every theme as a chip (`get_themes`), grouped by
  * 產業鏈/概念題材 kind since the two have very different provenance (`ThemeSource` — editorial
@@ -38,26 +183,14 @@ export function ThemeCards(): ReactNode {
 
   const themes = themesQuery.data?.themes ?? [];
   const filteredThemes = useMemo(
-    () =>
-      themes.filter((theme) => {
-        const matchesKind = kindFilter === ALL_KIND || theme.kind === kindFilter;
-        const matchesSearch =
-          search.trim().length === 0 ||
-          theme.name_zh.includes(search) ||
-          theme.name_en.toLowerCase().includes(search.toLowerCase());
-        return matchesKind && matchesSearch;
-      }),
+    () => themes.filter((theme) => matchesKind(theme, kindFilter) && matchesSearch(theme, search)),
     [themes, kindFilter, search],
   );
 
-  const subIndustries = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const member of membersQuery.data?.members ?? []) {
-      if (!member.sub_industry) continue;
-      counts.set(member.sub_industry, (counts.get(member.sub_industry) ?? 0) + 1);
-    }
-    return Array.from(counts.entries());
-  }, [membersQuery.data?.members]);
+  const subIndustries = useMemo(
+    () => countSubIndustries(membersQuery.data?.members ?? []),
+    [membersQuery.data?.members],
+  );
 
   const visibleMembers = useMemo(() => {
     const members = membersQuery.data?.members ?? [];
@@ -78,31 +211,7 @@ export function ThemeCards(): ReactNode {
   return (
     <div className="flex flex-col gap-3 p-4">
       <div className="flex items-center justify-between gap-3">
-        <div role="tablist" className="flex gap-1.5">
-          {(
-            [
-              [ALL_KIND, t("allKinds")],
-              ["industry", t("kindIndustry")],
-              ["concept", t("kindConcept")],
-            ] as const
-          ).map(([key, label]) => (
-            <button
-              key={key}
-              type="button"
-              role="tab"
-              aria-selected={kindFilter === key}
-              onClick={() => setKindFilter(key)}
-              className={cn(
-                "min-h-9 rounded-[var(--radius-pill)] px-3 text-[12px] transition-colors",
-                kindFilter === key
-                  ? "bg-[var(--accent-weak)] text-[var(--accent-text)]"
-                  : "border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)]",
-              )}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        <KindTabs kindFilter={kindFilter} onChange={setKindFilter} />
         <div className="relative">
           <MagnifyingGlassIcon
             size={14}
@@ -122,34 +231,14 @@ export function ThemeCards(): ReactNode {
       </div>
 
       <div className="flex flex-wrap gap-2">
-        {filteredThemes.map((theme) => {
-          const active = theme.key === activeKey;
-          const token = hashToChartToken(theme.name_zh);
-          return (
-            <button
-              key={theme.key}
-              type="button"
-              aria-pressed={active}
-              onClick={() => selectTheme(theme.key)}
-              className={cn(
-                "flex min-h-11 items-center gap-1.5 rounded-[var(--radius-pill)] border px-3 font-medium text-[13px] transition-colors",
-                active
-                  ? "border-[var(--accent)] bg-[var(--accent-weak)] text-[var(--text)]"
-                  : "border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)]",
-              )}
-            >
-              <span
-                className="size-1.5 rounded-full"
-                style={{ backgroundColor: token }}
-                aria-hidden="true"
-              />
-              {theme.name_zh}
-              <span className="font-num text-[11px] tabular-nums opacity-70">
-                {theme.member_count}
-              </span>
-            </button>
-          );
-        })}
+        {filteredThemes.map((theme) => (
+          <ThemeChip
+            key={theme.key}
+            theme={theme}
+            active={theme.key === activeKey}
+            onSelect={selectTheme}
+          />
+        ))}
         {filteredThemes.length === 0 ? (
           <p className="p-2 text-[13px] text-[var(--text-muted)]">{t("noThemesMatch")}</p>
         ) : null}
@@ -167,39 +256,11 @@ export function ThemeCards(): ReactNode {
             </Link>
           ) : null}
           {subIndustries.length > 0 ? (
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-[12px] text-[var(--text-muted)]">{t("subIndustry")}</span>
-              <button
-                type="button"
-                aria-pressed={subIndustryFilter === null}
-                onClick={() => setSubIndustryFilter(null)}
-                className={cn(
-                  "min-h-8 rounded-[var(--radius-pill)] px-2.5 text-[12px] transition-colors",
-                  subIndustryFilter === null
-                    ? "bg-[var(--accent-weak)] text-[var(--accent)]"
-                    : "border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)]",
-                )}
-              >
-                {t("allSubIndustries")}
-              </button>
-              {subIndustries.map(([name, count]) => (
-                <button
-                  key={name}
-                  type="button"
-                  aria-pressed={subIndustryFilter === name}
-                  onClick={() => setSubIndustryFilter(name)}
-                  className={cn(
-                    "min-h-8 rounded-[var(--radius-pill)] px-2.5 text-[12px] transition-colors",
-                    subIndustryFilter === name
-                      ? "bg-[var(--accent-weak)] text-[var(--accent)]"
-                      : "border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)]",
-                  )}
-                >
-                  {name}
-                  <span className="ml-1 font-num tabular-nums opacity-70">{count}</span>
-                </button>
-              ))}
-            </div>
+            <SubIndustryFilter
+              subIndustries={subIndustries}
+              value={subIndustryFilter}
+              onChange={setSubIndustryFilter}
+            />
           ) : null}
           <ScreenerTable
             survivors={visibleMembers.map((member) => ({

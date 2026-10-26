@@ -13,7 +13,7 @@ import { cn } from "@/lib/cn";
 import { FRESHNESS } from "@/lib/freshness";
 import { petName, RARITY_TEXT, shouldOfferWelcomePull } from "@/lib/pets";
 import { useFocusTrap } from "@/lib/use-focus-trap";
-import type { PullOutcome } from "@/types/settings";
+import type { PetCatalogEntry, PullOutcome } from "@/types/settings";
 
 const DISMISSED_KEY = "miru.pet.welcome-dismissed";
 
@@ -31,6 +31,14 @@ function rememberDismissed(): void {
   } catch {
     // Private mode: the offer simply shows again next visit.
   }
+}
+
+const PET_QUERY_KEYS = ["pet-progress", "pet-active", "pets-owned"] as const;
+
+/** The English catalog description; zh-TW shows none (the localized name is enough there). */
+function revealDescription(locale: string, entry: PetCatalogEntry | undefined): string | null {
+  if (locale === "zh-TW") return null;
+  return entry?.description ?? null;
 }
 
 /** The free first pull: a new user with no pet and a pull waiting is offered it once. Closing
@@ -61,7 +69,7 @@ export function WelcomePullDialog(): ReactNode {
     mutationFn: pullPet,
     onSuccess: (result) => {
       setOutcome(result);
-      for (const key of ["pet-progress", "pet-active", "pets-owned"]) {
+      for (const key of PET_QUERY_KEYS) {
         void queryClient.invalidateQueries({ queryKey: queryKeys.settings(key) });
       }
     },
@@ -120,36 +128,12 @@ export function WelcomePullDialog(): ReactNode {
                 outcome={outcome}
                 name={petName(catalog.data ?? [], outcome.pet_id, locale)}
                 rarityLabel={t(`rarity.${outcome.rarity}`)}
-                description={locale === "zh-TW" ? null : (entry?.description ?? null)}
+                description={revealDescription(locale, entry)}
                 reduceMotion={reduceMotion === true}
                 onDone={close}
               />
             ) : (
-              <>
-                <span className="mx-auto flex size-16 items-center justify-center rounded-full border-2 border-[var(--border)] bg-[var(--surface-2)]">
-                  <PawPrintIcon size={30} weight="regular" aria-hidden />
-                </span>
-                <h2
-                  id="welcome-pull-title"
-                  className="mt-4 font-semibold text-[var(--text)] text-lg"
-                >
-                  {tw("title")}
-                </h2>
-                <p className="mt-2 text-[var(--text-muted)] text-sm">{tw("body")}</p>
-                {failed ? (
-                  <p role="alert" className="mt-2 text-[12px] text-[var(--warn)]">
-                    {tw("error")}
-                  </p>
-                ) : null}
-                <div className="mt-5 flex justify-center gap-2">
-                  <Button variant="ghost" size="sm" onClick={close}>
-                    {tw("later")}
-                  </Button>
-                  <Button variant="filled" size="sm" disabled={pull.isPending} onClick={confirm}>
-                    {pull.isPending ? tw("pulling") : tw("pull")}
-                  </Button>
-                </div>
-              </>
+              <Intro failed={failed} pending={pull.isPending} onLater={close} onPull={confirm} />
             )}
           </div>
         </motion.div>
@@ -197,6 +181,44 @@ function Reveal({
       <div className="mt-5 flex justify-center">
         <Button variant="filled" size="sm" onClick={onDone}>
           {tw("start")}
+        </Button>
+      </div>
+    </>
+  );
+}
+
+function Intro({
+  failed,
+  pending,
+  onLater,
+  onPull,
+}: Readonly<{
+  failed: boolean;
+  pending: boolean;
+  onLater: () => void;
+  onPull: () => void;
+}>): ReactNode {
+  const tw = useTranslations("settings.pets.welcome");
+  return (
+    <>
+      <span className="mx-auto flex size-16 items-center justify-center rounded-full border-2 border-[var(--border)] bg-[var(--surface-2)]">
+        <PawPrintIcon size={30} weight="regular" aria-hidden />
+      </span>
+      <h2 id="welcome-pull-title" className="mt-4 font-semibold text-[var(--text)] text-lg">
+        {tw("title")}
+      </h2>
+      <p className="mt-2 text-[var(--text-muted)] text-sm">{tw("body")}</p>
+      {failed ? (
+        <p role="alert" className="mt-2 text-[12px] text-[var(--warn)]">
+          {tw("error")}
+        </p>
+      ) : null}
+      <div className="mt-5 flex justify-center gap-2">
+        <Button variant="ghost" size="sm" onClick={onLater}>
+          {tw("later")}
+        </Button>
+        <Button variant="filled" size="sm" disabled={pending} onClick={onPull}>
+          {pending ? tw("pulling") : tw("pull")}
         </Button>
       </div>
     </>

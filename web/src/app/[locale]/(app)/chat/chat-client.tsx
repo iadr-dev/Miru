@@ -9,12 +9,17 @@ import { Composer } from "@/app/[locale]/(app)/chat/composer";
 import { EmptyState } from "@/app/[locale]/(app)/chat/empty-state";
 import { PersistedThreadView } from "@/app/[locale]/(app)/chat/persisted-thread-view";
 import { PetCompanion, type PetNotice } from "@/app/[locale]/(app)/chat/pet-companion";
-import { type ActiveTurnMode, useTurnStore } from "@/app/[locale]/(app)/chat/turn-store";
+import {
+  type ActiveTurn,
+  type ActiveTurnMode,
+  useTurnStore,
+} from "@/app/[locale]/(app)/chat/turn-store";
 import { VoiceModeOverlay } from "@/app/[locale]/(app)/chat/voice-mode-overlay";
 import { useNewThreadStore } from "@/components/shell/new-thread-store";
 import { useRouter } from "@/i18n/navigation";
 import { fetchMe } from "@/lib/api/account";
 import {
+  type AgentQueryBody,
   AgentStreamError,
   type AgentStreamFrame,
   type AttachmentInput,
@@ -27,6 +32,7 @@ import { queryKeys } from "@/lib/api/query-keys";
 import { streamWithResume } from "@/lib/api/stream-resume";
 import { cancelTurn, getThread, patchThread } from "@/lib/api/threads";
 import { FOLLOW_ACCOUNT_TONE } from "@/lib/personality";
+import type { Thread } from "@/types/conversation";
 
 /** The message shown for a failed turn: a known refusal code gets its localized explanation. */
 function turnErrorMessage(err: unknown, t: (key: string) => string): string {
@@ -45,6 +51,164 @@ function turnErrorMessage(err: unknown, t: (key: string) => string): string {
     }
   }
   return err instanceof Error ? err.message : t("error");
+}
+
+type StreamOpener = (signal: AbortSignal) => AsyncGenerator<AgentStreamFrame>;
+
+/** The thread id a `turn.start` frame announces, else null. */
+function startedThreadId(frame: AgentStreamFrame): string | null {
+  if (frame.kind !== "turn.start") {
+    return null;
+  }
+  const id = frame.envelope.data.thread_id;
+  return typeof id === "string" ? id : null;
+}
+
+function isAbortError(err: unknown): boolean {
+  return err instanceof DOMException && err.name === "AbortError";
+}
+
+/** Records a `turn.start` thread id: tells the sidebar a brand-new thread now exists. */
+function adoptStartedThread(
+  frame: AgentStreamFrame,
+  current: string | null,
+  threadIdAtStart: string | null,
+): string | null {
+  const started = startedThreadId(frame);
+  if (started === null) {
+    return current;
+  }
+  if (started !== threadIdAtStart) {
+    useNewThreadStore.getState().resolve(started);
+  }
+  return started;
+}
+
+/** A stream that threw: a duplicate request adopts the thread the server already has, an
+ * intentional abort is silent, anything else fails the overlay. Returns the thread id to use. */
+function recoverFromStreamError(
+  err: unknown,
+  resolvedThreadId: string | null,
+  fail: (message: string, code?: string | null) => void,
+  t: (key: string) => string,
+): string | null {
+  if (err instanceof AgentStreamError && err.code === "duplicate_request") {
+    // The server already has this message (the same request arrived twice). It is not an
+    // error: adopt the thread it went to, and the history refetch after this shows it.
+    return err.threadId ?? resolvedThreadId;
+  }
+  if (!isAbortError(err)) {
+    // AbortError is an intentional stop (handled by the cancel path) — not a turn error.
+    fail(turnErrorMessage(err, t), err instanceof AgentStreamError ? err.code : null);
+    useNewThreadStore.getState().reset();
+  }
+  return resolvedThreadId;
+}
+
+/** Reads one stream to its end, folding every frame into the overlay, and returns the thread id
+ * the turn resolved to (a brand-new thread's id first surfaces on the `turn.start` frame). */
+async function readTurnStream(params: {
+  threadIdAtStart: string | null;
+  open: StreamOpener;
+  signal: AbortSignal;
+  applyFrame: (frame: AgentStreamFrame) => void;
+  fail: (message: string, code?: string | null) => void;
+  t: (key: string) => string;
+}): Promise<string | null> {
+  const { threadIdAtStart, open, signal, applyFrame, fail, t } = params;
+  let resolvedThreadId = threadIdAtStart;
+  try {
+    // A dropped connection re-attaches to the running turn instead of freezing the answer.
+    const frames = streamWithResume(open, streamThreadResume, signal, { threadIdAtStart });
+    for await (const frame of frames) {
+      applyFrame(frame);
+      resolvedThreadId = adoptStartedThread(frame, resolvedThreadId, threadIdAtStart);
+    }
+  } catch (err) {
+    return recoverFromStreamError(err, resolvedThreadId, fail, t);
+  }
+  return resolvedThreadId;
+}
+
+type QueryBodyInput = {
+  message: string;
+  webSearch: boolean;
+  deepResearch: boolean;
+  model: string | null;
+  personality: string | null;
+  threadId: string | null;
+  attachments: AttachmentInput[];
+};
+
+/** The `POST /agent/query` body: optional fields are omitted, never sent as null. */
+function buildQueryBody(input: QueryBodyInput): AgentQueryBody {
+  return {
+    message: input.message,
+    web_search: input.webSearch,
+    ...(input.deepResearch ? { deep_research: true } : {}),
+    ...(input.model !== null ? { model: input.model } : {}),
+    ...(input.personality !== null ? { personality: input.personality } : {}),
+    ...(input.threadId ? { thread_id: input.threadId } : {}),
+    ...(input.attachments.length > 0 ? { attachments: input.attachments } : {}),
+  };
+}
+
+/** What the finished turn left in the overlay — read before `clear()` wipes it, the only place the
+ * answer text still exists once the persisted-history refetch takes over the render. */
+function readFinishedTurn(): {
+  answerText: string | null;
+  petLeveledTo: number | null;
+  petPullsEarned: number;
+} {
+  const finishedTurn = useTurnStore.getState().activeTurn;
+  return {
+    answerText: finishedTurn?.phase === "done" ? (finishedTurn.answerText ?? null) : null,
+    petLeveledTo: finishedTurn?.petLeveledTo ?? null,
+    petPullsEarned: finishedTurn?.petPullsEarned ?? 0,
+  };
+}
+
+/** The scrolling transcript: empty state, or persisted history plus the live turn. */
+function ChatTranscript({
+  thread,
+  hasThread,
+  loadFailed,
+  activeTurn,
+  streaming,
+  onSend,
+  onRegenerate,
+  onEdit,
+}: Readonly<{
+  thread: Thread | undefined;
+  hasThread: boolean;
+  loadFailed: boolean;
+  activeTurn: ActiveTurn | null;
+  streaming: boolean;
+  onSend: (message: string, attachments?: AttachmentInput[]) => void;
+  onRegenerate: (assistantTurnId: string, userText: string) => Promise<unknown>;
+  onEdit: (userTurnId: string, newText: string) => void;
+}>): ReactNode {
+  const t = useTranslations("chat.turn");
+  if (!hasThread && activeTurn === null) {
+    return <EmptyState onPick={onSend} />;
+  }
+  return (
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6">
+      {hasThread && loadFailed ? (
+        <p className="text-center text-[var(--text-muted)] text-sm">{t("loadError")}</p>
+      ) : null}
+      {thread && thread.turns.length > 0 ? (
+        <PersistedThreadView
+          thread={thread}
+          streaming={streaming}
+          onRegenerate={onRegenerate}
+          onEdit={onEdit}
+          onAskUserPick={onSend}
+        />
+      ) : null}
+      {activeTurn !== null ? <ActiveTurnView turn={activeTurn} onAskUserPick={onSend} /> : null}
+    </div>
+  );
 }
 
 /**
@@ -116,7 +280,7 @@ export function ChatClient(): ReactNode {
     enabled: threadId !== null,
   });
 
-  const streaming = activeTurn !== null && activeTurn.phase === "thinking";
+  const streaming = activeTurn?.phase === "thinking";
 
   // Best-effort: a failed PATCH leaves the thread on its previous model (or none) rather than
   // blocking the turn — the picker is a convenience, not a governance-critical path, and the next
@@ -172,35 +336,18 @@ export function ChatClient(): ReactNode {
     ): Promise<string | null> => {
       const controller = new AbortController();
       abortRef.current = controller;
-      let resolvedThreadId = threadIdAtStart;
       try {
-        // A dropped connection re-attaches to the running turn instead of freezing the answer.
-        const frames = streamWithResume(open, streamThreadResume, controller.signal, {
+        return await readTurnStream({
           threadIdAtStart,
+          open,
+          signal: controller.signal,
+          applyFrame,
+          fail,
+          t,
         });
-        for await (const frame of frames) {
-          applyFrame(frame);
-          if (frame.kind === "turn.start" && typeof frame.envelope.data.thread_id === "string") {
-            resolvedThreadId = frame.envelope.data.thread_id;
-            if (resolvedThreadId !== threadIdAtStart) {
-              useNewThreadStore.getState().resolve(resolvedThreadId);
-            }
-          }
-        }
-      } catch (err) {
-        if (err instanceof AgentStreamError && err.code === "duplicate_request") {
-          // The server already has this message (the same request arrived twice). It is not an
-          // error: adopt the thread it went to, and the history refetch after this shows it.
-          resolvedThreadId = err.threadId ?? resolvedThreadId;
-        } else if (!(err instanceof DOMException && err.name === "AbortError")) {
-          // AbortError is an intentional stop (handled by the cancel path) — not a turn error.
-          fail(turnErrorMessage(err, t), err instanceof AgentStreamError ? err.code : null);
-          useNewThreadStore.getState().reset();
-        }
       } finally {
         abortRef.current = null;
       }
-      return resolvedThreadId;
     },
     [applyFrame, fail, t],
   );
@@ -242,11 +389,9 @@ export function ChatClient(): ReactNode {
         setPendingTone(null);
       }
 
-      // Captured before `clear()` wipes the overlay — the only place the finished turn's answer
-      // text still exists once the persisted-history refetch below takes over the render.
-      const finishedTurn = useTurnStore.getState().activeTurn;
-      const answerText = finishedTurn?.phase === "done" ? (finishedTurn.answerText ?? null) : null;
-      announcePet(finishedTurn?.petLeveledTo ?? null, finishedTurn?.petPullsEarned ?? 0);
+      // Captured before `clear()` wipes the overlay.
+      const { answerText, petLeveledTo, petPullsEarned } = readFinishedTurn();
+      announcePet(petLeveledTo, petPullsEarned);
 
       // Reconcile with persisted history, then drop the live overlay once it lands.
       await queryClient.invalidateQueries({ queryKey: queryKeys.threads });
@@ -273,15 +418,15 @@ export function ChatClient(): ReactNode {
     (message: string, attachments: AttachmentInput[]): Promise<string | null> =>
       runStream(message, "send", (signal) =>
         streamAgentQuery(
-          {
+          buildQueryBody({
             message,
-            web_search: webSearchEnabled,
-            ...(deepResearchEnabled && canDeepResearch ? { deep_research: true } : {}),
-            ...(pendingModelOverride !== null ? { model: pendingModelOverride } : {}),
-            ...(pendingTone !== null ? { personality: pendingTone } : {}),
-            ...(threadId ? { thread_id: threadId } : {}),
-            ...(attachments.length > 0 ? { attachments } : {}),
-          },
+            webSearch: webSearchEnabled,
+            deepResearch: deepResearchEnabled && canDeepResearch,
+            model: pendingModelOverride,
+            personality: pendingTone,
+            threadId,
+            attachments,
+          }),
           signal,
         ),
       ),
@@ -393,8 +538,6 @@ export function ChatClient(): ReactNode {
   );
 
   const hasThread = threadId !== null;
-  const hasHistory = threadQuery.data && threadQuery.data.turns.length > 0;
-  const showEmpty = !hasThread && activeTurn === null;
   const modelOverride = pendingModelOverride ?? threadQuery.data?.model_override ?? null;
   const toneOverride = chosenTone(pendingTone, threadQuery.data?.personality_override ?? null);
 
@@ -405,33 +548,20 @@ export function ChatClient(): ReactNode {
   return (
     <div className="flex h-[calc(100dvh-3.5rem-var(--bottom-nav-h)-env(safe-area-inset-top))] flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {showEmpty ? (
-          <EmptyState onPick={onSend} />
-        ) : (
-          <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6">
-            {hasThread && threadQuery.isError ? (
-              <p className="text-center text-[var(--text-muted)] text-sm">{t("loadError")}</p>
-            ) : null}
-            {hasHistory ? (
-              <PersistedThreadView
-                thread={threadQuery.data}
-                streaming={streaming}
-                onRegenerate={(assistantTurnId, userText) =>
-                  runRegenerate(assistantTurnId, userText)
-                }
-                onEdit={(userTurnId, newText) => {
-                  // The edit textarea (`UserBubble`) has no attachment picker of its own — an
-                  // edited message never adds new attachments, only changes the text.
-                  void runEdit(userTurnId, newText, []);
-                }}
-                onAskUserPick={onSend}
-              />
-            ) : null}
-            {activeTurn !== null ? (
-              <ActiveTurnView turn={activeTurn} onAskUserPick={onSend} />
-            ) : null}
-          </div>
-        )}
+        <ChatTranscript
+          thread={threadQuery.data}
+          hasThread={hasThread}
+          loadFailed={threadQuery.isError}
+          activeTurn={activeTurn}
+          streaming={streaming}
+          onSend={onSend}
+          onRegenerate={(assistantTurnId, userText) => runRegenerate(assistantTurnId, userText)}
+          onEdit={(userTurnId, newText) => {
+            // The edit textarea (`UserBubble`) has no attachment picker of its own — an
+            // edited message never adds new attachments, only changes the text.
+            void runEdit(userTurnId, newText, []);
+          }}
+        />
       </div>
 
       <PetCompanion thinking={streaming} notice={petNotice} />
