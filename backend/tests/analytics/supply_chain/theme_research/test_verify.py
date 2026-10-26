@@ -175,14 +175,42 @@ async def test_subdomains_of_one_site_count_once(tmp_path: Path) -> None:
     assert (summary.verified, summary.candidates) == (0, 1)
 
 
-async def test_a_secondary_or_primary_source_verifies_with_high_confidence(
+async def test_a_primary_source_verifies_with_high_confidence_a_lone_secondary_with_medium(
     tmp_path: Path,
 ) -> None:
     root = make_root(tmp_path)
     seed_claims(root, [claim("9101"), claim("9102", url=f"https://{PRIMARY_HOST}/f")])
     summary = await verify(root, tmp_path)
     assert summary.verified == 2
-    assert {r["confidence"] for r in members_rows(root)} == {"high"}
+    by_symbol = {r["symbol"]: r["confidence"] for r in members_rows(root)}
+    assert by_symbol == {"9101": "medium", "9102": "high"}
+
+
+async def test_two_independent_secondary_sites_verify_with_high_confidence(
+    tmp_path: Path,
+) -> None:
+    root = make_root(tmp_path)
+    seed_claims(
+        root,
+        [claim("9101"), claim("9101", url=f"https://{PRIMARY_HOST}/other")],
+    )
+    await verify(root, tmp_path)
+    [row] = members_rows(root)
+    assert row["confidence"] == "high"
+
+
+async def test_two_pages_of_one_secondary_site_stay_medium(tmp_path: Path) -> None:
+    root = make_root(tmp_path)
+    seed_claims(
+        root,
+        [
+            claim("9101", url=f"https://{SECONDARY_HOST}/a"),
+            claim("9101", url=f"https://{SECONDARY_HOST}/b"),
+        ],
+    )
+    await verify(root, tmp_path)
+    [row] = members_rows(root)
+    assert row["confidence"] == "medium"
 
 
 async def test_an_existing_member_is_skipped_and_logged(tmp_path: Path) -> None:
@@ -252,7 +280,7 @@ async def test_new_theme_needs_six_verified_members(tmp_path: Path) -> None:
     assert theme["related"] == []
     assert theme["description"]
     assert {m["symbol"] for m in theme["members"]} == set(symbols)
-    assert {m["confidence"] for m in theme["members"]} == {"high"}
+    assert {m["confidence"] for m in theme["members"]} == {"medium"}
 
 
 async def test_position_follows_the_majority_of_claims(tmp_path: Path) -> None:

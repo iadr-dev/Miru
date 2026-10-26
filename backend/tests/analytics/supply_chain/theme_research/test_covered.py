@@ -133,8 +133,19 @@ async def test_the_threshold_can_be_overridden(tmp_path: Path) -> None:
     root = make_root(tmp_path)
     hold(root, ALL[:6])
     candidates(root, ALL[:8])
-    strict = await verify(root, tmp_path, dry_run=True)
+    strict = await execute_verify(
+        settings(),
+        ParquetStore(tmp_path / "parquet"),  # type: ignore[arg-type]
+        today=TODAY,
+        limit=None,
+        dry_run=True,
+        directory=directory(),
+        root=root,
+        covered_threshold=0.8,
+    )
     assert (strict.covered, strict.new_themes) == (0, 1)
+    default = await verify(root, tmp_path, dry_run=True)
+    assert (default.covered, default.new_themes) == (1, 0)
     loose = await execute_verify(
         settings(),
         ParquetStore(tmp_path / "parquet"),  # type: ignore[arg-type]
