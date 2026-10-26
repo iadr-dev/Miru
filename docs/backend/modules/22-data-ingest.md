@@ -126,6 +126,54 @@ symbol's date range.
   TPEx volume/turnover are round-lot only (FinMind adds odd lots: median -2%, up to -40% for
   illiquid names; TWSE matches exactly); margin `note` is whitespace-trimmed.
 
+## 1c. Period-keyed datasets — official filings first (`filings_official`)
+
+The datasets companies report for a period (not a trading day) are asked of
+`sources/company_filings/` (source id `filings_official`, `OFFICIAL_FILINGS`) before FinMind, through
+the same chain (`config/whole_market_source_priority.yaml`). They are keyed by a reporting period, so
+the adapter also decides which run dates it owns:
+
+- **A date that holds no rows by definition** is answered `HealthStatus.OK` with no rows and costs no
+  request. The runner reads an `OK` answer without rows as "nothing here, by definition" and stops:
+  the empty partition is written (SUCCESS, 0 rows) and FinMind is not asked. (`STALE` stays "not
+  published yet": the next source is asked.) Before this, every such date was a FinMind request and,
+  on the free tier, a failed run: the ~4,500 failed runs of the 2026-10-26 backfill.
+- **A period that is not complete yet** (before the statutory filing deadline) is `STALE` without a
+  request: a partition with rows is never re-fetched, so serving a half-filed period would freeze it
+  half-filed. The next source is asked and the date stays a gap for the next gap-fill.
+- **Never half a market**, as §1b: every required page must answer.
+- **Provenance**: the journal detail names the source and the page counts, e.g.
+  `served by filings_official: MOPS t21sc03 2026-06: listed 1089 + OTC 895 + emerging 339 rows`.
+
+| Capability (job) | Source | History | Partition / row key (identical to FinMind) |
+|---|---|---|---|
+| `month_revenue` | MOPS static report pages `mopsov.twse.com.tw/nas/t21/{sii,otc,rotc}/t21sc03_<ROC year>_<month>.html` (Big5, thousands of TWD; listed + OTC + emerging, 3 requests, 3 s apart) | any month, verified back to 2006-01 (two page layouts, both parsed) | the revenue of month M is filed under `run_date` = the 1st of M+1 (`trade_date` = that day); any other day holds none. Served from the 11th of that month (due by the 10th) |
+
+`month_revenue` mapping: `revenue` = page figure x 1000 (TWD, as FinMind), `revenue_month`/
+`revenue_year` of the revenue month, `country` "Taiwan", `market` "TW". `create_time` (the day FinMind
+first saw the filing) has no official counterpart and is `None` (the model allows it; FinMind leaves
+it empty for older rows). A figure restated after filing shows its restated value, where FinMind kept
+the first filing.
+
+Measured against the FinMind-era partitions (2026-07-01 = June 2026, 2026-05-01 = April 2026): the
+symbols both have match on `trade_date`/`country`/`revenue_month`/`revenue_year` 100% and on
+`revenue` 99.65% / 99.44% (the rest are amended filings); the official side lacks 12-15 symbols
+FinMind carries (not on the three pages) and adds 5-6.
+
+Known cadence limits, inherited from the dated-partition design and not changed here: the first of a
+month that is not a trading day is calendar-gated, so that month never gets a partition (FinMind-era
+gaps: 2026-02 and 2026-03); and the 1st's partition is filled by the gap-fill/backfill after the 11th,
+not by the daily 21:30 run on the 1st itself (which finds the month not complete yet).
+
+Not covered by an official first source, and why: **dividends** (`TaiwanStockDividend`): FinMind's
+`announced_date` is the announcement date of the ex-dividend notice and its partition date is the
+ex-date plus four trading days; the official dividend feeds (`t187ap45_L`, the 除權除息 tables) carry
+the board date or only the ex-date, so neither field nor the partition could be reproduced without
+guessing. **Financial statements**: the OpenAPI statements (`t187ap06/07_*`) are the latest quarter
+only, cumulative year-to-date (FinMind stores single quarters), a different aggregated line set per
+industry template, and there is no cash-flow report at all. **Market value / weight**: Sponsor-only,
+no official equivalent.
+
 ## 2. Cadence — what is scheduled today
 
 The scheduler is `ingest/daemon.py`'s `IngestDaemon`: a **leader-gated, wall-clock poll loop**. One
