@@ -1,5 +1,5 @@
 """Wiring for Steps B and C: gather inputs, run, write proposal files, journal. Shared by the
-`research-themes` / `verify-themes` operator commands and the weekly `sc_theme_research` job.
+`research-themes` / `verify-themes` operator commands and the monthly `sc_theme_research` job.
 
 Nothing here edits a live concept-theme file and nothing calls `promote`: the outputs are claims
 and proposal files for a person to review. Output and journal lines carry counts and ids only.
@@ -543,7 +543,7 @@ async def run_theme_research_job(  # noqa: PLR0913 - collaborators are injected;
 
 
 async def job_sc_theme_research(run_date: date, ctx: IngestContext) -> JobRun:
-    """Weekly, leader-only, off unless SUPPLY_CHAIN_RESEARCH_ENABLED; capped by the run budget.
+    """Monthly, leader-only, off unless SUPPLY_CHAIN_RESEARCH_ENABLED; capped by the run budget.
     Writes claims and proposal files only: a person reviews them and runs `promote`."""
     return await run_theme_research_job(run_date, ctx, settings=get_settings())
 
