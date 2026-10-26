@@ -123,6 +123,15 @@ def _success_detail(outcome: ChainOutcome, result: SourceResult) -> str:
     return detail
 
 
+def _holds_only_a_placeholder(
+    ctx: IngestContext, spec: WholeMarketJobSpec, run_date: date_
+) -> bool:
+    store, market = ctx.store, ctx.market.value
+    return store.has_partition(spec.dataset, market, run_date) and not store.has_rows(
+        spec.dataset, market, run_date
+    )
+
+
 async def run_whole_market_job(
     spec: WholeMarketJobSpec,
     run_date: date_,
@@ -190,6 +199,17 @@ async def run_whole_market_job(
     if result is None:  # pragma: no cover - a chain always has at least one link
         raise RuntimeError(f"no whole-market source for {spec.dataset}")
     rows = validate_rows(spec, result_rows(result), run_date)
+    if not rows and _holds_only_a_placeholder(ctx, spec, run_date):
+        # Empty again for a date that already holds an empty placeholder: nothing would change,
+        # so no new version is written and no signal sent. A backfill sweeps every such date of
+        # a period dataset (monthly revenue is filed under one date a month) on each run.
+        return journal_run(
+            spec.dataset,
+            run_date,
+            rows_written=0,
+            status=RunStatus.SUCCESS,
+            detail=_success_detail(outcome, result),
+        )
     rows_written = ctx.store.write_partition(spec.dataset, ctx.market.value, run_date, rows)
     ctx.store.clear_closed(spec.dataset, ctx.market.value, run_date)  # data arrived after all
     # The partition has landed atomically — signal it so a subscribed client revalidates exactly

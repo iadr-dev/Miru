@@ -75,7 +75,12 @@ def _finmind(
     return StubSource(_result([_row("2330")] if rows is None else rows, status, detail))
 
 
-def _ctx(tmp_path: object, finmind: StubSource, filings: StubSource | None) -> IngestContext:
+def _ctx(
+    tmp_path: object,
+    finmind: StubSource,
+    filings: StubSource | None,
+    publisher: RecordingPublisher | None = None,
+) -> IngestContext:
     return IngestContext(
         finmind=finmind,  # type: ignore[arg-type]
         filings=filings,
@@ -83,7 +88,7 @@ def _ctx(tmp_path: object, finmind: StubSource, filings: StubSource | None) -> I
         leader=AlwaysLeader(),  # type: ignore[arg-type]
         calendar=TradingDayCalendar(),
         tls_policy=TLSPolicy.STRICT,
-        data_update_publisher=RecordingPublisher(),
+        data_update_publisher=publisher or RecordingPublisher(),
     )
 
 
@@ -189,3 +194,33 @@ async def test_a_malformed_filing_row_is_dropped_before_the_write(tmp_path: obje
 
     assert run.rows_written == 1
     assert _symbols(ctx) == ["1101"]
+
+
+async def test_an_empty_answer_for_a_date_that_already_holds_a_placeholder_changes_nothing(
+    tmp_path: object,
+) -> None:
+    publisher = RecordingPublisher()
+    filings = _filings([], HealthStatus.OK, "2024-01-02 is not the 1st of a month")
+    ctx = _ctx(tmp_path, _finmind(), filings, publisher)
+
+    first = await run_whole_market_job(MONTH_REVENUE_JOB, SECOND, ctx)
+    written = ctx.store.partition_files(MONTH_REVENUE_JOB.dataset, "TW", SECOND)
+    second = await run_whole_market_job(MONTH_REVENUE_JOB, SECOND, ctx)
+
+    assert first.status is second.status is RunStatus.SUCCESS
+    assert second.rows_written == 0
+    assert ctx.store.partition_files(MONTH_REVENUE_JOB.dataset, "TW", SECOND) == written
+    assert len(publisher.signals) == 1  # the second sweep wrote nothing and signalled nothing
+
+
+async def test_rows_after_a_placeholder_are_written_and_signalled(tmp_path: object) -> None:
+    publisher = RecordingPublisher()
+    ctx = _ctx(tmp_path, _finmind(), _filings([], HealthStatus.OK, "none"), publisher)
+    await run_whole_market_job(MONTH_REVENUE_JOB, FIRST, ctx)
+
+    ctx = _ctx(tmp_path, _finmind(), _filings(), publisher)
+    run = await run_whole_market_job(MONTH_REVENUE_JOB, FIRST, ctx)
+
+    assert run.rows_written == 1
+    assert _symbols(ctx) == ["1101"]
+    assert len(publisher.signals) == 2

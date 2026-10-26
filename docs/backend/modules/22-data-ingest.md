@@ -138,6 +138,9 @@ the adapter also decides which run dates it owns:
   the empty partition is written (SUCCESS, 0 rows) and FinMind is not asked. (`STALE` stays "not
   published yet": the next source is asked.) Before this, every such date was a FinMind request and,
   on the free tier, a failed run: the ~4,500 failed runs of the 2026-10-26 backfill.
+- **No churn**: an empty answer for a date that already holds an empty placeholder partition writes
+  no new version and sends no `data.updated` signal (nothing changed), so the backfill sweep over the
+  many dates of a period dataset does not rewrite thousands of empty partitions on every run.
 - **A period that is not complete yet** (before the statutory filing deadline) is `STALE` without a
   request: a partition with rows is never re-fetched, so serving a half-filed period would freeze it
   half-filed. The next source is asked and the date stays a gap for the next gap-fill.
