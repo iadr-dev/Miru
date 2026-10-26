@@ -657,7 +657,7 @@ group instead of writing it. Verified members become the two shapes `promote` re
 `{theme_key, symbol, name, position, publisher, url, excerpt, confidence}` for existing themes, and
 `{key, name_zh, name_en, description, related, thin: false, members}` for a candidate that has **at
 least 6** verified members (fewer stay pending; the claims are kept and counted again next run).
-`confidence` is `high` with a primary/secondary source, else `medium`; `position` is the model's
+`confidence` is `high` with a primary source or two independent primary/secondary sites, else `medium`; `position` is the model's
 majority guess. A pair already present in any proposal file is not proposed again, and writing merges
 into the day's files (union, atomic replace), so a re-run changes nothing. Rejected claims append to
 `themes/proposals/rejected.jsonl` as `{theme, symbol, url, rejected_on, reason}` (no names); reasons
@@ -671,7 +671,7 @@ existing themes; Step C repeats the test on the candidate's **verified** members
 (`themes/concepts`, via the `themes_io` loader) containment = verified members already in it / verified
 members; the best theme (ties to the smaller key) decides:
 
-- containment >= `--covered-threshold` (module constant `COVERED_THRESHOLD`, default 0.8): the candidate is
+- containment >= `--covered-threshold` (module constant `COVERED_THRESHOLD`, default 0.7): the candidate is
   **covered**. No new-theme row; the members NOT already in the covering theme (if any) are written as
   member-addition rows for the covering theme into the day's `theme_members_<UTC date>.yaml`; the decision
   is appended to `themes/proposals/covered.jsonl` as `{candidate, covering, containment, verified, new,

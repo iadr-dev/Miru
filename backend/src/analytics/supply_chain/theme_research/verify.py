@@ -28,7 +28,7 @@ from datetime import date
 import structlog
 
 from analytics.supply_chain.domain.models import Checker, Evidence, Grade, Status, Trust
-from analytics.supply_chain.domain.rules import grade_from_evidence, trust_for_url
+from analytics.supply_chain.domain.rules import grade_from_evidence, independence_key, trust_for_url
 from analytics.supply_chain.theme_discovery.mining import normalize
 from analytics.supply_chain.theme_research.models import (
     DEFAULT_POSITION,
@@ -66,7 +66,7 @@ REASON_ALREADY_COVERED = "already_covered"
 # Post-verification coverage of a new-theme candidate: the share of its VERIFIED members already
 # in one existing concept theme. At or above the threshold the candidate is covered (no new
 # theme); from the floor up to it the theme is still proposed but related to the covering one.
-COVERED_THRESHOLD = 0.8
+COVERED_THRESHOLD = 0.7
 RELATED_FLOOR = 0.5
 
 _MIN_NAME = 2
@@ -192,8 +192,12 @@ def _position(claims: Sequence[ThemeClaim]) -> str:
 
 
 def _confidence(evidence: Sequence[Evidence]) -> str:
-    reliable = any(e.trust in (Trust.PRIMARY, Trust.SECONDARY) for e in evidence)
-    return "high" if reliable else "medium"
+    """`high` needs a primary source, or two independent reliable sites; one passing mention on a
+    single news site is `medium` (still reviewable, but not presented as settled)."""
+    reliable = [e for e in evidence if e.trust in (Trust.PRIMARY, Trust.SECONDARY)]
+    if any(e.trust is Trust.PRIMARY for e in reliable):
+        return "high"
+    return "high" if len({independence_key(e) for e in reliable}) >= 2 else "medium"
 
 
 def _second_messages(claim: ThemeClaim, company: Company, ctx: VerifyContext) -> list[Message]:
