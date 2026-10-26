@@ -464,11 +464,13 @@ async def _drive_turn(
             ctx=ctx,
             personality=personality,
             running=running,
-            model_override=model_override,
-            web_search_enabled=web_search_enabled,
-            locale=locale,
-            images=images,
-            deep_research=deep_research,
+            options=_RunOptions(
+                model_override=model_override,
+                web_search_enabled=web_search_enabled,
+                locale=locale,
+                images=images,
+                deep_research=deep_research,
+            ),
             recall_provider=recall_provider,
         )
     except asyncio.CancelledError:
@@ -550,6 +552,15 @@ async def _recall_block(
     return block
 
 
+@dataclasses.dataclass(frozen=True)
+class _RunOptions:
+    model_override: str | None
+    web_search_enabled: bool
+    locale: str
+    images: tuple[ImagePart, ...]
+    deep_research: bool
+
+
 async def _run_turn(
     *,
     state: AppState,
@@ -561,11 +572,7 @@ async def _run_turn(
     ctx: ToolContext,
     personality: PersonalityContext,
     running: RunningTurn | None,
-    model_override: str | None,
-    web_search_enabled: bool,
-    locale: str,
-    images: tuple[ImagePart, ...],
-    deep_research: bool,
+    options: _RunOptions,
     recall_provider: RecallBlockProvider,
 ) -> OrchestratorResult:
     """Prepare the turn's context (pet hint, history) and run the orchestrator, or the deep
@@ -580,17 +587,17 @@ async def _run_turn(
             thread_id=thread_id,
             turn_id=turn_id,
         )
-    if deep_research:
+    if options.deep_research:
         return await run_deep_research_turn(
             state=state,
             ctx=ctx,
             event_bus=event_bus,
             turn_id=turn_id,
             question=message,
-            locale=locale,
-            model_override=model_override,
+            locale=options.locale,
+            model_override=options.model_override,
             history=history,
-            images=images,
+            images=options.images,
         )
     return await state.orchestrator.run(
         message,
@@ -599,10 +606,10 @@ async def _run_turn(
         turn_id=turn_id,
         personality=personality,
         steering_source=running,
-        model_override=model_override,
-        web_search_enabled=web_search_enabled,
-        locale=locale,
-        images=images,
+        model_override=options.model_override,
+        web_search_enabled=options.web_search_enabled,
+        locale=options.locale,
+        images=options.images,
         history=history,
         recall_provider=recall_provider,
     )
