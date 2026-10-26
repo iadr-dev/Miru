@@ -44,6 +44,7 @@ from conversation.models import (
     ThinkingBlock,
     ToolResultBlock,
     ToolUseBlock,
+    Turn,
     TurnRole,
     WebSearchSourcesBlock,
 )
@@ -393,15 +394,22 @@ async def _load_history(
         return ()
     history: list[Message] = []
     for turn in thread.turns:
-        if turn.id == turn_id:
-            continue
-        role = MessageRole.USER if turn.role is TurnRole.USER else MessageRole.ASSISTANT
-        for block in turn.messages:
-            if block.type is MessageBlockType.TEXT:
-                text = getattr(block.content, "text", None)
-                if isinstance(text, str) and text:
-                    history.append(Message(role=role, content=text))
+        if turn.id != turn_id:
+            history.extend(_turn_text_messages(turn))
     return tuple(history)
+
+
+def _turn_text_messages(turn: Turn) -> list[Message]:
+    """The non-empty `TEXT` blocks of one persisted turn as `Message`s in the turn's role."""
+    role = MessageRole.USER if turn.role is TurnRole.USER else MessageRole.ASSISTANT
+    messages: list[Message] = []
+    for block in turn.messages:
+        if block.type is not MessageBlockType.TEXT:
+            continue
+        text = getattr(block.content, "text", None)
+        if isinstance(text, str) and text:
+            messages.append(Message(role=role, content=text))
+    return messages
 
 
 async def _drive_turn(
