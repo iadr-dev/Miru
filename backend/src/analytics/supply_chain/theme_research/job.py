@@ -543,7 +543,7 @@ async def run_theme_research_job(  # noqa: PLR0913 - collaborators are injected;
 
 
 async def job_sc_theme_research(run_date: date, ctx: IngestContext) -> JobRun:
-    """Weekly, leader-only, off unless SUPPLY_CHAIN_RESEARCH_ENABLED; capped by the run budget.
+    """Monthly, leader-only, off unless SUPPLY_CHAIN_RESEARCH_ENABLED; capped by the run budget.
     Writes claims and proposal files only: a person reviews them and runs `promote`."""
     return await run_theme_research_job(run_date, ctx, settings=get_settings())
 

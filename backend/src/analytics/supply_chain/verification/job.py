@@ -260,7 +260,7 @@ async def run_research_job(  # noqa: PLR0913 - collaborators are injected; one p
 
 
 async def job_sc_research(run_date: date, ctx: IngestContext) -> JobRun:
-    """Weekly, leader-only, off unless SUPPLY_CHAIN_RESEARCH_ENABLED; capped by the run budget."""
+    """Monthly, leader-only, off unless SUPPLY_CHAIN_RESEARCH_ENABLED; capped by the run budget."""
     return await run_research_job(run_date, ctx, settings=get_settings())
 
 
