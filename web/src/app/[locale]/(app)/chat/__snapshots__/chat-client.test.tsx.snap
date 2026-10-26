@@ -1,0 +1,5 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`ChatClient rendering states > loads the URL thread and shows its history 1`] = `"<div class="flex h-[calc(100dvh-3.5rem-var(--bottom-nav-h)-env(safe-area-inset-top))] flex-col"><div class="min-h-0 flex-1 overflow-y-auto"><div class="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6"><div data-testid="persisted" data-streaming="false"></div></div></div><div data-testid="pet">[false,null]</div><div data-testid="composer" data-streaming="false"></div></div>"`;
+
+exports[`ChatClient rendering states > passes the composer its defaults 1`] = `"<div class="flex h-[calc(100dvh-3.5rem-var(--bottom-nav-h)-env(safe-area-inset-top))] flex-col"><div class="min-h-0 flex-1 overflow-y-auto"><div data-testid="empty"></div></div><div data-testid="pet">[false,null]</div><div data-testid="composer" data-streaming="false"></div></div>"`;
