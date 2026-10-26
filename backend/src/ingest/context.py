@@ -58,6 +58,9 @@ class IngestContext:
     # `None` leaves FinMind as the only source - the default, so a test or caller that never wires
     # it makes no exchange request.
     exchange: WholeMarketSource | None = None
+    # The free official company filings (monthly revenue, ...), asked before FinMind for the
+    # period-keyed datasets they cover - same chain, same `None`-means-FinMind-only default.
+    filings: WholeMarketSource | None = None
 
 
 __all__ = ["IngestContext"]

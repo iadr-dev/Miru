@@ -6,7 +6,14 @@
 #
 # Source ids (resolved in ingest/jobs/source_chain.py):
 #   exchange_official  free TWSE + TPEx daily reports (sources/exchange_whole_market)
+#   filings_official   free company filings republished by MOPS (sources/company_filings): the
+#                      period-keyed datasets (monthly revenue, ...), reachable for any past period
 #   finmind            FinMind whole-table form (metered; the free tier is 600 requests/hour)
+#
+#
+# A source that answers `ok` with no rows is saying the date holds none by definition (a period
+# dataset on a date no period is filed under): the empty partition is written and no later source
+# is asked. `stale` with no rows means "not published yet": the next source is asked.
 #
 # A capability not listed here is served by finmind alone.
 TW:
@@ -14,3 +21,4 @@ TW:
   institutional_flow: [exchange_official, finmind]
   margin_short: [exchange_official, finmind]
   valuation_ratios: [exchange_official, finmind]
+  month_revenue: [filings_official, finmind]

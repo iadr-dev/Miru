@@ -32,6 +32,7 @@ _CONFIG_PATH: Final = (
 )
 FINMIND_ID: Final = "finmind"
 EXCHANGE_ID: Final = "exchange_official"
+FILINGS_ID: Final = "filings_official"
 _DEFAULT_CHAIN: Final = (FINMIND_ID,)
 _TAIPEI: Final = ZoneInfo("Asia/Taipei")
 # The journal detail of a day both exchanges said they published nothing for.
@@ -49,7 +50,7 @@ def load_whole_market_priority(path: Path = _CONFIG_PATH) -> dict[str, dict[str,
 
 
 def _sources(ctx: IngestContext) -> dict[str, WholeMarketSource | None]:
-    return {FINMIND_ID: ctx.finmind, EXCHANGE_ID: ctx.exchange}
+    return {FINMIND_ID: ctx.finmind, EXCHANGE_ID: ctx.exchange, FILINGS_ID: ctx.filings}
 
 
 @dataclass(frozen=True)
@@ -168,7 +169,11 @@ async def walk_chain(
                 source=link.source_id,
                 detail=result.health.detail,
             )
-        elif result_rows(result):
+        elif result_rows(result) or result.health.status is HealthStatus.OK:
+            # Rows, or a healthy answer of `OK` with none: the source states the date holds no
+            # rows by definition (a period dataset on a date no period is filed under), so the
+            # empty partition is the answer and no later source is asked. "Not published yet" is
+            # `STALE`, which hands over to the next source below.
             outcome.winner_id, outcome.winner = link.source_id, result
             break
         else:
@@ -191,6 +196,7 @@ async def fetch_whole_market_chained(
 
 __all__ = [
     "EXCHANGE_ID",
+    "FILINGS_ID",
     "FINMIND_ID",
     "MARKET_CLOSED_DETAIL",
     "ChainLink",
