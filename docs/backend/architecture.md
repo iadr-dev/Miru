@@ -103,7 +103,7 @@ router resolves *which* adapters, in per-market priority order with fallback ([m
 | `TWSE_OPENAPI` | `twse_openapi.py` | Official latest EOD | official-eod | Listed |
 | `TPEX_OPENAPI` | `tpex_openapi.py` | Official OTC + emerging EOD | official-eod | OTC / 興櫃 |
 | `EXCHANGE_OFFICIAL` | `exchange_whole_market/` | Official whole-market-by-date reports (ingest-only, before FinMind) | official-eod | Listed + OTC |
-| `OFFICIAL_FILINGS` | `company_filings/` | Official period-keyed company filings: monthly revenue (ingest-only, before FinMind) | official-eod | Listed + OTC + emerging |
+| `OFFICIAL_FILINGS` | `company_filings/` | Official period-keyed company filings: monthly revenue and financial statements (ingest-only, before FinMind) | official-eod | Listed + OTC + emerging |
 | `TAIFEX_OPENAPI` | `taifex_openapi.py` | Derivatives EOD / reference | official-eod | Derivatives |
 | `TWSE_MIS` | `twse_mis.py` | Browser-observed snapshot | live-ish (bounded) | Listed / OTC |
 | `NCDR_DGPA_CLOSURE_CAP` | `ncdr_closure.py` | Work-suspension / closure evidence | event-driven | Taiwan-wide |

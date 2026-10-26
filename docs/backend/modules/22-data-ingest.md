@@ -128,13 +128,15 @@ symbol's date range.
 
 ## 1c. Period-keyed datasets — official filings first (`filings_official`)
 
-The datasets companies report for a period (not a trading day) are asked of
+The datasets companies report for a period (not a trading day: monthly revenue, financial
+statements) are asked of
 `sources/company_filings/` (source id `filings_official`, `OFFICIAL_FILINGS`) before FinMind, through
 the same chain (`config/whole_market_source_priority.yaml`). They are keyed by a reporting period, so
 the adapter also decides which run dates it owns:
 
 - **A date that holds no rows by definition** is answered `HealthStatus.OK` with no rows and costs no
-  request. The runner reads an `OK` answer without rows as "nothing here, by definition" and stops:
+  request (monthly revenue: any day but the 1st; statements: any day but a quarter end). The
+  runner reads an `OK` answer without rows as "nothing here, by definition" and stops:
   the empty partition is written (SUCCESS, 0 rows) and FinMind is not asked. (`STALE` stays "not
   published yet": the next source is asked.) Before this, every such date was a FinMind request and,
   on the free tier, a failed run: the ~4,500 failed runs of the 2026-10-26 backfill.
@@ -150,6 +152,7 @@ the adapter also decides which run dates it owns:
 
 | Capability (job) | Source | History | Partition / row key (identical to FinMind) |
 |---|---|---|---|
+| `financials`, `balance_sheet`, `cash_flow_statement` | MOPS summary reports `mopsov.twse.com.tw/mops/web/ajax_{t163sb04,t163sb05,t163sb20}` (form POST: `TYPEK` sii/otc/rotc, ROC `year`, `season`; UTF-8; thousands of TWD; every industry template on the page; 3 markets x 1-4 pages, 3 s apart) | any quarter back to the IFRS years (checked 2025Q1-2026Q2) | the quarter end (`period_end` = `run_date` = 03-31, 06-30, 09-30, 12-31, FinMind's partition); served after the last statutory deadline (Q1 5/30, Q2 8/31, Q3 11/29, annual 3/31 of the next year) |
 | `month_revenue` | MOPS static report pages `mopsov.twse.com.tw/nas/t21/{sii,otc,rotc}/t21sc03_<ROC year>_<month>.html` (Big5, thousands of TWD; listed + OTC + emerging, 3 requests, 3 s apart) | any month, verified back to 2006-01 (two page layouts, both parsed) | the revenue of month M is filed under `run_date` = the 1st of M+1 (`trade_date` = that day); any other day holds none. Served from the 11th of that month (due by the 10th) |
 
 `month_revenue` mapping: `revenue` = page figure x 1000 (TWD, as FinMind), `revenue_month`/
@@ -163,6 +166,45 @@ symbols both have match on `trade_date`/`country`/`revenue_month`/`revenue_year`
 `revenue` 99.65% / 99.44% (the rest are amended filings); the official side lacks 12-15 symbols
 FinMind carries (not on the three pages) and adds 5-6.
 
+Statement mapping. The reports carry the AGGREGATE lines (about 15 income, 15 balance-sheet and 7
+cash-flow lines per company), not the full XBRL statement FinMind stores (about 60 balance-sheet and
+30 cash-flow detail lines). Every mapped line carries FinMind's own `item` (`Revenue`, `GrossProfit`,
+`IncomeAfterTaxes`, `TotalAssets`, `Liabilities`, `Equity`, `CashFlowsFromOperatingActivities`, ...)
+and `origin_name` (the operating cash flow under both its FinMind items), in TWD (reports in
+thousands; EPS unscaled), `statement_type` `income_statement` / `balance_sheet` / `cash_flow`,
+`market` "TW"; every industry template is mapped (general, bank, financial holding, securities,
+insurance, other), and a line FinMind has no `item` for is left out. Value conventions, as FinMind
+stores them:
+- income statement: the SINGLE quarter, although the report is year-to-date. Q1 is the report; Q2-Q4
+  subtract the company's nearest earlier filing of the year (walking back through the earlier
+  seasons only while some company still has none), so a half-yearly filer (emerging market) gets
+  H1 as its Q2 and the second half as its Q4, as FinMind does; a company with no earlier filing
+  keeps the year-to-date figure.
+- balance sheet: the position at the period end; cash flow: year-to-date (Q4 = the full year).
+- a quarter whose earlier-season report cannot be fetched fails whole (never written year-to-date).
+
+Lossy fields (tagged, not guessed):
+- **EPS** is not additive (the share count moves), so a derived Q2-Q4 EPS is an approximation: its
+  `origin_name` reads `基本每股盈餘（累計差額推算）` instead of `基本每股盈餘` (Q1 is exact). Against
+  FinMind: exact for about 68% of companies, within 0.01 for another 22%.
+- **Detail lines are absent**: cash, borrowings, capex, depreciation, receivables, inventories (the
+  readers that need them already degrade for a company FinMind lacks; operating cash flow,
+  `TotalAssets`, `Liabilities`, `Equity`, `Revenue`, `OperatingIncome`, `IncomeAfterTaxes` and
+  `GrossProfit` are served). The common-size `*_per` duplicates and the share-count line are not
+  produced.
+- **Restated figures**: the report shows the latest filing, FinMind the first, so about 1-2% of lines
+  differ by a restatement.
+- A year-to-date report cannot be checked for its year (the page does not echo it): the market and
+  season are checked from the page heading, the year is trusted from the request.
+
+Measured against the FinMind-era partitions (same company and line, 1-TWD tolerance, EPS 0.005):
+income Q1 2026 99.91% of 30,161 pairs, Q4 2025 98.92% of 34,871 (money lines 99.8%), Q2 2026 98.2%,
+Q3 2025 97.7% (the shortfall is EPS); balance sheet Q1 2026 99.84% of 24,736, Q4 2025 98.98%, Q2 2026
+99.92%; cash flow Q1 2026 99.96% of 14,024, Q4 2025 99.89%, Q2 2026 99.98%. The official side
+covers 1,970-2,342 companies per quarter (FinMind 2,025-2,643): it adds 22-579 that the FinMind-era
+snapshots had not captured yet (the stored 2026-06-30 partitions hold only the early filers), and
+lacks 30-300 (public non-trading companies and some emerging ones).
+
 Known cadence limits, inherited from the dated-partition design and not changed here: the first of a
 month that is not a trading day is calendar-gated, so that month never gets a partition (FinMind-era
 gaps: 2026-02 and 2026-03); and the 1st's partition is filled by the gap-fill/backfill after the 11th,
@@ -172,10 +214,10 @@ Not covered by an official first source, and why: **dividends** (`TaiwanStockDiv
 `announced_date` is the announcement date of the ex-dividend notice and its partition date is the
 ex-date plus four trading days; the official dividend feeds (`t187ap45_L`, the 除權除息 tables) carry
 the board date or only the ex-date, so neither field nor the partition could be reproduced without
-guessing. **Financial statements**: the OpenAPI statements (`t187ap06/07_*`) are the latest quarter
-only, cumulative year-to-date (FinMind stores single quarters), a different aggregated line set per
-industry template, and there is no cash-flow report at all. **Market value / weight**: Sponsor-only,
-no official equivalent.
+guessing. **Market value / weight**: Sponsor-only, no official equivalent. The TWSE/TPEx OpenAPI
+statement endpoints (`t187ap06/07_*`) were not used: they hold the latest quarter only, in the same
+aggregate form, and have no cash-flow report; the MOPS reports above carry the same lines with
+history.
 
 ## 2. Cadence — what is scheduled today
 
