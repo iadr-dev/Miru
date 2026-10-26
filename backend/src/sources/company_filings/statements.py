@@ -60,6 +60,7 @@ _QUARTER_ENDS: Final = {(3, 31): 1, (6, 30): 2, (9, 30): 3, (12, 31): 4}
 # due 3/31 of the next year.
 _DEADLINES: Final = {1: (5, 30), 2: (8, 31), 3: (11, 29), 4: (3, 31)}
 _NO_DATA_MARKER: Final = "查詢無資料"
+_PARENT_EQUITY: Final = "歸屬於母公司業主之權益合計"  # FinMind's label for the parent's equity
 _TITLE: Final = re.compile(r"<h2>(.*?)</h2>", re.DOTALL)
 _TABLE: Final = re.compile(r"<table class='hasBorder'[^>]*>(.*?)</table>", re.DOTALL)
 _HEAD_ROW: Final = re.compile(r"<tr class='tblHead'>(.*?)</tr>", re.DOTALL)
@@ -204,13 +205,9 @@ _BALANCE: Final = _named(
         "保留盈餘": _one("RetainedEarnings", "保留盈餘合計"),
         "保留盈餘（或累積虧損）": _one("RetainedEarnings", "保留盈餘合計"),
         "其他權益": _one("OtherEquityInterest", "其他權益合計"),
-        "歸屬於母公司業主之權益合計": _one("EquityAttributableToOwnersOfParent"),
-        "歸屬於母公司業主權益合計": _one(
-            "EquityAttributableToOwnersOfParent", "歸屬於母公司業主之權益合計"
-        ),
-        "歸屬於母公司業主之權益": _one(
-            "EquityAttributableToOwnersOfParent", "歸屬於母公司業主之權益合計"
-        ),
+        _PARENT_EQUITY: _one("EquityAttributableToOwnersOfParent"),
+        "歸屬於母公司業主權益合計": _one("EquityAttributableToOwnersOfParent", _PARENT_EQUITY),
+        "歸屬於母公司業主之權益": _one("EquityAttributableToOwnersOfParent", _PARENT_EQUITY),
         "非控制權益": _one("NoncontrollingInterests"),
         "權益總計": _one("Equity", "權益總額"),
         "權益總額": _one("Equity"),
@@ -338,27 +335,38 @@ def statement_rows(
     figures of the nearest one it appears in."""
     rows: list[Row] = []
     for code, printed in current.items():
-        base = _base_for(report, code, earlier)
-        emitted: set[str] = set()
-        for label, figure in printed.items():
-            for line in report.lines.get(label, ()):
-                if figure is None or line.item in emitted:
-                    continue
-                emitted.add(line.item)
-                origin = line.origin_name
-                if base is not None and line.derived_origin_name is not None:
-                    origin = line.derived_origin_name
-                rows.append(
-                    {
-                        "symbol": code,
-                        "market": TAIWAN_MARKET,
-                        "period_end": period.period_end.isoformat(),
-                        "statement_type": report.statement_type,
-                        "item": line.item,
-                        "origin_name": origin,
-                        "value": (figure - ((base or {}).get(label) or 0.0)) * line.scale,
-                    }
-                )
+        rows.extend(_company_rows(report, period, code, printed, _base_for(report, code, earlier)))
+    return rows
+
+
+def _company_rows(
+    report: Report,
+    period: StatementPeriod,
+    code: str,
+    printed: dict[str, float | None],
+    base: dict[str, float | None] | None,
+) -> list[Row]:
+    rows: list[Row] = []
+    emitted: set[str] = set()
+    for label, figure in printed.items():
+        if figure is None:
+            continue
+        for line in report.lines.get(label, ()):
+            if line.item in emitted:
+                continue
+            emitted.add(line.item)
+            derived = base is not None and line.derived_origin_name is not None
+            rows.append(
+                {
+                    "symbol": code,
+                    "market": TAIWAN_MARKET,
+                    "period_end": period.period_end.isoformat(),
+                    "statement_type": report.statement_type,
+                    "item": line.item,
+                    "origin_name": line.derived_origin_name if derived else line.origin_name,
+                    "value": (figure - ((base or {}).get(label) or 0.0)) * line.scale,
+                }
+            )
     return rows
 
 
