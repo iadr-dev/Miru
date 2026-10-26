@@ -224,42 +224,42 @@ class NewsAdapter:
         is_tw = market is Market.TW
 
         if is_tw:
-            for feed in self._rss_feeds:
-                try:
-                    fetched = await self._fetch_rss(feed, tls_policy)
-                    items.extend(fetched)
-                except httpx.HTTPError as exc:
-                    errors.append(f"{feed.source}: {type(exc).__name__}")
-                    logger.warning("news_rss_fetch_failed", source=feed.source, error=str(exc))
-
-        finnhub_key = reveal(self._settings.finnhub_key)
-        if finnhub_key:
-            try:
-                if is_tw:
-                    items.extend(
-                        await self._fetch_finnhub_company_news(query, finnhub_key, tls_policy)
-                    )
-                else:
-                    items.extend(await self._fetch_finnhub_market_news(finnhub_key, tls_policy))
-            except httpx.HTTPError as exc:
-                errors.append(f"finnhub: {type(exc).__name__}")
-                logger.warning("news_finnhub_fetch_failed", error=str(exc))
+            await self._collect_rss(items, errors, tls_policy)
+        await self._collect_finnhub(items, errors, query, is_tw, tls_policy)
 
         items.sort(key=lambda item: item.published_at, reverse=True)
+        return _news_result(items, errors)
 
-        if not items and errors:
-            return _result(
-                payload={},
-                health=SourceHealth(status=HealthStatus.UNREACHABLE, detail="; ".join(errors)),
-            )
-        status = HealthStatus.OK if items else HealthStatus.STALE
-        detail = "ok" if items else "no items returned"
-        if errors:
-            detail = f"{detail} (partial failures: {'; '.join(errors)})"
-        return _result(
-            payload={"items": [item.model_dump(mode="json") for item in items]},
-            health=SourceHealth(status=status, detail=detail),
-        )
+    async def _collect_rss(
+        self, items: list[NewsItem], errors: list[str], tls_policy: TLSPolicy
+    ) -> None:
+        for feed in self._rss_feeds:
+            try:
+                fetched = await self._fetch_rss(feed, tls_policy)
+                items.extend(fetched)
+            except httpx.HTTPError as exc:
+                errors.append(f"{feed.source}: {type(exc).__name__}")
+                logger.warning("news_rss_fetch_failed", source=feed.source, error=str(exc))
+
+    async def _collect_finnhub(
+        self,
+        items: list[NewsItem],
+        errors: list[str],
+        query: str,
+        is_tw: bool,
+        tls_policy: TLSPolicy,
+    ) -> None:
+        finnhub_key = reveal(self._settings.finnhub_key)
+        if not finnhub_key:
+            return
+        try:
+            if is_tw:
+                items.extend(await self._fetch_finnhub_company_news(query, finnhub_key, tls_policy))
+            else:
+                items.extend(await self._fetch_finnhub_market_news(finnhub_key, tls_policy))
+        except httpx.HTTPError as exc:
+            errors.append(f"finnhub: {type(exc).__name__}")
+            logger.warning("news_finnhub_fetch_failed", error=str(exc))
 
     async def _fetch_rss(self, feed: _RssFeed, tls_policy: TLSPolicy) -> list[NewsItem]:
         async with build_async_client(tls_policy=tls_policy) as client:
@@ -292,6 +292,22 @@ class NewsAdapter:
             response.raise_for_status()
             raw: object = response.json()
             return _parse_finnhub_body(raw)
+
+
+def _news_result(items: list[NewsItem], errors: list[str]) -> SourceResult:
+    if not items and errors:
+        return _result(
+            payload={},
+            health=SourceHealth(status=HealthStatus.UNREACHABLE, detail="; ".join(errors)),
+        )
+    status = HealthStatus.OK if items else HealthStatus.STALE
+    detail = "ok" if items else "no items returned"
+    if errors:
+        detail = f"{detail} (partial failures: {'; '.join(errors)})"
+    return _result(
+        payload={"items": [item.model_dump(mode="json") for item in items]},
+        health=SourceHealth(status=status, detail=detail),
+    )
 
 
 def _result(*, payload: dict[str, object], health: SourceHealth) -> SourceResult:
