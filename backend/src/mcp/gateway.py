@@ -144,52 +144,57 @@ class McpGateway:
 
     async def _admit(self, scope: Scope, headers: Headers, send: Send) -> bool:
         """Auth + rate limit. False means a 401/429 response was already sent."""
+        identity = await self._identify(scope, headers, send)
+        if identity is None:
+            return False
+        principal, limit = identity
+        return await self._within_rate_limit(principal, limit, send)
+
+    async def _identify(self, scope: Scope, headers: Headers, send: Send) -> tuple[str, int] | None:
+        """`(principal, per-minute limit)` of the caller, or None after a 401 was sent."""
         cfg = self._config
-        principal: str
-        limit: int
         authorization = headers.get("authorization")
         api_key = headers.get("x-api-key")
         if authorization is not None:
             token = authorization[7:].strip() if authorization[:7].lower() == "bearer " else ""
             verdict = await self._verify(token) if token else TokenVerdict(None, "invalid")
-            if verdict.user_id is None:
-                await self._challenge(send, failure=verdict.failure or "invalid")
-                return False
-            principal, limit = f"user:{verdict.user_id}", cfg.rate_signed_in_per_minute
-        elif api_key is not None and cfg.require_auth:
-            verdict = await self._verify(api_key.strip())
-            if verdict.user_id is None:
-                await self._challenge(send, failure=verdict.failure or "invalid")
-                return False
-            principal, limit = f"user:{verdict.user_id}", cfg.rate_signed_in_per_minute
-        elif cfg.require_auth:
+            return await self._signed_in(verdict, send)
+        if api_key is not None and cfg.require_auth:
+            return await self._signed_in(await self._verify(api_key.strip()), send)
+        if cfg.require_auth:
             await self._challenge(send, failure=None)
-            return False
-        else:
-            address = _client_address(scope, headers, trusted_proxy_count=cfg.trusted_proxy_count)
-            principal, limit = f"ip:{address}", cfg.rate_anonymous_per_minute
+            return None
+        address = _client_address(scope, headers, trusted_proxy_count=cfg.trusted_proxy_count)
+        return f"ip:{address}", cfg.rate_anonymous_per_minute
 
+    async def _signed_in(self, verdict: TokenVerdict, send: Send) -> tuple[str, int] | None:
+        if verdict.user_id is None:
+            await self._challenge(send, failure=verdict.failure or "invalid")
+            return None
+        return f"user:{verdict.user_id}", self._config.rate_signed_in_per_minute
+
+    async def _within_rate_limit(self, principal: str, limit: int, send: Send) -> bool:
         rate = await self._limiter.check(
             f"mcp:{principal}", max_requests=limit, window_seconds=_WINDOW_SECONDS
         )
-        if not rate.allowed:
-            retry = max(1, int(rate.retry_after_seconds or _WINDOW_SECONDS))
-            logger.warning(
-                "mcp_rate_limited",
-                caller_kind=principal.split(":", 1)[0],
-                limit_per_minute=limit,
-            )
-            await _send_json(
-                send,
-                _HTTP_TOO_MANY,
-                {
-                    "error": "rate_limited",
-                    "message": f"Too many requests; retry in {retry} seconds.",
-                },
-                [(b"retry-after", str(retry).encode())],
-            )
-            return False
-        return True
+        if rate.allowed:
+            return True
+        retry = max(1, int(rate.retry_after_seconds or _WINDOW_SECONDS))
+        logger.warning(
+            "mcp_rate_limited",
+            caller_kind=principal.split(":", 1)[0],
+            limit_per_minute=limit,
+        )
+        await _send_json(
+            send,
+            _HTTP_TOO_MANY,
+            {
+                "error": "rate_limited",
+                "message": f"Too many requests; retry in {retry} seconds.",
+            },
+            [(b"retry-after", str(retry).encode())],
+        )
+        return False
 
     async def _challenge(self, send: Send, *, failure: str | None) -> None:
         """401 with the RFC 6750 / RFC 9728 challenge. `failure=None` = no credential was sent."""
@@ -221,7 +226,7 @@ class McpGateway:
         cfg = self._config
         declared = headers.get("content-length")
         if declared is not None and declared.isdigit() and int(declared) > cfg.max_body_bytes:
-            await self._too_large(send)
+            await _too_large(send, cfg.max_body_bytes)
             return
 
         counts_toward_cap = scope["method"] == "POST"  # a GET is a long-lived stream, not work
@@ -237,73 +242,88 @@ class McpGateway:
                 return
             self._in_flight += 1
 
-        seen = 0
-        started = False
-        swallow = False
-        host = headers.get("host", "")
-
-        async def counting_receive() -> Message:
-            nonlocal seen
-            message = await receive()
-            if message["type"] == "http.request":
-                seen += len(message.get("body", b""))
-                if seen > cfg.max_body_bytes:
-                    raise _BodyTooLargeError
-            return message
-
-        async def guarded_send(message: Message) -> None:
-            nonlocal started, swallow
-            if message["type"] == "http.response.start":
-                status = message["status"]
-                if status in (_HTTP_MISDIRECTED, _HTTP_FORBIDDEN):
-                    swallow = True
-                    await self._explain_rejection(send, status, host)
-                    return
-                started = True
-            elif swallow:
-                return
-            await send(message)
-
+        exchange = _GuardedExchange(
+            receive, send, host=headers.get("host", ""), max_body_bytes=cfg.max_body_bytes
+        )
         try:
-            await self.app(scope, counting_receive, guarded_send)
+            await self.app(scope, exchange.receive, exchange.send)
         except _BodyTooLargeError:
-            if not started and not swallow:
-                await self._too_large(send)
+            await exchange.on_body_too_large()
         finally:
             if counts_toward_cap:
                 self._in_flight -= 1
 
-    async def _too_large(self, send: Send) -> None:
-        await _send_json(
-            send,
-            _HTTP_PAYLOAD_TOO_LARGE,
-            {
-                "error": "request_too_large",
-                "message": f"Request body exceeds {self._config.max_body_bytes} bytes.",
-            },
-            [],
-        )
 
-    async def _explain_rejection(self, send: Send, status: int, host: str) -> None:
-        if status == _HTTP_MISDIRECTED:
-            logger.warning("mcp_host_rejected", host=host)
-            payload: dict[str, object] = {
-                "error": "host_not_allowed",
-                "message": (
-                    f"Host '{host}' is not allowed. Set MCP_PUBLIC_BASE_URL to this server's "
-                    "public https URL (or add the hostname to MCP_ALLOWED_HOSTS) and restart."
-                ),
-            }
-        else:
-            logger.warning("mcp_origin_rejected")
-            payload = {
-                "error": "origin_not_allowed",
-                "message": (
-                    "The Origin header is not allowed. Add it to MCP_ALLOWED_ORIGINS "
-                    "(browser-based clients only; server-side connectors send no Origin)."
-                ),
-            }
-        await _send_json(send, status, payload, [])
+class _GuardedExchange:
+    """One request/response through the inner app: caps the streamed request body, and swaps a
+    bare 421/403 from FastMCP's transport security for a body that names the setting to change."""
+
+    def __init__(self, receive: Receive, send: Send, *, host: str, max_body_bytes: int) -> None:
+        self._receive = receive
+        self._send = send
+        self._host = host
+        self._max_body_bytes = max_body_bytes
+        self._seen = 0
+        self._started = False
+        self._swallow = False
+
+    async def receive(self) -> Message:
+        message = await self._receive()
+        if message["type"] == "http.request":
+            self._seen += len(message.get("body", b""))
+            if self._seen > self._max_body_bytes:
+                raise _BodyTooLargeError
+        return message
+
+    async def send(self, message: Message) -> None:
+        if message["type"] == "http.response.start":
+            status = message["status"]
+            if status in (_HTTP_MISDIRECTED, _HTTP_FORBIDDEN):
+                self._swallow = True
+                await _explain_rejection(self._send, status, self._host)
+                return
+            self._started = True
+        elif self._swallow:
+            return
+        await self._send(message)
+
+    async def on_body_too_large(self) -> None:
+        if not self._started and not self._swallow:
+            await _too_large(self._send, self._max_body_bytes)
+
+
+async def _too_large(send: Send, max_body_bytes: int) -> None:
+    await _send_json(
+        send,
+        _HTTP_PAYLOAD_TOO_LARGE,
+        {
+            "error": "request_too_large",
+            "message": f"Request body exceeds {max_body_bytes} bytes.",
+        },
+        [],
+    )
+
+
+async def _explain_rejection(send: Send, status: int, host: str) -> None:
+    if status == _HTTP_MISDIRECTED:
+        logger.warning("mcp_host_rejected", host=host)
+        payload: dict[str, object] = {
+            "error": "host_not_allowed",
+            "message": (
+                f"Host '{host}' is not allowed. Set MCP_PUBLIC_BASE_URL to this server's "
+                "public https URL (or add the hostname to MCP_ALLOWED_HOSTS) and restart."
+            ),
+        }
+    else:
+        logger.warning("mcp_origin_rejected")
+        payload = {
+            "error": "origin_not_allowed",
+            "message": (
+                "The Origin header is not allowed. Add it to MCP_ALLOWED_ORIGINS "
+                "(browser-based clients only; server-side connectors send no Origin)."
+            ),
+        }
+    await _send_json(send, status, payload, [])
 
 
 __all__ = ["GatewayConfig", "McpGateway", "TokenVerifier"]

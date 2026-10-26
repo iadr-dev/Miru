@@ -90,33 +90,52 @@ class ChartHint(BaseModel):
 
     @model_validator(mode="after")
     def _check_mark_field_compatibility(self) -> ChartHint:
-        if self.mark in _TEMPORAL_OR_ORDINAL_MARKS:
-            if self.x is None:
-                raise ValueError(f"mark={self.mark.value} requires an x field")
-            if self.x.type not in (FieldType.TEMPORAL, FieldType.ORDINAL):
-                raise ValueError(
-                    f"mark={self.mark.value} requires x.type to be temporal or ordinal, "
-                    f"got {self.x.type.value}"
-                )
-        if self.mark is Mark.ARC:
-            if self.x is not None or self.y is not None:
-                raise ValueError("mark=arc has no axes — x/y must not be set")
-            if self.theta is None or self.color is None:
-                raise ValueError("mark=arc requires both theta and color")
-        elif self.theta is not None:
-            raise ValueError(f"theta is only valid for mark=arc, got mark={self.mark.value}")
-        if self.y2 is not None and self.mark is not Mark.BAR:
-            raise ValueError(f"y2 is only valid for mark=bar, got mark={self.mark.value}")
-        if self.size is not None and self.mark is not Mark.POINT:
-            raise ValueError(f"size is only valid for mark=point, got mark={self.mark.value}")
-        if self.diverging:
-            if self.mark not in _DIVERGING_ALLOWED_MARKS:
-                allowed = sorted(m.value for m in _DIVERGING_ALLOWED_MARKS)
-                got = self.mark.value
-                raise ValueError(f"diverging=True is only valid for mark in {allowed}, got {got}")
-            if self.color is not None:
-                raise ValueError("diverging=True and color are mutually exclusive")
+        _check_axis_field(self)
+        _check_arc_fields(self)
+        _check_mark_specific_channels(self)
+        _check_diverging(self)
         return self
+
+
+def _check_axis_field(hint: ChartHint) -> None:
+    if hint.mark not in _TEMPORAL_OR_ORDINAL_MARKS:
+        return
+    if hint.x is None:
+        raise ValueError(f"mark={hint.mark.value} requires an x field")
+    if hint.x.type not in (FieldType.TEMPORAL, FieldType.ORDINAL):
+        raise ValueError(
+            f"mark={hint.mark.value} requires x.type to be temporal or ordinal, "
+            f"got {hint.x.type.value}"
+        )
+
+
+def _check_arc_fields(hint: ChartHint) -> None:
+    if hint.mark is not Mark.ARC:
+        if hint.theta is not None:
+            raise ValueError(f"theta is only valid for mark=arc, got mark={hint.mark.value}")
+        return
+    if hint.x is not None or hint.y is not None:
+        raise ValueError("mark=arc has no axes — x/y must not be set")
+    if hint.theta is None or hint.color is None:
+        raise ValueError("mark=arc requires both theta and color")
+
+
+def _check_mark_specific_channels(hint: ChartHint) -> None:
+    if hint.y2 is not None and hint.mark is not Mark.BAR:
+        raise ValueError(f"y2 is only valid for mark=bar, got mark={hint.mark.value}")
+    if hint.size is not None and hint.mark is not Mark.POINT:
+        raise ValueError(f"size is only valid for mark=point, got mark={hint.mark.value}")
+
+
+def _check_diverging(hint: ChartHint) -> None:
+    if not hint.diverging:
+        return
+    if hint.mark not in _DIVERGING_ALLOWED_MARKS:
+        allowed = sorted(m.value for m in _DIVERGING_ALLOWED_MARKS)
+        got = hint.mark.value
+        raise ValueError(f"diverging=True is only valid for mark in {allowed}, got {got}")
+    if hint.color is not None:
+        raise ValueError("diverging=True and color are mutually exclusive")
 
 
 __all__ = ["ChartHint", "FieldDef", "FieldType", "Mark"]

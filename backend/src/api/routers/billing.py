@@ -403,28 +403,44 @@ async def _portal_url(
     client: PaddleClient, record: SubscriptionRecord, purpose: Literal["overview", "payment"]
 ) -> str | None:
     if record.paddle_customer_id:
-        try:
-            created = await client.create_portal_session(
-                record.paddle_customer_id, [record.paddle_subscription_id]
-            )
-        except PaddleApiError:
-            created = {}  # fall through to the subscription's own management links
-        urls: dict[str, Any] = created.get("urls") or {}
-        if purpose == "overview":
-            general: dict[str, Any] = urls.get("general") or {}
-            overview = general.get("overview")
-            if overview:
-                return str(overview)
-        else:
-            subscriptions: list[dict[str, Any]] = urls.get("subscriptions") or []
-            pay = (
-                subscriptions[0].get("update_subscription_payment_method")
-                if subscriptions
-                else None
-            )
-            if pay:
-                return str(pay)
-    data = await client.get_subscription(record.paddle_subscription_id)
+        url = await _portal_session_link(
+            client, record.paddle_customer_id, record.paddle_subscription_id, purpose
+        )
+        if url:
+            return url
+    return await _subscription_management_link(client, record.paddle_subscription_id)
+
+
+async def _portal_session_link(
+    client: PaddleClient,
+    customer_id: str,
+    subscription_id: str,
+    purpose: Literal["overview", "payment"],
+) -> str | None:
+    """The link `purpose` asks for from a fresh portal session; None if the session could not be
+    created or does not carry it (the caller then uses the subscription's own links)."""
+    try:
+        created = await client.create_portal_session(customer_id, [subscription_id])
+    except PaddleApiError:
+        return None
+    urls: dict[str, Any] = created.get("urls") or {}
+    return _overview_link(urls) if purpose == "overview" else _payment_method_link(urls)
+
+
+def _overview_link(urls: dict[str, Any]) -> str | None:
+    general: dict[str, Any] = urls.get("general") or {}
+    overview = general.get("overview")
+    return str(overview) if overview else None
+
+
+def _payment_method_link(urls: dict[str, Any]) -> str | None:
+    subscriptions: list[dict[str, Any]] = urls.get("subscriptions") or []
+    pay = subscriptions[0].get("update_subscription_payment_method") if subscriptions else None
+    return str(pay) if pay else None
+
+
+async def _subscription_management_link(client: PaddleClient, subscription_id: str) -> str | None:
+    data = await client.get_subscription(subscription_id)
     links: dict[str, Any] = data.get("management_urls") or {}
     fallback = links.get("update_payment_method") or links.get("cancel")
     return str(fallback) if fallback else None

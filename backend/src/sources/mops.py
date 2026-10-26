@@ -397,45 +397,60 @@ def _parse_self_assessed_earnings_html(html_text: str) -> list[dict[str, object]
     current_period: tuple[str, bool] | None = None
     for table in parser.tables:
         title = _self_assessed_period_from_title(table)
-        header_idx = next(
-            (i for i, row in enumerate(table) if _SELF_ASSESSED_HEADER_MARKER in row), None
-        )
+        header_idx = _self_assessed_header_index(table)
         if header_idx is None:
-            if title is not None:
-                current_period = title
-            continue
-        if current_period is None:
-            continue
-        period, consolidated = current_period
-        for row in table[header_idx + 1 :]:
-            if len(row) < _SELF_ASSESSED_MIN_DATA_COLUMNS or _SELF_ASSESSED_HEADER_MARKER in row:
-                continue  # a repeated header row mid-table (seen live) is not a data row
-            symbol = row[0].strip()
-            if not symbol or not symbol[0].isdigit():
-                continue
-            monthly_op, ytd_op, monthly_pretax, ytd_pretax = (
-                None if _SELF_ASSESSED_UNAVAILABLE_MARKER in cell else _to_int(cell)
-                for cell in row[2:6]
-            )
-            out.append(
-                {
-                    "symbol": symbol,
-                    "market": Market.TW.value,
-                    "company_name": row[1].strip(),
-                    "revenue_period": period,
-                    "consolidated": consolidated,
-                    "monthly_operating_profit": monthly_op,
-                    "ytd_operating_profit": ytd_op,
-                    "monthly_pretax_profit": monthly_pretax,
-                    "ytd_pretax_profit": ytd_pretax,
-                    "variance_note": (
-                        row[6].strip()
-                        if len(row) > _SELF_ASSESSED_MIN_DATA_COLUMNS and row[6].strip()
-                        else None
-                    ),
-                }
+            current_period = title if title is not None else current_period
+        elif current_period is not None:
+            period, consolidated = current_period
+            out.extend(
+                _self_assessed_table_records(
+                    table[header_idx + 1 :], period=period, consolidated=consolidated
+                )
             )
     return out
+
+
+def _self_assessed_header_index(table: list[list[str]]) -> int | None:
+    return next((i for i, row in enumerate(table) if _SELF_ASSESSED_HEADER_MARKER in row), None)
+
+
+def _self_assessed_table_records(
+    rows: list[list[str]], *, period: str, consolidated: bool
+) -> list[dict[str, object]]:
+    records = (
+        _self_assessed_data_row(row, period=period, consolidated=consolidated) for row in rows
+    )
+    return [record for record in records if record is not None]
+
+
+def _self_assessed_data_row(
+    row: list[str], *, period: str, consolidated: bool
+) -> dict[str, object] | None:
+    """One table row -> its record, or `None` for a row that is not a company data row."""
+    if len(row) < _SELF_ASSESSED_MIN_DATA_COLUMNS or _SELF_ASSESSED_HEADER_MARKER in row:
+        return None  # a repeated header row mid-table (seen live) is not a data row
+    symbol = row[0].strip()
+    if not symbol or not symbol[0].isdigit():
+        return None
+    monthly_op, ytd_op, monthly_pretax, ytd_pretax = (
+        None if _SELF_ASSESSED_UNAVAILABLE_MARKER in cell else _to_int(cell) for cell in row[2:6]
+    )
+    return {
+        "symbol": symbol,
+        "market": Market.TW.value,
+        "company_name": row[1].strip(),
+        "revenue_period": period,
+        "consolidated": consolidated,
+        "monthly_operating_profit": monthly_op,
+        "ytd_operating_profit": ytd_op,
+        "monthly_pretax_profit": monthly_pretax,
+        "ytd_pretax_profit": ytd_pretax,
+        "variance_note": (
+            row[6].strip()
+            if len(row) > _SELF_ASSESSED_MIN_DATA_COLUMNS and row[6].strip()
+            else None
+        ),
+    }
 
 
 async def _fetch_self_assessed_earnings_table(
