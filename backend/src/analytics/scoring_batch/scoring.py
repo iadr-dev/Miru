@@ -106,6 +106,7 @@ from analytics.scoring_batch.inputs import trailing_trading_days as _trailing_tr
 from analytics.scoring_store import upsert_score
 from analytics.symbol_universe import SymbolType, classify_symbol_type, scoreable_symbol_sql
 from ingest.context import IngestContext
+from ingest.jobs.source_chain import fetch_whole_market_chained
 from ingest.journal import JobRun, RunStatus, journal_run
 from schemas.capabilities import (
     AnalystConsensus,
@@ -648,9 +649,7 @@ async def margin_short_rows_by_symbol(
         # for every non-TW market exactly like every other genuinely-missing dimension.
         return {}
     for run_date in margin_window:
-        result = await ctx.finmind.fetch_whole_market(
-            Capability.MARGIN_SHORT, tls_policy=ctx.tls_policy, start_date=run_date.isoformat()
-        )
+        result = await fetch_whole_market_chained(ctx, Capability.MARGIN_SHORT, run_date, market)
         if result.health.status not in (HealthStatus.OK, HealthStatus.STALE):
             logger.warning(
                 "trend_score_margin_short_fetch_failed",
