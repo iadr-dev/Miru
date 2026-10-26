@@ -285,7 +285,7 @@ mark {
 @media (max-width: 767px) {
   /* Pill-style strips that wrapped to two rows become one scrollable row. */
   [role="tablist"] {
-    flex-wrap: nowrap !important;
+    flex-wrap: nowrap;
     scroll-snap-type: x proximity;
     -webkit-overflow-scrolling: touch;
     max-width: 100%;
