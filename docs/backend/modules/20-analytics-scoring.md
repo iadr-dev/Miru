@@ -502,7 +502,7 @@ results are written to the private relation files and the loader then refreshes 
   [--dry-run]` runs the pipeline. A dry run does search and call the model within the caps but
   writes no file and no rejection. A real `verify` takes the ingest writer lease (exit 3 if the daemon
   holds it), writes, and runs the loader. Both print counts and claim ids only - never page text.
-  The weekly job `sc_research` (`job_sc_research`, leader-only, registered in
+  The monthly job `sc_research` (`job_sc_research`, leader-only, registered in
   `ingest.daemon.SCHEDULED_JOBS` and an optional step of the dev backfill CLI) is gated by
   `SUPPLY_CHAIN_RESEARCH_ENABLED`; it journals SKIPPED when disabled, not the leader, no
   `BRAVE_SEARCH_API_KEY`, or no LLM key for the SUBAGENT role. After a run that wrote rows it calls
@@ -696,7 +696,7 @@ claims); the first cap hit ends the run gracefully. Console output and the journ
 only (never page text or a company name). Neither command takes the ingest writer lease: they write
 private proposal files only (no index, no DuckDB).
 
-**Job.** `sc_theme_research` (weekly 22:30, leader-only, journaled) runs B then C with the caps and is
+**Job.** `sc_theme_research` (monthly 22:30, leader-only, journaled) runs B then C with the caps and is
 gated exactly like `sc_research`: it journals SKIPPED when `SUPPLY_CHAIN_RESEARCH_ENABLED` is off, the
 process is not the leader, or the search key or LLM role is missing. It never calls `promote`: the
 operator reviews `themes/proposals/*.yaml`, runs `promote FILE... --dry-run`, then `promote`.

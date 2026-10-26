@@ -1,5 +1,5 @@
 """Wiring for Steps B and C: gather inputs, run, write proposal files, journal. Shared by the
-`research-themes` / `verify-themes` operator commands and the weekly `sc_theme_research` job.
+`research-themes` / `verify-themes` operator commands and the monthly `sc_theme_research` job.
 
 Nothing here edits a live concept-theme file and nothing calls `promote`: the outputs are claims
 and proposal files for a person to review. Output and journal lines carry counts and ids only.

@@ -1,4 +1,4 @@
-"""Wiring: gather the inputs, run the pipeline, reindex, journal. Shared by the weekly job, the dev
+"""Wiring: gather the inputs, run the pipeline, reindex, journal. Shared by the monthly job, the dev
 backfill step and the operator CLI.
 
 Gates for the job (each journals SKIPPED, never an error): the setting is off, this process is not
