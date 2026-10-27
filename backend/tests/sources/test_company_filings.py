@@ -284,7 +284,7 @@ async def test_before_the_filing_deadline_the_month_is_not_served_and_nothing_is
 
     assert result.health.status is HealthStatus.STALE  # "not yet": the next source is asked
     assert _rows(result) == []
-    assert "not complete yet" in result.health.detail
+    assert result.health.detail == "period not yet due: filing deadline 2026-07-10"
     assert mops.requests == []
 
 

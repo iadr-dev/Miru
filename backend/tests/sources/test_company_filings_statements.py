@@ -437,7 +437,7 @@ async def test_before_the_last_deadline_the_quarter_is_not_served_and_nothing_is
 
     assert result.health.status is HealthStatus.STALE
     assert _rows(result) == []
-    assert "not complete" in result.health.detail
+    assert result.health.detail == "period not yet due: filing deadline 2025-11-29"
     assert web.requests == []
 
 

@@ -23,7 +23,7 @@ import yaml
 from ingest.context import IngestContext
 from schemas.enums import Capability, Market
 from schemas.source import HealthStatus, SourceResult
-from sources.base import NO_DATA_PUBLISHED, ROUND_LOT_VOLUME, WholeMarketSource
+from sources.base import NO_DATA_PUBLISHED, ROUND_LOT_VOLUME, WholeMarketSource, is_period_not_due
 
 logger = structlog.get_logger(__name__)
 
@@ -127,6 +127,9 @@ class ChainOutcome:
     # Both exchanges explicitly published no data for a date before today: a market closure, so
     # the chain stopped without asking the remaining sources.
     market_closed: bool = False
+    # A source said the period is not due yet (`sources.base.period_not_due_detail`): the detail,
+    # kept while the later sources are still asked. Without a winner the day is SKIPPED, not FAILED.
+    not_due: str | None = None
     # A source whose rows are all there but marked incomplete (`ROUND_LOT_VOLUME` in its failed
     # detail): kept aside, and served only if no later source does.
     incomplete: tuple[str, SourceResult] | None = None
@@ -218,6 +221,8 @@ async def walk_chain(
             outcome.winner_id, outcome.winner = link.source_id, result
             break
         else:
+            if is_period_not_due(result.health.detail) and not result_rows(result):
+                outcome.not_due = result.health.detail
             outcome.empties.append((link.source_id, result))
     outcome.serve_incomplete_if_nothing_else(capability, run_date)
     return outcome

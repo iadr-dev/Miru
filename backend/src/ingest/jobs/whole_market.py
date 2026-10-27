@@ -126,6 +126,35 @@ def _success_detail(outcome: ChainOutcome, result: SourceResult) -> str:
     return detail
 
 
+def _unserved_run(
+    spec: WholeMarketJobSpec, run_date: date_, outcome: ChainOutcome
+) -> JobRun | None:
+    """The journal entry of a day no source served, `None` when every source answered healthy
+    (a legitimately empty day, written by the caller).
+
+    A period whose filing deadline has not passed is SKIPPED, not FAILED: no source can have the
+    whole period yet (and a source that is down is no news). Nothing is written and NO marker is
+    left, so an `only_missing` run asks again every time and picks the period up once the deadline
+    is behind us; unlike a closure this is not final. Anything else that failed is FAILED, and the
+    next scheduled run (or an explicit gap-fill) retries it."""
+    if outcome.not_due is not None:
+        return journal_run(
+            spec.dataset, run_date, rows_written=0, status=RunStatus.SKIPPED, detail=outcome.not_due
+        )
+    if not outcome.failures:
+        return None
+    detail = _failure_detail(outcome)
+    logger.warning(
+        "ingest_whole_market_fetch_failed",
+        dataset=spec.dataset,
+        run_date=run_date.isoformat(),
+        detail=detail,
+    )
+    return journal_run(
+        spec.dataset, run_date, rows_written=0, status=RunStatus.FAILED, detail=detail
+    )
+
+
 def _holds_only_a_placeholder(
     ctx: IngestContext, spec: WholeMarketJobSpec, run_date: date_
 ) -> bool:
@@ -192,21 +221,10 @@ async def run_whole_market_job(
             status=RunStatus.SKIPPED,
             detail=MARKET_CLOSED_DETAIL,
         )
-    if outcome.winner is None and outcome.failures:
-        detail = _failure_detail(outcome)
-        logger.warning(
-            "ingest_whole_market_fetch_failed",
-            dataset=spec.dataset,
-            run_date=date_str,
-            detail=detail,
-        )
-        return journal_run(
-            spec.dataset,
-            run_date,
-            rows_written=0,
-            status=RunStatus.FAILED,
-            detail=detail,
-        )
+    if outcome.winner is None:
+        unserved = _unserved_run(spec, run_date, outcome)
+        if unserved is not None:
+            return unserved
 
     # A winner, or every source answered healthy with nothing (a legitimate empty trading day):
     # the latter writes the empty partition from the last answer, as a single source always did.

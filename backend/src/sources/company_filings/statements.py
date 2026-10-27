@@ -245,10 +245,15 @@ def period_for(run_date: date_) -> StatementPeriod | None:
     return None if season is None else StatementPeriod(run_date.year, season, run_date)
 
 
-def is_complete(period: StatementPeriod, today: date_) -> bool:
+def deadline(period: StatementPeriod) -> date_:
+    """The last day any company (a financial holding, the latest category) may file the quarter."""
     month, day = _DEADLINES[period.season]
     year = period.year + 1 if period.season == _QUARTER_ENDS[(12, 31)] else period.year
-    return today > date_(year, month, day)
+    return date_(year, month, day)
+
+
+def is_complete(period: StatementPeriod, today: date_) -> bool:
+    return today > deadline(period)
 
 
 def earlier_seasons(period: StatementPeriod) -> list[int]:
