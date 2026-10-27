@@ -245,7 +245,11 @@ async def _summarize(
     monkeypatch.setattr(cli, "run_derived_compute_catchup", none)
     monkeypatch.setattr(cli, "_optional_sc_research", none)
     args = argparse.Namespace(
-        fill_missing_companies=None, market="tw", yes=True, recheck_plan=recheck
+        fill_missing_companies=None,
+        market="tw",
+        yes=True,
+        recheck_plan=recheck,
+        event_history=False,
     )
     ctx = _ctx("unused", StubSource(DENIED))
     return await cli._run_backfill(args, Settings(), ctx, 1)

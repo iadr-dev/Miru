@@ -464,8 +464,10 @@ _FEED_START_TOLERANCE_DAYS = 10
 
 
 def _feed_starts_late(window: EventDataWindow) -> bool:
-    first = window.event_feed_first_snapshot
-    return first is None or (first - window.price_window_start).days > _FEED_START_TOLERANCE_DAYS
+    first, prices = window.event_feed_first_snapshot, window.price_window_start
+    if first is None or prices is None:
+        return True
+    return (first - prices).days > _FEED_START_TOLERANCE_DAYS
 
 
 def _limitations(
