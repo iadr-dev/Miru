@@ -238,44 +238,14 @@ async def _write_month(
         unposted = [day for day in days if through is None or day > through]
         if unposted:
             days = [day for day in days if day not in unposted]
-            reach = through.isoformat() if through else "nothing"
-            runs.append(
-                journal_run(
-                    feed.dataset,
-                    unposted[0],
-                    rows_written=0,
-                    status=RunStatus.SKIPPED,
-                    detail=(
-                        f"{len(unposted)} days from {unposted[0].isoformat()} not posted yet "
-                        f"(the reports reach {reach})"
-                    ),
-                )
-            )
+            runs.append(_unposted_run(feed, unposted, through))
     written_days: list[date_] = []
     for day in days:
         rows = feed.snapshot(valid, day, ctx.calendar.previous_trading_day(day))
-        day_detail = detail
-        if repair:
-            stored = exchanges_of(ctx.store.read_partition(feed.dataset, ctx.market.value, day))
-            if not stored < exchanges_of(rows):
-                runs.append(
-                    journal_run(
-                        feed.dataset,
-                        day,
-                        rows_written=0,
-                        status=RunStatus.SKIPPED,
-                        detail="the reports do not complete it either; stored snapshot kept",
-                    )
-                )
-                continue
-            day_detail = f"{detail}; repaired, the stored one lacked {_names(EXCHANGES - stored)}"
-        written = ctx.store.write_partition(feed.dataset, ctx.market.value, day, rows)
-        written_days.append(day)
-        runs.append(
-            journal_run(
-                feed.dataset, day, rows_written=written, status=RunStatus.SUCCESS, detail=day_detail
-            )
-        )
+        run = _write_day(ctx, feed, day, rows, detail, repair=repair)
+        runs.append(run)
+        if run.status is RunStatus.SUCCESS:
+            written_days.append(day)
     if written_days:
         await ctx.data_update_publisher.publish_data_updated(
             capability=feed.capability,
@@ -284,6 +254,46 @@ async def _write_month(
             scope="whole-market",
         )
     return runs
+
+
+def _unposted_run(feed: _Feed, unposted: list[date_], through: date_ | None) -> JobRun:
+    reach = through.isoformat() if through else "nothing"
+    return journal_run(
+        feed.dataset,
+        unposted[0],
+        rows_written=0,
+        status=RunStatus.SKIPPED,
+        detail=(
+            f"{len(unposted)} days from {unposted[0].isoformat()} not posted yet "
+            f"(the reports reach {reach})"
+        ),
+    )
+
+
+def _write_day(  # noqa: PLR0913 - one keyword per run dimension
+    ctx: IngestContext, feed: _Feed, day: date_, rows: list[Row], detail: str, *, repair: bool
+) -> JobRun:
+    """Write the rebuilt snapshot of `day`. In repair mode only when it holds every exchange the
+    stored snapshot does and at least one more; otherwise the stored one is kept (SKIPPED)."""
+    if repair:
+        stored = exchanges_of(ctx.store.read_partition(feed.dataset, ctx.market.value, day))
+        if not _completes(stored, exchanges_of(rows)):
+            return journal_run(
+                feed.dataset,
+                day,
+                rows_written=0,
+                status=RunStatus.SKIPPED,
+                detail="the reports do not complete it either; stored snapshot kept",
+            )
+        detail = f"{detail}; repaired, the stored one lacked {_names(EXCHANGES - stored)}"
+    written = ctx.store.write_partition(feed.dataset, ctx.market.value, day, rows)
+    return journal_run(
+        feed.dataset, day, rows_written=written, status=RunStatus.SUCCESS, detail=detail
+    )
+
+
+def _completes(stored: frozenset[str], rebuilt: frozenset[str]) -> bool:
+    return rebuilt > stored
 
 
 __all__ = [
