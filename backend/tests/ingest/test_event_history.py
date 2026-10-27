@@ -420,8 +420,9 @@ async def test_the_cli_refuses_without_yes_and_never_in_production(
     ctx = _ctx(tmp_path)
 
     assert await run_event_history_backfill(_settings(), ctx, override=False, years=1) == ()
+    production = _settings(env="production")
     with pytest.raises(ProductionHardStopError):
-        await run_event_history_backfill(_settings(env="production"), ctx, override=True, years=1)
+        await run_event_history_backfill(production, ctx, override=True, years=1)
 
     assert seen == []
 

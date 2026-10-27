@@ -232,8 +232,9 @@ async def test_a_challenge_page_is_a_transient_error_then_a_failed_range(web: Fa
     page = httpx.Response(200, text="<html>Just a moment...</html>")
     web.queued["www.tpex.org.tw"] = [page, page]
 
+    adapter = _adapter()
     with pytest.raises(ExchangeFetchError, match=r"TPEx: .*not JSON"):
-        await _adapter().fetch_attention(START, END, tls_policy=TLSPolicy.STRICT)
+        await adapter.fetch_attention(START, END, tls_policy=TLSPolicy.STRICT)
 
 
 async def test_a_challenge_page_followed_by_the_report_is_retried(web: FakeWeb) -> None:
@@ -250,8 +251,9 @@ async def test_a_cut_off_report_fails_the_range_instead_of_being_a_quiet_month(
 ) -> None:
     web.routes[("www.tpex.org.tw", "/bulletin/attention")] = "tpex_attention_truncated.json"
 
+    adapter = _adapter()
     with pytest.raises(ExchangeFetchError, match="report says 5 rows, holds 4"):
-        await _adapter().fetch_attention(START, END, tls_policy=TLSPolicy.STRICT)
+        await adapter.fetch_attention(START, END, tls_policy=TLSPolicy.STRICT)
 
 
 async def test_one_failing_exchange_fails_the_range_even_when_the_other_has_rows(
@@ -259,17 +261,19 @@ async def test_one_failing_exchange_fails_the_range_even_when_the_other_has_rows
 ) -> None:
     web.queued["www.twse.com.tw"] = [httpx.Response(403), httpx.Response(403)]
 
+    adapter = _adapter()
     with pytest.raises(ExchangeFetchError, match=r"TWSE: .*HTTP 403"):
-        await _adapter().fetch_disposition(START, END, tls_policy=TLSPolicy.STRICT)
+        await adapter.fetch_disposition(START, END, tls_policy=TLSPolicy.STRICT)
 
 
 async def test_an_answer_for_another_range_is_refused(web: FakeWeb) -> None:
+    adapter = _adapter()
+    february = (date(2024, 2, 1), date(2024, 2, 29))
     with pytest.raises(ExchangeFetchError, match="answered for 20240101~20240131"):
-        await _adapter().fetch_attention(
-            date(2024, 2, 1), date(2024, 2, 29), tls_policy=TLSPolicy.STRICT
-        )
+        await adapter.fetch_attention(*february, tls_policy=TLSPolicy.STRICT)
 
 
 async def test_a_reversed_range_is_a_programming_error(web: FakeWeb) -> None:
+    adapter = _adapter()
     with pytest.raises(ValueError, match="empty range"):
-        await _adapter().fetch_attention(END, START, tls_policy=TLSPolicy.STRICT)
+        await adapter.fetch_attention(END, START, tls_policy=TLSPolicy.STRICT)
