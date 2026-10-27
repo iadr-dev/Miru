@@ -95,6 +95,7 @@ from ingest.publisher_binding import resolve_data_update_publisher
 from ingest.store import ParquetStore
 from ingest.us_jobs import US_PRICE_EOD_DATASET, job_us_fundamentals, job_us_price_eod
 from ingest.us_universe import job_us_symbol_universe
+from ingest.watchlist_catchup import WatchlistCatchUp
 from schemas.enums import Market
 from sources.company_filings import CompanyFilingsAdapter
 from sources.company_shares import CompanySharesAdapter
@@ -115,6 +116,9 @@ _MONTHLY_MIN_GAP_DAYS = 28
 
 # Same rolling-gap reasoning as `_MONTHLY_MIN_GAP_DAYS`, one week instead of ~4.
 _WEEKLY_MIN_GAP_DAYS = 7
+
+# The scheduled name of the 策略盯盤 pre-market build (also the key of its startup catch-up).
+WATCHLIST_JOB = "strategy_watchlist"
 
 # The one async signature every whole-market job function already presents.
 IngestJobFn = Callable[[date_, IngestContext], Awaitable[JobRun]]
@@ -209,7 +213,7 @@ SCHEDULED_JOBS: tuple[ScheduledIngestJob, ...] = (
     # 策略盯盤 pre-market screen — derived compute over the last session's landed price/flow/margin
     # partitions and the event feeds; writes today's watchlist with each stock's trigger levels
     # before the 09:00 open, so the intraday check and the morning-list alert have it to read.
-    ScheduledIngestJob("strategy_watchlist", time_(8, 0), job_strategy_watchlist),
+    ScheduledIngestJob(WATCHLIST_JOB, time_(8, 0), job_strategy_watchlist),
     # 策略盯盤 intraday check — one whole-market Sponsor snapshot per 10-minute slot through the
     # session (09:00 open to the 13:30 close), compared against the morning watchlist.
     ScheduledIngestJob(
@@ -408,6 +412,8 @@ class IngestDaemon:
         self._calendar_day: date_ | None = None
         # The local day the derived-compute catch-up last ran.
         self._catchup_day: date_ | None = None
+        # Builds today's strategy watchlist when the daemon missed the 08:00 window.
+        self._watchlist_catchup = WatchlistCatchUp()
         self._seeded = False
 
     def _local(self, now: datetime) -> datetime:
@@ -490,6 +496,16 @@ class IngestDaemon:
         if job.cadence is not Cadence.DAILY:
             _save_fired_days(self._ctx.store.root, self._last_handled, self._jobs)
         return fire_day
+
+    async def _catch_up_watchlist(self, local: datetime, *, scheduled_ran: bool) -> None:
+        """Build today's strategy watchlist if the 08:00 window was missed (see
+        `ingest/watchlist_catchup.py`). Only when the schedule carries that job; never fatal."""
+        job = next((j for j in self._jobs if j.name == WATCHLIST_JOB), None)
+        if job is None:
+            return
+        await self._watchlist_catchup.maybe_run(
+            self._ctx, job.fire_time, job.run, local, scheduled_ran=scheduled_ran
+        )
 
     async def _catch_up_derived(self, local: datetime) -> None:
         """Once per local day, score and screen the recent trading days whose nightly run was
@@ -647,6 +663,7 @@ class IngestDaemon:
                 break
             if outcome is _Outcome.RAN:
                 ran.append(job.name)
+        await self._catch_up_watchlist(local, scheduled_ran=WATCHLIST_JOB in ran)
         await self._catch_up_derived(local)
         return ran
 
@@ -768,6 +785,7 @@ async def close_ingest_context(ctx: IngestContext) -> None:
 
 __all__ = [
     "SCHEDULED_JOBS",
+    "WATCHLIST_JOB",
     "Cadence",
     "IngestDaemon",
     "IngestJobFn",

@@ -631,6 +631,18 @@ data is never scored. Dependencies:
   `stock_info`, plus `attention_stocks`/`disposition_events`/`dividends`/`material_announcements`
   for exclusions and context; writes one row per `(symbol, strategy)` dated the run morning. Skips
   (journaled) instead of publishing when the last price session is more than 3 trading days old.
+  **Startup catch-up (`ingest/watchlist_catchup.py`, every environment):** a daemon that comes up
+  after 08:00 does not replay the window, so on a TW trading day, from 08:00 up to the 13:30 session
+  close (`MarketHours.session_close`), a leader pass with no `strategy_watchlist` partition for
+  today calls the scheduled job function once (its own leader, calendar and stale-price gates
+  apply; an existing list is never replaced, so repeating it is a no-op). It writes only the
+  system-wide setup list, no user data and no fetch burst, so unlike the backfill CLI it has no
+  production hard-stop. A run that publishes nothing (stale prices, error) is remembered in memory
+  and retried at most hourly, or on the first pass after a newer `price_eod` partition lands. After
+  the close or on a non-trading day it does nothing (one info log). The run is journaled again with
+  detail `startup catch-up: ...`. The intraday check skips a slot without a list and reads the list
+  from the first slot after it appears (an alert needs two consecutive met checks, so a late list
+  only delays the first alert one slot); the 18:00 close check needs only today's list and prices.
 - `scoring_batch` <- `price_eod`, `institutional_flow`, `financials`/`balance_sheet`/`cash_flow`,
   `market_value` (and the ETF datasets for ETF symbols); upserts the relational `stock_scores`
   cache for both horizon profiles in one pass.
