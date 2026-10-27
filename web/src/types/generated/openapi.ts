@@ -5511,6 +5511,100 @@ export interface components {
       y?: components["schemas"]["FieldDef"] | null;
       y2?: components["schemas"]["FieldDef"] | null;
     };
+    /**
+     * ChartPatternAnchor
+     * @description A (bar, date, price) coordinate - one end of a drawn line, or a confirmation bar.
+     */
+    ChartPatternAnchor: {
+      /** Bar Index */
+      bar_index: number;
+      /** Price */
+      price: number;
+      /**
+       * Trade Date
+       * Format: date
+       */
+      trade_date: string;
+    };
+    /** @enum {string} */
+    ChartPatternFamily: "reversal_top" | "reversal_bottom" | "consolidation";
+    /**
+     * ChartPatternHit
+     * @description One multi-bar chart-pattern detection (`analytics/chart_patterns.py`). Descriptive
+     *     structure only: `status` says how far the shape has resolved, `breakout_level` is the line
+     *     value a close is judged against. There is no target, stop, bias or probability.
+     */
+    ChartPatternHit: {
+      /** Breakout Level */
+      breakout_level?: number | null;
+      /** Broken Side */
+      broken_side?: ("above" | "below") | null;
+      confirmed_at?: components["schemas"]["ChartPatternAnchor"] | null;
+      failed_at?: components["schemas"]["ChartPatternAnchor"] | null;
+      family: components["schemas"]["ChartPatternFamily"];
+      /** Height */
+      height: number;
+      /** Lines */
+      lines: components["schemas"]["ChartPatternLine"][];
+      pattern: components["schemas"]["ChartPatternId"];
+      /** Pivots */
+      pivots: components["schemas"]["ChartPatternPivot"][];
+      status: components["schemas"]["ChartPatternStatus"];
+      window_end: components["schemas"]["ChartPatternAnchor"];
+      window_start: components["schemas"]["ChartPatternAnchor"];
+    };
+    /** @enum {string} */
+    ChartPatternId:
+      | "double_top"
+      | "double_bottom"
+      | "head_shoulders_top"
+      | "head_shoulders_bottom"
+      | "ascending_triangle"
+      | "descending_triangle"
+      | "symmetrical_triangle"
+      | "rectangle";
+    /**
+     * ChartPatternLine
+     * @description A straight line to draw: `neckline` (reversal shapes) or `upper`/`lower` boundaries
+     *     (consolidation shapes), as two endpoints.
+     */
+    ChartPatternLine: {
+      end: components["schemas"]["ChartPatternAnchor"];
+      /**
+       * Name
+       * @enum {string}
+       */
+      name: "neckline" | "upper" | "lower";
+      start: components["schemas"]["ChartPatternAnchor"];
+    };
+    /**
+     * ChartPatternPivot
+     * @description One structural point the pattern was built from, with its descriptive `role`.
+     */
+    ChartPatternPivot: {
+      /** Bar Index */
+      bar_index: number;
+      /** Price */
+      price: number;
+      role: components["schemas"]["ChartPatternPivotRole"];
+      /**
+       * Trade Date
+       * Format: date
+       */
+      trade_date: string;
+    };
+    /** @enum {string} */
+    ChartPatternPivotRole:
+      | "peak"
+      | "trough"
+      | "left_shoulder"
+      | "head"
+      | "right_shoulder"
+      | "neckline_point"
+      | "upper_touch"
+      | "lower_touch";
+    /** @enum {string} */
+    ChartPatternStatus: "forming" | "confirmed" | "failed";
     /** CheckoutRequest */
     CheckoutRequest: {
       /**
@@ -9293,6 +9387,8 @@ export interface components {
       bollinger?: components["schemas"]["BollingerResult"] | null;
       /** Candlestick Patterns */
       candlestick_patterns?: components["schemas"]["CandlestickPatternHit"][];
+      /** Chart Patterns */
+      chart_patterns?: components["schemas"]["ChartPatternHit"][];
       /**
        * Data Available
        * @default true

@@ -2203,6 +2203,232 @@
     "title": "ChartHint",
     "type": "object"
    },
+   "ChartPatternAnchor": {
+    "additionalProperties": false,
+    "description": "A (bar, date, price) coordinate - one end of a drawn line, or a confirmation bar.",
+    "properties": {
+     "bar_index": {
+      "minimum": 0.0,
+      "title": "Bar Index",
+      "type": "integer"
+     },
+     "price": {
+      "title": "Price",
+      "type": "number"
+     },
+     "trade_date": {
+      "format": "date",
+      "title": "Trade Date",
+      "type": "string"
+     }
+    },
+    "required": [
+     "bar_index",
+     "trade_date",
+     "price"
+    ],
+    "title": "ChartPatternAnchor",
+    "type": "object"
+   },
+   "ChartPatternFamily": {
+    "enum": [
+     "reversal_top",
+     "reversal_bottom",
+     "consolidation"
+    ],
+    "type": "string"
+   },
+   "ChartPatternHit": {
+    "additionalProperties": false,
+    "description": "One multi-bar chart-pattern detection (`analytics/chart_patterns.py`). Descriptive\nstructure only: `status` says how far the shape has resolved, `breakout_level` is the line\nvalue a close is judged against. There is no target, stop, bias or probability.",
+    "properties": {
+     "breakout_level": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Breakout Level"
+     },
+     "broken_side": {
+      "anyOf": [
+       {
+        "enum": [
+         "above",
+         "below"
+        ],
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Broken Side"
+     },
+     "confirmed_at": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/ChartPatternAnchor"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "failed_at": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/ChartPatternAnchor"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "family": {
+      "$ref": "#/components/schemas/ChartPatternFamily"
+     },
+     "height": {
+      "exclusiveMinimum": 0.0,
+      "title": "Height",
+      "type": "number"
+     },
+     "lines": {
+      "items": {
+       "$ref": "#/components/schemas/ChartPatternLine"
+      },
+      "title": "Lines",
+      "type": "array"
+     },
+     "pattern": {
+      "$ref": "#/components/schemas/ChartPatternId"
+     },
+     "pivots": {
+      "items": {
+       "$ref": "#/components/schemas/ChartPatternPivot"
+      },
+      "title": "Pivots",
+      "type": "array"
+     },
+     "status": {
+      "$ref": "#/components/schemas/ChartPatternStatus"
+     },
+     "window_end": {
+      "$ref": "#/components/schemas/ChartPatternAnchor"
+     },
+     "window_start": {
+      "$ref": "#/components/schemas/ChartPatternAnchor"
+     }
+    },
+    "required": [
+     "pattern",
+     "family",
+     "status",
+     "pivots",
+     "lines",
+     "height",
+     "window_start",
+     "window_end"
+    ],
+    "title": "ChartPatternHit",
+    "type": "object"
+   },
+   "ChartPatternId": {
+    "enum": [
+     "double_top",
+     "double_bottom",
+     "head_shoulders_top",
+     "head_shoulders_bottom",
+     "ascending_triangle",
+     "descending_triangle",
+     "symmetrical_triangle",
+     "rectangle"
+    ],
+    "type": "string"
+   },
+   "ChartPatternLine": {
+    "additionalProperties": false,
+    "description": "A straight line to draw: `neckline` (reversal shapes) or `upper`/`lower` boundaries\n(consolidation shapes), as two endpoints.",
+    "properties": {
+     "end": {
+      "$ref": "#/components/schemas/ChartPatternAnchor"
+     },
+     "name": {
+      "enum": [
+       "neckline",
+       "upper",
+       "lower"
+      ],
+      "title": "Name",
+      "type": "string"
+     },
+     "start": {
+      "$ref": "#/components/schemas/ChartPatternAnchor"
+     }
+    },
+    "required": [
+     "name",
+     "start",
+     "end"
+    ],
+    "title": "ChartPatternLine",
+    "type": "object"
+   },
+   "ChartPatternPivot": {
+    "additionalProperties": false,
+    "description": "One structural point the pattern was built from, with its descriptive `role`.",
+    "properties": {
+     "bar_index": {
+      "minimum": 0.0,
+      "title": "Bar Index",
+      "type": "integer"
+     },
+     "price": {
+      "title": "Price",
+      "type": "number"
+     },
+     "role": {
+      "$ref": "#/components/schemas/ChartPatternPivotRole"
+     },
+     "trade_date": {
+      "format": "date",
+      "title": "Trade Date",
+      "type": "string"
+     }
+    },
+    "required": [
+     "bar_index",
+     "trade_date",
+     "price",
+     "role"
+    ],
+    "title": "ChartPatternPivot",
+    "type": "object"
+   },
+   "ChartPatternPivotRole": {
+    "enum": [
+     "peak",
+     "trough",
+     "left_shoulder",
+     "head",
+     "right_shoulder",
+     "neckline_point",
+     "upper_touch",
+     "lower_touch"
+    ],
+    "type": "string"
+   },
+   "ChartPatternStatus": {
+    "enum": [
+     "forming",
+     "confirmed",
+     "failed"
+    ],
+    "type": "string"
+   },
    "CheckoutRequest": {
     "properties": {
      "byok": {
@@ -12233,6 +12459,13 @@
        "$ref": "#/components/schemas/CandlestickPatternHit"
       },
       "title": "Candlestick Patterns",
+      "type": "array"
+     },
+     "chart_patterns": {
+      "items": {
+       "$ref": "#/components/schemas/ChartPatternHit"
+      },
+      "title": "Chart Patterns",
       "type": "array"
      },
      "data_available": {

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+import itertools
+from datetime import UTC, date, datetime, timedelta
 
 from schemas.enums import Capability, DataClass, Market, TimingClass
 from schemas.market import Symbol
@@ -252,6 +253,41 @@ async def test_get_technical_indicators_computes_series() -> None:
     assert output.support_resistance is not None
     # A monotonically-rising series has no interior swing-low/high pivot.
     assert output.support_resistance.levels == ()
+    assert output.chart_patterns == ()
+
+
+async def test_get_technical_indicators_reports_chart_patterns() -> None:
+    """A double top (peaks 110 / 110 around a 100 trough) comes back as an additive
+    `chart_patterns` hit with its pivots, neckline and a `forming` status."""
+    symbol = Symbol(id="2330", market=Market.TW)
+    key_points = [(0, 90.0), (20, 110.0), (40, 100.0), (60, 110.0), (70, 104.0)]
+    closes = [
+        y0 + (y1 - y0) * (x - x0) / (x1 - x0)
+        for (x0, y0), (x1, y1) in itertools.pairwise(key_points)
+        for x in range(x0, x1)
+    ] + [104.0]
+    first_day = date(2026, 1, 1)
+    bars = [
+        _eod_bar(
+            (first_day + timedelta(days=i)).isoformat(),
+            open_=c,
+            high=c * 1.003,
+            low=c * 0.997,
+            close=c,
+        )
+        for i, c in enumerate(closes)
+    ]
+    router, _ = make_router(symbol, {Capability.PRICE_EOD: _result({"bars": bars})})
+    tool = GetTechnicalIndicatorsTool(router)
+
+    output = await tool.run(DateRangeInput(id="2330", market=Market.TW), ToolContext())
+
+    (hit,) = [h for h in output.chart_patterns if h.pattern == "double_top"]
+    assert hit.status == "forming"
+    assert hit.family == "reversal_top"
+    assert [p.bar_index for p in hit.pivots] == [20, 40, 60]
+    assert hit.pivots[0].trade_date == output.trade_dates[20]
+    assert hit.lines[0].name == "neckline"
 
 
 async def test_get_technical_indicators_no_bars_is_unavailable() -> None:
