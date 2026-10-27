@@ -362,6 +362,8 @@
         "unavailableTitle": "US economic data has not been updated yet",
         "unavailableDescription": "The data appears after the daily refresh. Please check back later.",
         "asOf": "Data as of {date}",
+        "expandTo": "Show all {count}",
+        "expandLabel": "Show all {count} {group} indicators",
         "groupEmpty": "No data to show for this group right now.",
         "groups": {
           "yield_curve_recession": "Yield curve and recession",

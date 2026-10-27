@@ -265,6 +265,10 @@
   --radius-pill: 999px;
   --radius-button: 12px;
 
+  /* One indicator row of a US macro category card. Every card reserves the same number of these,
+     so the grid never stretches a short category to a tall neighbour's height. */
+  --macro-row-height: 7.5rem;
+
   /* Motion scale - one set of durations and curves for every transition. Restrained and
      purposeful: feedback is fast, entrances are a touch slower, nothing is magnitude-scaled. The
      global reduced-motion rule in globals.css still collapses all of it. */
@@ -273,4 +277,11 @@
   --dur-slow: 320ms;
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+/* From the sm breakpoint the row title and its meta line each fit one line. */
+@media (min-width: 640px) {
+  :root {
+    --macro-row-height: 5rem;
+  }
 }
