@@ -4,7 +4,13 @@ Same contract as `twse.py`: each parser produces the FinMind row shape. Requests
 `YYYY/MM/DD` date; the answer is `{"stat": "ok", "date": "YYYYMMDD", "tables": [{...}]}` with the
 report in `tables[0]` (its own `date` is ROC, which is never used: the root date is checked).
 
-- PRICE_EOD: afterTrading/otc (EW), every security except warrants and 定價 trading.
+- PRICE_EOD: afterTrading/otc (EW) is the universe and the OHLC (every security except warrants),
+  but its volume/turnover are regular-session ROUND LOTS only. FinMind's are the all-session
+  totals, which `afterTrading/dailyQuotes` (上櫃股票行情, the same day incl. warrants) reports:
+  round lots + 盤後定價 (fixed price) + 盤中零股 + 盤後零股 (odd lots), block trades excluded;
+  it equals FinMind on 100% of the symbols checked. So PRICE_EOD is a `Supplement`: the
+  dailyQuotes volume/turnover replace the otc ones, and if they cannot be had for EVERY bar the
+  adapter reports the round-lot rows as incomplete (never as if they were whole).
 - INSTITUTIONAL_FLOW: insti/dailyTrade (EW); 24 unnamed columns, read by position.
 - MARGIN_SHORT: margin/balance; note the order, 券賣 comes before 券買.
 - VALUATION_RATIOS: afterTrading/peQryDate; a `-` PER is 0.0, as in FinMind.
@@ -25,6 +31,7 @@ from ._common import (
     JsonObject,
     NoDataPublishedError,
     Row,
+    Supplement,
     ValuationColumns,
     as_list,
     as_object,
@@ -91,6 +98,64 @@ def parse_price(body: JsonObject, run_date: date_) -> list[Row]:
         turnover=column_index(fields, "成交金額(元)"),
     )
     return bars_from_rows(rows, run_date, columns)
+
+
+def parse_all_session_volume(body: JsonObject, run_date: date_) -> list[Row]:
+    """`{symbol, volume, turnover}` of every row of the dailyQuotes report (warrants included: the
+    caller keeps only the symbols of the otc report). Every table is read; the first row of a
+    code wins."""
+    stat = clean_cell(body.get("stat", ""))
+    if stat.lower() != "ok":
+        raise ExchangeFetchError(f"dailyQuotes: unexpected stat {stat[:40]!r}")
+    check_response_date(body, run_date, "dailyQuotes")
+    totals: list[Row] = []
+    seen: set[str] = set()
+    for raw in as_list(body.get("tables")) or []:
+        table = as_object(raw)
+        fields = as_list(table.get("fields")) if table else None
+        rows = table_rows(table) if table and fields else []
+        if not fields or not rows:
+            continue
+        code = column_index(fields, "代號")
+        shares = column_index(fields, "成交股數")
+        amount = column_index(fields, "成交金額(元)")
+        for row in rows:
+            symbol = clean_cell(cell(row, code))
+            volume, turnover = to_count(cell(row, shares)), to_count(cell(row, amount))
+            if symbol in seen or not is_symbol(symbol) or volume is None or turnover is None:
+                continue
+            seen.add(symbol)
+            totals.append({"symbol": symbol, "volume": volume, "turnover": turnover})
+    if not totals:
+        raise ExchangeFetchError("dailyQuotes: report has no rows")
+    return totals
+
+
+def with_all_session_volume(bars: list[Row], totals: list[Row]) -> list[Row]:
+    """`bars` (round-lot volume/turnover) with the all-session figures of the same symbols. A bar
+    without a total, or a total below its own round-lot figure (impossible if the two reports
+    describe the same day), fails the whole merge: partial volume is never passed off as whole."""
+    by_symbol = {str(t["symbol"]): t for t in totals}
+    merged: list[Row] = []
+    missing: list[str] = []
+    for bar in bars:
+        symbol = str(bar["symbol"])
+        total = by_symbol.get(symbol)
+        if total is None:
+            missing.append(symbol)
+            continue
+        if _below(total["volume"], bar["volume"]) or _below(total["turnover"], bar["turnover"]):
+            raise ExchangeFetchError(f"dailyQuotes: {symbol} total is below its round-lot figure")
+        merged.append({**bar, "volume": total["volume"], "turnover": total["turnover"]})
+    if missing:
+        raise ExchangeFetchError(
+            f"dailyQuotes: no row for {len(missing)} of {len(bars)} symbols (e.g. {missing[0]})"
+        )
+    return merged
+
+
+def _below(total: object, round_lot: object) -> bool:
+    return not isinstance(total, int) or not isinstance(round_lot, int) or total < round_lot
 
 
 def parse_institutional(body: JsonObject, run_date: date_) -> list[Row]:
@@ -164,6 +229,18 @@ def _query(**fixed: str) -> Callable[[date_], dict[str, str]]:
 
     return build
 
+
+SUPPLEMENTS: Final[dict[Capability, Supplement]] = {
+    Capability.PRICE_EOD: Supplement(
+        Endpoint(
+            "dailyQuotes",
+            f"{_BASE}/afterTrading/dailyQuotes",
+            _query(type="EW"),
+            parse_all_session_volume,
+        ),
+        with_all_session_volume,
+    )
+}
 
 ENDPOINTS: Final[dict[Capability, Endpoint]] = {
     Capability.PRICE_EOD: Endpoint(

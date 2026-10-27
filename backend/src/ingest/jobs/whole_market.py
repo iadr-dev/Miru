@@ -119,7 +119,9 @@ def _success_detail(outcome: ChainOutcome, result: SourceResult) -> str:
     if outcome.winner_id is None:  # every source healthy and empty
         return f"no rows from {', '.join(outcome.chain_ids)}"
     detail = f"served by {outcome.winner_id}: {result.health.detail}"
-    if outcome.fell_back:
+    if outcome.served_incomplete:
+        detail += f" (no complete source: {outcome.attempts_note()})"
+    elif outcome.fell_back:
         detail += f" (after {outcome.attempts_note()})"
     return detail
 

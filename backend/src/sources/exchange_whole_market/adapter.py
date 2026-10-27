@@ -22,11 +22,11 @@ import structlog
 
 from schemas.enums import Capability, DataClass, TimingClass, TLSPolicy
 from schemas.source import HealthStatus, SourceHealth, SourceResult
-from sources.base import NO_DATA_PUBLISHED
+from sources.base import NO_DATA_PUBLISHED, ROUND_LOT_VOLUME
 
 from . import tpex, twse
 from ._client import ThrottledJsonClient
-from ._common import Endpoint, ExchangeFetchError, NoDataPublishedError, Row
+from ._common import Endpoint, ExchangeFetchError, NoDataPublishedError, Row, Supplement
 
 logger = structlog.get_logger(__name__)
 
@@ -56,6 +56,8 @@ class _Outcome:
     error: str | None = None
     # The exchange answered explicitly that it published nothing for the date (rows is `[]`).
     no_data: bool = False
+    # Rows are usable but incomplete: why the supplementary report could not complete them.
+    incomplete: str | None = None
 
 
 class ExchangeWholeMarketAdapter:
@@ -95,7 +97,9 @@ class ExchangeWholeMarketAdapter:
         started = datetime.now(UTC)
         twse_out, tpex_out = await asyncio.gather(
             self._one(self._twse, twse.ENDPOINTS[cap], run_date, tls_policy),
-            self._one(self._tpex, tpex.ENDPOINTS[cap], run_date, tls_policy),
+            self._one(
+                self._tpex, tpex.ENDPOINTS[cap], run_date, tls_policy, tpex.SUPPLEMENTS.get(cap)
+            ),
         )
         result = _combine(cap, twse_out, tpex_out)
         logger.info(
@@ -110,17 +114,43 @@ class ExchangeWholeMarketAdapter:
 
     @staticmethod
     async def _one(
-        client: ThrottledJsonClient, endpoint: Endpoint, run_date: date, tls_policy: TLSPolicy
+        client: ThrottledJsonClient,
+        endpoint: Endpoint,
+        run_date: date,
+        tls_policy: TLSPolicy,
+        supplement: Supplement | None = None,
     ) -> _Outcome:
         try:
-            body = await client.get_json(
-                endpoint.url, endpoint.query(run_date), label=endpoint.label, tls_policy=tls_policy
-            )
-            return _Outcome(rows=endpoint.parse(body, run_date))
+            rows = await _read(client, endpoint, run_date, tls_policy)
         except NoDataPublishedError:
             return _Outcome(rows=[], no_data=True)
         except ExchangeFetchError as exc:
             return _Outcome(error=exc.detail)
+        if supplement is None or not rows:
+            return _Outcome(rows=rows)
+        try:
+            supplied = await _read(client, supplement.report, run_date, tls_policy)
+            return _Outcome(rows=supplement.merge(rows, supplied))
+        except (ExchangeFetchError, NoDataPublishedError) as exc:
+            # A challenge page, an HTTP error, an unreadable or short report: the base rows stand
+            # but are not whole. The request budget is the client's (throttled, bounded retries).
+            reason = exc.detail if isinstance(exc, ExchangeFetchError) else "no rows published"
+            logger.warning(
+                "exchange_supplement_failed",
+                report=supplement.report.label,
+                run_date=run_date.isoformat(),
+                reason=reason,
+            )
+            return _Outcome(rows=rows, incomplete=reason)
+
+
+async def _read(
+    client: ThrottledJsonClient, endpoint: Endpoint, run_date: date, tls_policy: TLSPolicy
+) -> list[Row]:
+    body = await client.get_json(
+        endpoint.url, endpoint.query(run_date), label=endpoint.label, tls_policy=tls_policy
+    )
+    return endpoint.parse(body, run_date)
 
 
 def _requested_date(value: object) -> date | None:
@@ -164,12 +194,17 @@ def _combine(cap: Capability, listed: _Outcome, otc: _Outcome) -> SourceResult:
             continue
         seen.add(key)
         merged.append(row)
-    return _result(
-        cap,
-        merged,
-        HealthStatus.OK,
-        f"TWSE {len(listed.rows)} + TPEx {len(otc.rows)} rows",
-    )
+    detail = f"TWSE {len(listed.rows)} + TPEx {len(otc.rows)} rows"
+    if otc.incomplete is not None:
+        # The rows are all there but TPEx volume/turnover are round-lot only: not OK, so the chain
+        # asks the next source first; the rows ride along for a chain that ends without one.
+        return _result(
+            cap,
+            merged,
+            HealthStatus.UNREACHABLE,
+            f"{detail}, {ROUND_LOT_VOLUME} (TPEx: {otc.incomplete})",
+        )
+    return _result(cap, merged, HealthStatus.OK, detail)
 
 
 def _result(cap: Capability, rows: list[Row], status: HealthStatus, detail: str) -> SourceResult:

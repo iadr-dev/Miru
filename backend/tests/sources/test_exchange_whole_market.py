@@ -8,8 +8,10 @@ a few rows (plus a few synthetic odd rows: a stock that did not trade, an index 
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from datetime import date
 from itertools import pairwise
+from typing import Any
 
 import httpx
 import pytest
@@ -25,7 +27,7 @@ from ingest.jobs import (
 from schemas.capabilities import EODBar, InstitutionalFlowRow, MarginShortRow, ValuationRatiosRow
 from schemas.enums import Capability, TLSPolicy
 from schemas.source import HealthStatus, SourceResult
-from sources.base import NO_DATA_PUBLISHED
+from sources.base import NO_DATA_PUBLISHED, ROUND_LOT_VOLUME
 from sources.exchange_whole_market import ExchangeWholeMarketAdapter
 from sources.exchange_whole_market._client import (
     USER_AGENT,
@@ -45,6 +47,7 @@ TRADING: dict[tuple[str, str], str] = {
     ("www.twse.com.tw", "/marginTrading/MI_MARGN"): "twse_mi_margn.json",
     ("www.twse.com.tw", "/afterTrading/BWIBBU_d"): "twse_bwibbu.json",
     ("www.tpex.org.tw", "/afterTrading/otc"): "tpex_otc.json",
+    ("www.tpex.org.tw", "/afterTrading/dailyQuotes"): "tpex_daily_quotes.json",
     ("www.tpex.org.tw", "/insti/dailyTrade"): "tpex_daily_trade.json",
     ("www.tpex.org.tw", "/margin/balance"): "tpex_margin_balance.json",
     ("www.tpex.org.tw", "/afterTrading/peQryDate"): "tpex_pe.json",
@@ -55,6 +58,7 @@ EMPTY: dict[tuple[str, str], str] = {
     ("www.twse.com.tw", "/marginTrading/MI_MARGN"): "twse_no_data.json",
     ("www.twse.com.tw", "/afterTrading/BWIBBU_d"): "twse_no_data.json",
     ("www.tpex.org.tw", "/afterTrading/otc"): "tpex_otc_empty.json",
+    ("www.tpex.org.tw", "/afterTrading/dailyQuotes"): "tpex_daily_quotes_empty.json",
     ("www.tpex.org.tw", "/insti/dailyTrade"): "tpex_daily_trade_empty.json",
     ("www.tpex.org.tw", "/margin/balance"): "tpex_margin_balance_empty.json",
     ("www.tpex.org.tw", "/afterTrading/peQryDate"): "tpex_pe_empty.json",
@@ -68,12 +72,17 @@ class FakeWeb:
         self.routes = dict(routes)
         self.requests: list[httpx.Request] = []
         self.overrides: dict[str, list[httpx.Response]] = {}  # host -> responses served first
+        # (host, path suffix) -> responses served first for that one report
+        self.by_report: dict[tuple[str, str], list[httpx.Response]] = {}
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
         queued = self.overrides.get(request.url.host)
         if queued:
             return queued.pop(0)
+        for (host, suffix), responses in self.by_report.items():
+            if responses and request.url.host == host and request.url.path.endswith(suffix):
+                return responses.pop(0)
         for (host, suffix), fixture in self.routes.items():
             if request.url.host == host and request.url.path.endswith(suffix):
                 return httpx.Response(200, json=load_fixture("exchange_whole_market", fixture))
@@ -174,20 +183,142 @@ async def test_price_merges_listed_and_otc_in_the_finmind_row_shape(web: FakeWeb
     }
     assert by[("2330",)]["close"] == 2385.0  # '2,385.00'
     assert by[("00411A",)]["close"] == 9.93  # TPEx, an ETF
-    assert by[("00411A",)]["volume"] == 10545000
-    assert sorted(web.hosts()) == ["www.tpex.org.tw", "www.twse.com.tw"]
+    assert by[("00411A",)]["volume"] == 10688945  # all-session, see the volume test
+    assert sorted(set(web.hosts())) == ["www.tpex.org.tw", "www.twse.com.tw"]
 
 
-async def test_tpex_price_volume_is_the_round_lot_figure_of_the_otc_report(web: FakeWeb) -> None:
-    """Characterization (before the dailyQuotes supplement): TPEx volume/turnover come straight
-    from `afterTrading/otc`, which is round-lot only, and one TPEx request answers the price."""
-    rows = _by(_rows(await _fetch(Capability.PRICE_EOD)), "symbol")
+async def test_tpex_volume_and_turnover_are_the_all_session_totals_like_finmind(
+    web: FakeWeb,
+) -> None:
+    """`afterTrading/otc` is round-lot only (00411A: 10,545,000 shares); the dailyQuotes report
+    adds fixed-price and odd-lot trading (10,688,945), which is what FinMind stores."""
+    result = await _fetch(Capability.PRICE_EOD)
 
-    assert rows[("00411A",)]["volume"] == 10545000
-    assert rows[("00411A",)]["turnover"] == 105726380
-    assert rows[("00679B",)]["volume"] == 32463000
+    assert result.health.status is HealthStatus.OK
+    assert result.health.detail == "TWSE 3 + TPEx 2 rows"
+    rows = _by(_rows(result), "symbol")
+    _all_valid(EODBar, list(_rows(result)))
+    assert rows[("00411A",)]["volume"] == 10688945
+    assert rows[("00411A",)]["turnover"] == 107161178
+    assert rows[("00679B",)]["volume"] == 32614019
+    assert rows[("00679B",)]["turnover"] == 846905001
+    assert rows[("00411A",)]["close"] == 9.93  # prices stay the otc report's
+    assert "700019" not in {r["symbol"] for r in _rows(result)}  # a warrant is not ingested
+    assert "6488" not in {r["symbol"] for r in _rows(result)}  # untraded in the otc report
+    assert rows[("1101",)]["volume"] == 103437782  # TWSE untouched
     tpex_paths = [r.url.path for r in web.requests if r.url.host == "www.tpex.org.tw"]
+    assert tpex_paths == [
+        "/www/zh-tw/afterTrading/otc",
+        "/www/zh-tw/afterTrading/dailyQuotes",
+    ]
+    quotes = web.requests[-1].url.params
+    assert (quotes["type"], quotes["date"], quotes["response"]) == ("EW", "2026/10/22", "json")
+
+
+async def test_the_all_session_report_is_not_asked_on_a_day_nothing_was_published(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake = FakeWeb(EMPTY)
+    monkeypatch.setattr(client_module, "build_async_client", fake.factory)
+
+    result = await _fetch(Capability.PRICE_EOD, SATURDAY)
+
+    assert result.health.detail == NO_DATA_PUBLISHED
+    tpex_paths = [r.url.path for r in fake.requests if r.url.host == "www.tpex.org.tw"]
     assert tpex_paths == ["/www/zh-tw/afterTrading/otc"]
+
+
+def _assert_round_lot_only(result: SourceResult, reason: str) -> None:
+    """Not OK (so the chain asks FinMind next) yet carrying the complete, tagged round-lot rows."""
+    assert result.health.status is HealthStatus.UNREACHABLE
+    assert ROUND_LOT_VOLUME in result.health.detail
+    assert reason in result.health.detail
+    rows = _by(_rows(result), "symbol")
+    assert set(rows) == {("00400A",), ("1101",), ("2330",), ("00411A",), ("00679B",)}
+    assert rows[("00411A",)]["volume"] == 10545000  # the otc (round-lot) figure, labelled as such
+
+
+@pytest.mark.parametrize(
+    ("response", "reason"),
+    [
+        (httpx.Response(403, text="<html>Just a moment...</html>"), "HTTP 403"),
+        (httpx.Response(503), "HTTP 503"),
+    ],
+)
+async def test_a_failing_all_session_report_marks_the_round_lot_rows_not_ok(
+    web: FakeWeb, response: httpx.Response, reason: str
+) -> None:
+    web.by_report[("www.tpex.org.tw", "/afterTrading/dailyQuotes")] = [response] * 3
+
+    _assert_round_lot_only(await _fetch(Capability.PRICE_EOD), reason)
+
+
+async def test_a_challenge_page_is_retried_then_marks_the_rows_not_ok(web: FakeWeb) -> None:
+    challenge = httpx.Response(200, text="<html><title>Just a moment...</title></html>")
+    web.by_report[("www.tpex.org.tw", "/afterTrading/dailyQuotes")] = [challenge] * 3
+
+    result = await _fetch(Capability.PRICE_EOD)
+
+    _assert_round_lot_only(result, "response is not JSON")
+    assert [r.url.path.rsplit("/", 1)[1] for r in web.requests if "tpex" in r.url.host] == [
+        "otc",
+        "dailyQuotes",
+        "dailyQuotes",
+        "dailyQuotes",
+    ]
+
+
+async def test_a_challenge_page_for_the_base_report_is_still_a_plain_failure(web: FakeWeb) -> None:
+    web.by_report[("www.tpex.org.tw", "/afterTrading/otc")] = [
+        httpx.Response(200, text="<html>Just a moment...</html>")
+    ] * 3
+
+    result = await _fetch(Capability.PRICE_EOD)
+
+    assert result.health.status is HealthStatus.UNREACHABLE
+    assert ROUND_LOT_VOLUME not in result.health.detail
+    assert _rows(result) == []
+    assert not any(r.url.path.endswith("dailyQuotes") for r in web.requests)
+
+
+def _quotes_with(edit: Callable[[dict[str, Any]], None]) -> httpx.Response:
+    body = load_fixture("exchange_whole_market", "tpex_daily_quotes.json")
+    edit(body)
+    return httpx.Response(200, json=body)
+
+
+@pytest.mark.parametrize(
+    ("edit", "reason"),
+    [
+        (lambda b: b["tables"][0]["data"].pop(0), "no row for 1 of 2 symbols (e.g. 00411A)"),
+        (lambda b: b.update(stat="error"), "unexpected stat"),
+        (lambda b: b.update(date="20261021"), "answered for 20261021"),
+        (lambda b: b["tables"][0]["data"][0].__setitem__(8, "10,000"), "below its round-lot"),
+        (lambda b: b["tables"][0]["data"][0].__setitem__(9, "1"), "below its round-lot"),
+        (lambda b: b["tables"][0]["fields"].__setitem__(8, "成交"), "expected column"),
+        (lambda b: b["tables"][0].update(data=[]), "report has no rows"),
+    ],
+)
+async def test_an_unusable_all_session_report_marks_the_rows_not_ok(
+    web: FakeWeb, edit: Callable[[dict[str, Any]], None], reason: str
+) -> None:
+    web.by_report[("www.tpex.org.tw", "/afterTrading/dailyQuotes")] = [_quotes_with(edit)]
+
+    _assert_round_lot_only(await _fetch(Capability.PRICE_EOD), reason)
+
+
+async def test_a_symbol_listed_only_in_a_later_quotes_table_is_still_found(web: FakeWeb) -> None:
+    def move(body: dict[str, Any]) -> None:
+        first = body["tables"][0]
+        body["tables"][1]["data"] = [first["data"].pop(0)]  # 00411A -> the 管理股票 table
+        body["tables"][1]["totalCount"] = 1
+
+    web.by_report[("www.tpex.org.tw", "/afterTrading/dailyQuotes")] = [_quotes_with(move)]
+
+    result = await _fetch(Capability.PRICE_EOD)
+
+    assert result.health.status is HealthStatus.OK
+    assert _by(_rows(result), "symbol")[("00411A",)]["volume"] == 10688945
 
 
 async def test_price_drops_untraded_stocks_and_index_labels(web: FakeWeb) -> None:
@@ -537,7 +668,7 @@ async def test_requests_to_one_host_are_spaced_by_the_gap(
 
     for host in ("www.twse.com.tw", "www.tpex.org.tw"):
         times = [t for h, t in started if h == host]
-        assert len(times) == 3
+        assert len(times) == (4 if host == "www.tpex.org.tw" else 3)
         assert all(b - a >= 2.5 for a, b in pairwise(times))
 
 

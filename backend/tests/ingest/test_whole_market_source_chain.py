@@ -22,7 +22,7 @@ from ingest.leader import AlwaysLeader, NeverLeader
 from ingest.store import ParquetStore
 from schemas.enums import Capability, Market, TLSPolicy
 from schemas.source import HealthStatus
-from sources.base import NO_DATA_PUBLISHED
+from sources.base import NO_DATA_PUBLISHED, ROUND_LOT_VOLUME
 from tests.ingest.test_whole_market_runner import (
     TRADING_DAY,
     RecordingPublisher,
@@ -352,3 +352,69 @@ async def test_a_later_successful_write_clears_the_closure(tmp_path: object) -> 
 
     assert run.status is RunStatus.SUCCESS
     assert not ctx.store.is_closed(PRICE_EOD_JOB.dataset, "TW", TRADING_DAY)
+
+
+# -------------------------------------------- round-lot-volume rows (TPEx all-session report down)
+
+ROUND_LOT_DETAIL = f"TWSE 1 + TPEx 1 rows, {ROUND_LOT_VOLUME} (TPEx: dailyQuotes: HTTP 403)"
+
+
+def _round_lot_official() -> StubSource:
+    return _official(status=HealthStatus.UNREACHABLE, detail=ROUND_LOT_DETAIL)
+
+
+async def test_round_lot_answer_falls_through_to_finmind_when_finmind_serves(
+    tmp_path: object,
+) -> None:
+    finmind = _finmind()
+    ctx = _ctx(tmp_path, finmind, _round_lot_official())
+
+    run = await run_whole_market_job(PRICE_EOD_JOB, TRADING_DAY, ctx)
+
+    assert run.status is RunStatus.SUCCESS
+    assert run.detail == f"served by {FINMIND_ID}: ok (after {EXCHANGE_ID}: {ROUND_LOT_DETAIL})"
+    assert _symbols(ctx) == ["2330"]  # FinMind's complete rows, not the exchange's
+    assert len(finmind.calls) == 1
+
+
+async def test_round_lot_answer_is_served_tagged_when_finmind_also_fails(tmp_path: object) -> None:
+    finmind = _finmind([], status=HealthStatus.UNREACHABLE, detail="FinMind HTTP 403")
+    ctx = _ctx(tmp_path, finmind, _round_lot_official())
+
+    run = await run_whole_market_job(PRICE_EOD_JOB, TRADING_DAY, ctx)
+
+    assert run.status is RunStatus.SUCCESS
+    assert run.rows_written == 1
+    assert run.detail == (
+        f"served by {EXCHANGE_ID}: {ROUND_LOT_DETAIL} "
+        f"(no complete source: {FINMIND_ID}: FinMind HTTP 403)"
+    )
+    assert ROUND_LOT_VOLUME in run.detail
+    assert _symbols(ctx) == ["1101"]
+
+
+async def test_round_lot_answer_is_served_tagged_when_finmind_has_nothing(
+    tmp_path: object,
+) -> None:
+    finmind = _finmind([], status=HealthStatus.STALE, detail="no rows published")
+    ctx = _ctx(tmp_path, finmind, _round_lot_official())
+
+    run = await run_whole_market_job(PRICE_EOD_JOB, TRADING_DAY, ctx)
+
+    assert run.status is RunStatus.SUCCESS
+    assert ROUND_LOT_VOLUME in run.detail
+    assert f"(no complete source: {FINMIND_ID}: no rows)" in run.detail
+    assert _symbols(ctx) == ["1101"]
+
+
+async def test_a_failed_answer_without_the_tag_is_never_served_for_its_rows(
+    tmp_path: object,
+) -> None:
+    official = _official(status=HealthStatus.UNREACHABLE, detail="TPEx: HTTP 503")  # has rows
+    finmind = _finmind([], status=HealthStatus.UNREACHABLE, detail="FinMind HTTP 403")
+    ctx = _ctx(tmp_path, finmind, official)
+
+    run = await run_whole_market_job(PRICE_EOD_JOB, TRADING_DAY, ctx)
+
+    assert run.status is RunStatus.FAILED
+    assert run.rows_written == 0
