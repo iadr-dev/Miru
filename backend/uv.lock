@@ -1952,7 +1952,7 @@ requires-dist = [
     { name = "edge-tts", marker = "extra == 'voice'", specifier = ">=6.1" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "faster-whisper", marker = "extra == 'voice'", specifier = ">=1.0" },
-    { name = "fastmcp", specifier = ">=3.4.5" },
+    { name = "fastmcp", specifier = ">=3.4.10" },
     { name = "feedparser", specifier = ">=6.0.14" },
     { name = "google-genai", specifier = ">=2.16.0" },
     { name = "holidays", specifier = ">=0.105" },
