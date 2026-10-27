@@ -10,7 +10,7 @@ share it, so the order is decided in one place.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from datetime import date as date_
 from functools import lru_cache
 from pathlib import Path
@@ -38,6 +38,10 @@ _DEFAULT_CHAIN: Final = (FINMIND_ID,)
 _TAIPEI: Final = ZoneInfo("Asia/Taipei")
 # The journal detail of a day both exchanges said they published nothing for.
 MARKET_CLOSED_DETAIL: Final = "market closed: TWSE and TPEx published no data"
+# How long a FinMind plan denial is believed. A plan can be upgraded, so the denial is asked again
+# after this, and the dataset starts filling without a code change (`docs/backend/modules/
+# 22-data-ingest.md` "Plan-gated datasets"; `--recheck-plan` forgets it at once).
+PLAN_DENIAL_TTL: Final = timedelta(hours=24)
 
 
 @lru_cache(maxsize=1)
@@ -164,6 +168,23 @@ class ChainOutcome:
         """The winner is the tagged round-lot-volume answer, served because nothing better was."""
         return self.incomplete is not None and self.winner_id == self.incomplete[0]
 
+    # The sources that answered `UNAVAILABLE_TIER` (outside the FinMind plan, for FinMind), or
+    # were not asked because that answer is remembered.
+    tier_denied: list[str] = field(default_factory=list[str])
+
+    @property
+    def plan_gated(self) -> bool:
+        """No source served and every one of them was a plan denial, FinMind's among them: the
+        dataset is not obtainable at all with this plan, as opposed to failing or not being
+        published yet."""
+        return (
+            self.winner is None
+            and not self.empties
+            and bool(self.failures)
+            and FINMIND_ID in self.tier_denied
+            and len(self.tier_denied) == len(self.failures)
+        )
+
     @property
     def fell_back(self) -> bool:
         """Served by a source other than the first one asked."""
@@ -181,20 +202,59 @@ class ChainOutcome:
         return "; ".join(parts)
 
 
-async def walk_chain(
+def _without_remembered_denial(
+    ctx: IngestContext,
+    outcome: ChainOutcome,
+    chain: list[ChainLink],
+    plan_key: tuple[str, str],
+    *,
+    enabled: bool,
+) -> list[ChainLink]:
+    """`chain` without FinMind while a plan denial for the capability is younger than
+    `PLAN_DENIAL_TTL`: it is not asked, and the outcome records why. A no-op unless `enabled`."""
+    if not enabled or FINMIND_ID not in outcome.chain_ids:
+        return chain
+    if not ctx.store.is_plan_denied(*plan_key, ttl=PLAN_DENIAL_TTL):
+        return chain
+    outcome.failures.append((FINMIND_ID, "not in the FinMind plan (remembered)"))
+    outcome.tier_denied.append(FINMIND_ID)
+    return [link for link in chain if link.source_id != FINMIND_ID]
+
+
+def _note_tier_denial(
+    ctx: IngestContext,
+    outcome: ChainOutcome,
+    link: ChainLink,
+    result: SourceResult,
+    plan_key: tuple[str, str],
+) -> None:
+    """Record a source's plan denial on the outcome, and FinMind's in the store so the rest of
+    the run (and the next ones, until the TTL) do not ask it again."""
+    if result.health.status is not HealthStatus.UNAVAILABLE_TIER:
+        return
+    outcome.tier_denied.append(link.source_id)
+    if link.source_id == FINMIND_ID:
+        ctx.store.mark_plan_denied(*plan_key)
+
+
+async def walk_chain(  # noqa: PLR0913 - the optional knobs are keyword-only by design
     ctx: IngestContext,
     capability: Capability,
     run_date: date_,
     market: Market | None = None,
     *,
     source_date: date_ | None = None,
+    skip_plan_denied: bool = False,
 ) -> ChainOutcome:
     """Ask each source in turn for `run_date`; stop at the first healthy answer with rows.
     `source_date` is the date the sources are asked for when it differs from the partition
     `run_date` (a period filed under a non-trading nominal date, stored under the next trading
-    day: `ingest/jobs/period_dates.py`)."""
+    day: `ingest/jobs/period_dates.py`). `skip_plan_denied` (the ingest runner) does not send
+    FinMind a request while a plan denial for the capability is remembered."""
     chain = resolve_chain(ctx, capability, market)
     outcome = ChainOutcome(chain_ids=[link.source_id for link in chain])
+    plan_key = ((market or ctx.market).value, capability.value)
+    chain = _without_remembered_denial(ctx, outcome, chain, plan_key, enabled=skip_plan_denied)
     for link in chain:
         result = await link.source.fetch_whole_market(
             capability, tls_policy=ctx.tls_policy, start_date=(source_date or run_date).isoformat()
@@ -211,6 +271,7 @@ async def walk_chain(
             break
         if _failed(result):
             outcome.failures.append((link.source_id, result.health.detail))
+            _note_tier_denial(ctx, outcome, link, result, plan_key)
             logger.warning(
                 "ingest_whole_market_source_failed",
                 capability=capability.value,
@@ -252,6 +313,7 @@ __all__ = [
     "FILINGS_ID",
     "FINMIND_ID",
     "MARKET_CLOSED_DETAIL",
+    "PLAN_DENIAL_TTL",
     "ROSTER_ID",
     "ChainLink",
     "ChainOutcome",

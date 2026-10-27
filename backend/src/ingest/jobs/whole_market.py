@@ -28,7 +28,7 @@ from ingest.jobs.specs import (
     VALUATION_RATIOS_JOB,
     WholeMarketJobSpec,
 )
-from ingest.journal import JobRun, RunStatus, journal_run
+from ingest.journal import JobRun, RunStatus, journal_run, journal_tier_skip
 from schemas.source import HealthStatus, SourceResult
 
 logger = structlog.get_logger(__name__)
@@ -101,6 +101,10 @@ def validate_rows(
     return validate_rows_against(spec.row_model, spec.dataset, raw_rows, run_date)
 
 
+def plan_gated_detail(dataset: str) -> str:
+    return f"not in the FinMind plan: {dataset}; no free source"
+
+
 def _failure_detail(outcome: ChainOutcome) -> str:
     """The journal reason of a day no source served. With a single source this is that source's
     own reason, unchanged; with several, every source's reason, so the journal shows why the
@@ -143,6 +147,11 @@ def _unserved_run(
         )
     if not outcome.failures:
         return None
+    if outcome.plan_gated:
+        # The plan does not include the dataset and no free source serves it: a tier-skip, not a
+        # failure. The denial is remembered (`PLAN_DENIAL_TTL`) so later dates are not sent to
+        # FinMind. A bad key, the rate limit or an outage is never this: it stays FAILED below.
+        return journal_tier_skip(spec.dataset, run_date, plan_gated_detail(spec.dataset))
     detail = _failure_detail(outcome)
     logger.warning(
         "ingest_whole_market_fetch_failed",
@@ -225,7 +234,11 @@ async def run_whole_market_job(
     # the first healthy answer with rows wins. Never retry-loop tightly - a day no source could
     # serve journals FAILED and the next scheduled run (or an explicit gap-fill) retries.
     outcome = await walk_chain(
-        ctx, spec.capability, run_date, source_date=_nominal_date(spec, run_date, ctx)
+        ctx,
+        spec.capability,
+        run_date,
+        source_date=_nominal_date(spec, run_date, ctx),
+        skip_plan_denied=True,
     )
     if outcome.market_closed:
         # Both exchanges said, explicitly, that nothing was published for a past date: a closure

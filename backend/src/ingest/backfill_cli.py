@@ -133,6 +133,14 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--recheck-plan",
+        action="store_true",
+        help=(
+            "Forget the remembered FinMind plan denials (kept for 24 h) and ask FinMind about "
+            "every dataset again now; use it right after upgrading the FinMind plan."
+        ),
+    )
+    parser.add_argument(
         "--fill-missing-companies",
         metavar="DATASET",
         choices=[spec.dataset for spec in period_keyed_specs()],
@@ -542,6 +550,9 @@ async def run_fill_missing_companies(
 async def _run_backfill(
     args: argparse.Namespace, settings: Settings, ctx: IngestContext, years: int
 ) -> int:
+    if args.recheck_plan:
+        forgotten = ctx.store.clear_plan_denials()
+        logger.info("ingest_backfill_cli_plan_denials_cleared", cleared=forgotten)
     if args.fill_missing_companies is not None:
         runs = await run_fill_missing_companies(
             settings,
@@ -560,11 +571,17 @@ async def _run_backfill(
         logger.info("ingest_backfill_cli_no_runs")
         return 0
     failed = tuple(r for r in runs if r.status is RunStatus.FAILED)
+    tier_skipped = sorted({r.dataset for r in runs if r.tier_skipped})
     logger.info(
         "ingest_backfill_cli_summary",
         total_runs=len(runs),
         failed_runs=len(failed),
+        tier_skipped_datasets=tier_skipped,
     )
+    if tier_skipped:
+        # Reported apart from the failures and never counted in them: the plan lacks these.
+        listed = ", ".join(tier_skipped)
+        sys.stdout.write(f"tier-skipped (not in the FinMind plan, no free source): {listed}\n")
     return 1 if failed else 0
 
 

@@ -144,13 +144,14 @@ async def test_failed_fetch_journals_failed_with_the_source_reason_and_writes_no
     assert publisher.signals == []
 
 
-async def test_tier_refusal_is_a_failure_too(tmp_path: object) -> None:
+async def test_tier_refusal_is_a_tier_skip_not_a_failure(tmp_path: object) -> None:
     source = StubSource(_result([], status=HealthStatus.UNAVAILABLE_TIER, detail="tier"))
     ctx = _ctx(tmp_path, source)
 
     run = await run_whole_market_job(PRICE_EOD_JOB, TRADING_DAY, ctx)
 
-    assert run.status is RunStatus.FAILED
+    assert run.status is RunStatus.SKIPPED
+    assert run.tier_skipped
 
 
 async def test_malformed_rows_are_dropped_before_the_write(tmp_path: object) -> None:

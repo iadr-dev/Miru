@@ -45,6 +45,7 @@ import time
 import uuid
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from datetime import date as date_
 from pathlib import Path
 
@@ -61,6 +62,10 @@ _TMP_DIRNAME = ".tmp"
 # Exchange-confirmed market closures, one marker file per (dataset, market, date), outside every
 # `dataset=` tree so no partition scan, freshness token or reader ever sees them.
 _CLOSURES_DIRNAME = "_closures"
+# FinMind plan denials, one marker file per (market, capability) holding when the denial was
+# learned. Outside every `dataset=` tree like the closures, and a different fact: a plan can
+# change, so a marker is only believed for a bounded time (`is_plan_denied`'s `ttl`).
+_PLAN_DENIALS_DIRNAME = "_plan_denials"
 _WRITE_LOCK_NAME = ".write.lock"
 
 # A reader that resolved the manifest just before a flip may still be reading the previous version
@@ -483,6 +488,40 @@ class ParquetStore:
     def is_closed(self, dataset: str, market: str, run_date: date_) -> bool:
         """True when an earlier run confirmed `run_date` as a market closure for `dataset`."""
         return self._closure_marker(dataset, market, run_date).is_file()
+
+    def _plan_denial_marker(self, market: str, capability: str) -> Path:
+        return self.root / _PLAN_DENIALS_DIRNAME / market / capability
+
+    def mark_plan_denied(
+        self, market: str, capability: str, *, now: datetime | None = None
+    ) -> None:
+        """Remember that the FinMind plan does not include `capability`, so a run does not send
+        every remaining date to be refused. Written once per learned denial; never read as data."""
+        marker = self._plan_denial_marker(market, capability)
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text((now or datetime.now(UTC)).isoformat(), encoding="utf-8")
+
+    def is_plan_denied(
+        self, market: str, capability: str, *, ttl: timedelta, now: datetime | None = None
+    ) -> bool:
+        """True when a denial for `capability` was learned less than `ttl` ago. An older (or
+        unreadable) marker no longer counts, so the plan is asked again and a plan upgrade is
+        noticed without any code change."""
+        marker = self._plan_denial_marker(market, capability)
+        try:
+            learned = datetime.fromisoformat(marker.read_text(encoding="utf-8").strip())
+        except (OSError, ValueError):
+            return False
+        return (now or datetime.now(UTC)) - learned < ttl
+
+    def clear_plan_denials(self) -> int:
+        """Forget every recorded plan denial (the plan changed; ask FinMind again now). Returns
+        how many were forgotten."""
+        base = self.root / _PLAN_DENIALS_DIRNAME
+        markers = [p for p in base.rglob("*") if p.is_file()] if base.is_dir() else []
+        for marker in markers:
+            marker.unlink(missing_ok=True)
+        return len(markers)
 
     def has_partition(self, dataset: str, market: str, run_date: date_) -> bool:
         """True only if the manifest exists AND the version it points at is on disk, so a torn

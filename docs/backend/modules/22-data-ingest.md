@@ -350,6 +350,43 @@ company), `industry_category` 99.96% (the one miss is a company FinMind still fi
 roster has 26 symbols (new ETFs and listings, emerging stocks added since); only FinMind has 5
 (`00847B`, `020039`, `1522A`, `2733`, `6618`, delisted or no longer on a list).
 
+## 1e. Plan-gated datasets — a skip, not a failure
+
+FinMind's free ("register") level lacks several datasets: `TaiwanStockMarketValue`,
+`TaiwanStockMarketValueWeight`, `TaiwanStockActiveETFHolding`, `TaiwanStockActiveETFHoldingChange`,
+`TaiwanStockDividend` (no free official source replaces them, §1c), and the whole-market-by-date
+form of the daily datasets (which only matters when the official source before it failed). Without
+special handling every date of such a dataset was refused and journaled FAILED.
+
+- **What FinMind answers** (captured live). Outside the account's level: HTTP `400`,
+  `{"msg": "Your level is register. Please update your user level. Detail information:...",
+  "status": 400}`. The status is shared with other errors, so the message is the only discriminator
+  and is matched once, by `PLAN_DENIAL_MESSAGE` in `sources/finmind/_adapter.py` (tested against
+  the frozen bodies in `tests/sources/finmind/_responses.py`). Everything else stays UNREACHABLE:
+  a bad key is `400 {"msg": "Token is illegal."}`, an IP ban `403 {"msg": "ip banned",
+  "retry_after": n}`, the rate limit `402`, plus 5xx and transport errors. A date with no rows for
+  an allowed dataset is `200 {"msg": "success", "data": []}` (STALE, empty).
+- **Adapter.** A plan denial is `HealthStatus.UNAVAILABLE_TIER` ("not in the FinMind plan:
+  `<dataset>`"), on the per-symbol path too, where tools surface that health unchanged.
+- **Runner.** When no source served and every one of them was a plan denial (FinMind's among them,
+  no source merely "not published yet"), the date journals SKIPPED with `tier_skipped=true` and
+  detail `not in the FinMind plan: <dataset>; no free source`. A failing official source ahead of a
+  denying FinMind is still a FAILED day.
+- **Remembered for 24 h, not forever.** The denial is stored as a marker
+  `<parquet_root>/_plan_denials/<market>/<capability>` holding when it was learned (outside every
+  `dataset=` tree and separate from the `_closures` markers, which are permanent facts about a
+  date). While it is younger than `PLAN_DENIAL_TTL` (24 h, `ingest/jobs/source_chain.py`) FinMind
+  is not asked for that capability: the first date of a run is the one probe, a backfill stops
+  walking the dataset after it (one `JobRun`, not ~700), and `only_missing` runs and gap-fills
+  report it without a request. After the TTL FinMind is asked again, so an upgraded plan starts
+  filling the dataset within a day with no code change.
+- **Refreshing sooner.** `python -m ingest.backfill_cli --yes --recheck-plan` (or
+  `dev-backend.sh --backfill` after deleting the `_plan_denials` directory) forgets the markers.
+- **Summary.** The CLI logs `tier_skipped_datasets` in `ingest_backfill_cli_summary`, prints
+  `tier-skipped (not in the FinMind plan, no free source): <datasets>`, and never counts them in
+  `failed_runs`. A genuine failure (bad key, rate limit, outage) still FAILs its dates and makes
+  the exit code `1`, so `dev-backend.sh --backfill` lists the market as failed.
+
 ## 2. Cadence — what is scheduled today
 
 The scheduler is `ingest/daemon.py`'s `IngestDaemon`: a **leader-gated, wall-clock poll loop**. One
