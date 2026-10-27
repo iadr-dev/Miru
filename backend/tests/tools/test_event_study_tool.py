@@ -419,3 +419,20 @@ def test_the_tool_description_tells_the_model_to_use_history_not_signals() -> No
 def test_the_route_documents_its_tool_and_the_card_type_is_set() -> None:
     assert GetEventStudyTool.name == "get_event_study"
     assert GetEventStudyTool.card_type == "event_study"
+
+
+async def test_a_feed_that_reaches_back_to_the_price_history_is_not_called_short(
+    tmp_path: Path,
+) -> None:
+    """Snapshots rebuilt back to the start of the prices (`ingest/event_history.py`) leave no
+    gap to warn about; a feed that starts well after the prices still does (test above)."""
+    store, days = _build_store(tmp_path)
+    start = days[_EVENT_INDEX]
+    rows = [_disposition_row(s, start, days[_EVENT_INDEX + 4]) for s in _symbols()]
+    store.write_partition(DISPOSITION_EVENTS_DATASET, "TW", days[1], rows)
+    store.write_partition(DISPOSITION_EVENTS_DATASET, "TW", days[_EVENT_INDEX + 1], rows)
+
+    out = await _run(_tool(store), event_type="disposition_start")
+
+    assert out.data_window.event_feed_first_snapshot == days[1]
+    assert "short_event_history" not in {i.code for i in out.limitations}
