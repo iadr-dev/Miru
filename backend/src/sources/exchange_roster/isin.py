@@ -90,6 +90,7 @@ KEPT_SECTIONS: Final = frozenset(
     {STOCK_SECTION, PREFERRED_SECTION, ETF_SECTION, ETN_SECTION, INNOVATION_SECTION}
 )
 
+_FINANCE: Final = "金融保險業"
 # The exchange's category name -> FinMind's, per board, for the names that differ.
 _RENAMES_ALL: Final = {
     "其他業": "其他",
@@ -97,17 +98,17 @@ _RENAMES_ALL: Final = {
     "貿易百貨業": "貿易百貨",
 }
 _RENAMES: Final = {
-    TWSE: {**_RENAMES_ALL, "金融保險業": "金融保險"},
+    TWSE: {**_RENAMES_ALL, _FINANCE: "金融保險"},
     TPEX: {
         **_RENAMES_ALL,
-        "金融保險業": "金融業",
+        _FINANCE: "金融業",
         "其他電子業": "其他電子類",
         "居家生活": "居家生活類",
         "數位雲端": "數位雲端類",
         "綠能環保": "綠能環保類",
         "運動休閒": "運動休閒類",
     },
-    EMERGING: {**_RENAMES_ALL, "金融保險業": "金融業", "農業科技業": "農業科技"},
+    EMERGING: {**_RENAMES_ALL, _FINANCE: "金融業", "農業科技業": "農業科技"},
 }
 # What FinMind called the funds, which the exchange lists without a category.
 _FUND_CATEGORY: Final = {
