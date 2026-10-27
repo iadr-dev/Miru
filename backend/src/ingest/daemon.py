@@ -95,6 +95,7 @@ from ingest.store import ParquetStore
 from ingest.us_jobs import US_PRICE_EOD_DATASET, job_us_fundamentals, job_us_price_eod
 from ingest.us_universe import job_us_symbol_universe
 from schemas.enums import Market
+from sources.company_filings import CompanyFilingsAdapter
 from sources.exchange_whole_market import ExchangeWholeMarketAdapter
 from sources.finmind import FinMindAdapter, FinMindQuotaRefusedError, build_finmind_quota
 from sources.fred import FredAdapter
@@ -745,6 +746,7 @@ async def build_ingest_context_from_settings(settings: Settings | None = None) -
         fred=FredGateway(FredAdapter(resolved)),
         # One instance per process: it owns the per-host request spacing the exchanges require.
         exchange=ExchangeWholeMarketAdapter(),
+        filings=CompanyFilingsAdapter(),
         data_update_publisher=resolve_data_update_publisher(resolved),
     )
 
