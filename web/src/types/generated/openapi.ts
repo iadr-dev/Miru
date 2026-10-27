@@ -3579,9 +3579,9 @@ export interface paths {
     };
     /**
      * Technical Indicators
-     * @description 技術分析's K線 chart data source — MA/Bollinger/KD/MACD series, 支撐/壓力 levels, and
-     *     candlestick-pattern hits over a date range, backed by `get_technical_indicators`,
-     *     `DataClass.PUBLIC`.
+     * @description 技術分析's K線 chart data source — MA/Bollinger/KD/MACD series, 支撐/壓力 levels,
+     *     candlestick-pattern hits, and multi-bar chart patterns over a date range, backed by
+     *     `get_technical_indicators`, `DataClass.PUBLIC`.
      */
     get: operations["technical_indicators_api_v1_stock_technical_indicators_get"];
     put?: never;
