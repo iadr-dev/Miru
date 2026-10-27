@@ -6,12 +6,14 @@ day's listed-market EOD table in one response. This adapter still serves **one s
 GET and filters the response to the requested symbol client-side. There is no history: the
 FinMind adapter is the backfill engine.
 
-Also home to two ingest-only whole-market fetch functions (`fetch_whole_market_attention_stocks`/
-`fetch_whole_market_disposition_events`) for the 處置王 board — 注意股 (attention-stock) and 處置
-(disposition) announcement feeds, live-verified against `announcement/notice`/`announcement/punish`
-this session. Same forward-only-no-backfill shape as `sources/mops.py`'s whole-market functions;
-not `TwseOpenApiAdapter` methods since they're never router-dispatched (ingest-only, mirroring
-`fetch_whole_market_material_announcements`'s own module-level-function precedent)."""
+Also home to one ingest-only whole-market fetch function (`fetch_whole_market_disposition_events`)
+for the 處置王 board — the 處置 (disposition) announcement feed, live-verified against
+`announcement/punish`. (The 注意股 attention feed is not read from here: this host's
+`announcement/notice` dump answers only an empty placeholder, so the attention job reads the
+range report in `sources/exchange_event_history`.) Same forward-only-no-backfill shape as
+`sources/mops.py`'s whole-market functions; not `TwseOpenApiAdapter` methods since they're never
+router-dispatched (ingest-only, mirroring `fetch_whole_market_material_announcements`'s own
+module-level-function precedent)."""
 
 from __future__ import annotations
 
@@ -24,14 +26,13 @@ import structlog
 from schemas.enums import Capability, DataClass, Market, TimingClass, TLSPolicy
 from schemas.market import Symbol
 from schemas.source import HealthStatus, SourceHealth, SourceResult
-from sources.parse import optional_float, to_float
+from sources.parse import to_float
 from sources.tls import build_async_client
 
 logger = structlog.get_logger(__name__)
 
 _BASE_URL = "https://openapi.twse.com.tw/v1"
 _STOCK_DAY_ALL = f"{_BASE_URL}/exchangeReport/STOCK_DAY_ALL"
-_ATTENTION_STOCKS = f"{_BASE_URL}/announcement/notice"
 _DISPOSITION_EVENTS = f"{_BASE_URL}/announcement/punish"
 _AGM_SCHEDULE = f"{_BASE_URL}/opendata/t187ap41_L"
 _EX_RIGHTS_SCHEDULE = f"{_BASE_URL}/exchangeReport/TWT48U_ALL"
@@ -40,15 +41,9 @@ _CAVEAT = (
     "TWSE OpenAPI is the official latest end-of-day snapshot only — no parameters, no "
     "backfill; it reflects the most recent published trading day, not a live quote."
 )
-_ATTENTION_STOCKS_CAVEAT = (
-    "TWSE 注意股 (attention-stock) announcement dump is the current whole-market feed as "
-    "published today — no date parameter, not a historical archive; a day's flags roll off "
-    "the upstream dataset over time, so absence here is not evidence a stock was never flagged."
-)
 _DISPOSITION_EVENTS_CAVEAT = (
     "TWSE 處置 (disposition) announcement dump is the current whole-market feed as published "
-    "today — no date parameter, not a historical archive; same forward-only shape as the "
-    "attention-stock feed above."
+    "today — no date parameter, not a historical archive; forward-only, no history."
 )
 _CALENDAR_EVENTS_CAVEAT = (
     "TWSE open-data 股東常(臨時)會/除權息/現金增資認購 schedule — the current whole-market dump "
@@ -152,7 +147,7 @@ class TwseOpenApiAdapter:
         增資認購 (`TWT48U_ALL`) — fetched separately and merged into one `events` list (the shape
         `calendar/events.py::_feed_event_from_row` reads). Neither endpoint takes a symbol
         param; both are whole-market and filtered client-side, same pattern as this module's
-        `_map_attention_stock_row`/`_map_disposition_event_row` above. A transport failure on
+        `_map_disposition_event_row` above. A transport failure on
         either call degrades that half to an empty list rather than failing the combined fetch —
         one flaky feed must not blank a stock's whole calendar."""
         agm_rows, agm_health = await _fetch_whole_market_rows(_AGM_SCHEDULE, tls_policy=tls_policy)
@@ -323,29 +318,6 @@ def _parse_slash_roc_date(raw: str) -> date | None:
         return None
 
 
-def _map_attention_stock_row(row: dict[str, object]) -> dict[str, object] | None:
-    """One raw `announcement/notice` row -> the mapped dict for `AttentionStockRow`, or `None`
-    when the row is the upstream's own "no flags today" sentinel (`Code` blank — confirmed live:
-    a day with zero attention-stock announcements returns one all-blank/all-zero placeholder row,
-    not an empty list)."""
-    symbol = str(row.get("Code", "")).strip()
-    if not symbol:
-        return None
-    flagged_date = _roc_to_iso_date(str(row.get("Date", "")))
-    if flagged_date is None:
-        return None
-    return {
-        "symbol": symbol,
-        "market": Market.TW.value,
-        "company_name": str(row.get("Name", "")),
-        "flagged_date": flagged_date.isoformat(),
-        "reason": str(row.get("TradingInfoForAttention", "")),
-        "close": to_float(row.get("ClosingPrice")) or None,
-        "pe": optional_float(row.get("PriceEarningRatio") or row.get("PE")),
-        "security_type": "twse",
-    }
-
-
 def _map_disposition_event_row(row: dict[str, object]) -> dict[str, object] | None:
     """One raw `announcement/punish` row -> the mapped dict for `DispositionEventRow`, or `None`
     when the row's `DispositionPeriod` doesn't parse (both halves required on the model)."""
@@ -399,36 +371,9 @@ async def _fetch_whole_market_rows(
     return cast("list[dict[str, object]]", untyped_rows), None
 
 
-async def fetch_whole_market_attention_stocks(*, tls_policy: TLSPolicy) -> SourceResult:
-    """One whole-market call, every 注意股 (attention-stock) flag in today's TWSE dump — the
-    ingest layer's sole legitimate caller (never a per-symbol fan-out). Rows with a blank `Code`
-    (the upstream's own "no flags today" sentinel) are dropped, never mapped."""
-    rows, error = await _fetch_whole_market_rows(_ATTENTION_STOCKS, tls_policy=tls_policy)
-    if error is not None:
-        return SourceResult(
-            source_id=TwseOpenApiAdapter.source_id,
-            data_class=DataClass.PUBLIC,
-            timing_class=TimingClass.EVENT_DRIVEN,
-            fetched_at=datetime.now(UTC),
-            currentness_caveat=_ATTENTION_STOCKS_CAVEAT,
-            payload={"rows": []},
-            health=error,
-        )
-    mapped_rows = [mapped for row in rows if (mapped := _map_attention_stock_row(row)) is not None]
-    return SourceResult(
-        source_id=TwseOpenApiAdapter.source_id,
-        data_class=DataClass.PUBLIC,
-        timing_class=TimingClass.EVENT_DRIVEN,
-        fetched_at=datetime.now(UTC),
-        currentness_caveat=_ATTENTION_STOCKS_CAVEAT,
-        payload={"rows": mapped_rows},
-        health=SourceHealth(status=HealthStatus.OK, detail="ok"),
-    )
-
-
 async def fetch_whole_market_disposition_events(*, tls_policy: TLSPolicy) -> SourceResult:
-    """One whole-market call, every 處置 (disposition) announcement in today's TWSE dump — same
-    ingest-layer whole-market shape as `fetch_whole_market_attention_stocks` above."""
+    """One whole-market call, every 處置 (disposition) announcement in today's TWSE dump —
+    whole-market, ingest-only."""
     rows, error = await _fetch_whole_market_rows(_DISPOSITION_EVENTS, tls_policy=tls_policy)
     if error is not None:
         return SourceResult(
@@ -456,6 +401,5 @@ async def fetch_whole_market_disposition_events(*, tls_policy: TLSPolicy) -> Sou
 
 __all__ = [
     "TwseOpenApiAdapter",
-    "fetch_whole_market_attention_stocks",
     "fetch_whole_market_disposition_events",
 ]

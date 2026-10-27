@@ -365,12 +365,12 @@ class DispositionSecuritiesRow(BaseModel):
 
 class AttentionStockRow(BaseModel):
     """`attention_stocks` — one 注意股 (attention-stock) flag for one stock, whole-market,
-    sourced from TWSE's `announcement/notice` and TPEX's `tpex_trading_warning_information`
-    OpenAPI feeds (`sources/twse_openapi.py`/`sources/tpex_openapi.py`). `security_type`
-    distinguishes exchange (`"twse"`/`"tpex"`) — both model as `Market.TW`, which has no
-    exchange split (`schemas/enums.py`). Forward-only: no date parameter upstream, so this is
-    the current day's flags only — accumulating daily partitions over time is what backs the
-    處置王 board's rolling-window attention-flag count, not a queryable history on its own."""
+    from the exchanges' range reports (TWSE `announcement/notice`, TPEX `bulletin/attention`;
+    `sources/exchange_event_history`). `security_type` distinguishes exchange
+    (`"twse"`/`"tpex"`) — both model as `Market.TW`, which has no exchange split
+    (`schemas/enums.py`). One partition per trading day holds the flags announced that day and
+    on the trading day before it; the daily job and the history rebuild write the same shape, and
+    the 處置王 board's rolling-window attention-flag count reads the series."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 

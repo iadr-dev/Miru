@@ -12,7 +12,6 @@ from schemas.market import Symbol
 from schemas.source import HealthStatus
 from sources.twse_openapi import (
     TwseOpenApiAdapter,
-    fetch_whole_market_attention_stocks,
     fetch_whole_market_disposition_events,
 )
 
@@ -49,12 +48,6 @@ async def test_live_stock_day_all_emerging_board_degrades_gracefully() -> None:
     result = await adapter.fetch(Capability.PRICE_EOD, sym, tls_policy=TLSPolicy.STRICT)
 
     assert result.health.status in (HealthStatus.OK, HealthStatus.STALE)
-
-
-async def test_live_attention_stocks() -> None:
-    result = await fetch_whole_market_attention_stocks(tls_policy=TLSPolicy.STRICT)
-
-    assert result.health.status is HealthStatus.OK
 
 
 async def test_live_disposition_events() -> None:
