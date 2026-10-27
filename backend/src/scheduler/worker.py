@@ -46,6 +46,7 @@ from accounts.models import User
 from accounts.store import SqlAlchemyUserStore, UserNotFoundError
 from agent.loop import RichCard
 from analytics.strategy_watch.batch import STRATEGY_WATCHLIST_DATASET
+from analytics.watchlist_review import NOTHING_TO_REVIEW
 from config.settings import Settings
 from conversation.models import CaveatBlock, MessageBlockType, RichCardBlock, TextBlock, TurnRole
 from conversation.store import SqlAlchemyConversationStore, ThreadNotFoundError
@@ -100,7 +101,7 @@ from scheduler.templates import (
 from scheduler.triggers import UnresolvableTriggerError, market_timezone, next_run_after
 from scheduler.unsubscribe import unsubscribe_url
 from schemas.enums import Capability, Market
-from schemas.schedule_templates import MAX_TARGETS, WATCHLIST_INPUT
+from schemas.schedule_templates import MAX_TARGETS, WATCHLIST_INPUT, is_weekly_review
 from tools.base import Tool, dispatch_tool
 from tools.morning_brief_models import GetMorningBriefOutput, MorningBriefInput
 from usage.llm_usage import write_model_usage
@@ -258,6 +259,9 @@ class SchedulerWorker:
                 await session.commit()
                 self._emit(EventKind.SCHEDULE_SKIPPED, user_id=user.id, data={"job_id": job.id})
                 logger.info("schedule_job_skipped_byok_key", job_id=job.id)
+                return False
+
+            if await self._nothing_to_review(store, session, job, user, now):
                 return False
 
             if byok is None and not await self._ctx.quota_gate.allows(
@@ -1243,6 +1247,45 @@ class SchedulerWorker:
     def _emit(self, kind: EventKind, *, user_id: str, data: dict[str, object]) -> None:
         if self._ctx.event_bus is not None:
             self._ctx.event_bus.publish(kind, data={"user_id": user_id, **data})
+
+    async def _nothing_to_review(
+        self,
+        store: SqlAlchemySchedulerStore,
+        session: AsyncSession,
+        job: ScheduleJob,
+        user: User,
+        now: datetime,
+    ) -> bool:
+        """The weekly watchlist review of a user with no watchlist symbol at all: a calm one-line
+        notice, the cadence moves on, and the job is OK - an empty list is a normal state, not an
+        error. Checked before the quota gate and the model run, so it spends no chat."""
+        if not is_weekly_review(job.action.skill_ref, job.action.inputs):
+            return False
+        symbols = await store.brief_symbols(user_id=user.id)
+        if symbols.tw_stocks or symbols.us_stocks or symbols.etfs:
+            return False
+        await self._deliver(
+            store,
+            user=user,
+            source=NotificationSource.SCHEDULE,
+            source_id=job.id,
+            channels=job.delivery_channels,
+            title="自選股週回顧",
+            body=NOTHING_TO_REVIEW,
+            trigger_date=now.date(),
+            deep_link={"route": "notifications"},
+        )
+        await store.set_job_status(
+            job_id=job.id,
+            status=JobStatus.OK,
+            last_run=now,
+            next_run=self._next_run(job, now),
+            reason="nothing_to_review",
+        )
+        await session.commit()
+        self._emit(EventKind.SCHEDULE_SKIPPED, user_id=user.id, data={"job_id": job.id})
+        logger.info("schedule_job_nothing_to_review", job_id=job.id)
+        return True
 
     async def _resolved_inputs(
         self, store: SqlAlchemySchedulerStore, job: ScheduleJob

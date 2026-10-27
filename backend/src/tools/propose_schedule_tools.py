@@ -20,12 +20,17 @@ from schemas.enums import DataClass, UserMarket
 from schemas.schedule_templates import (
     MAX_TARGETS,
     SCHEDULE_TEMPLATES,
+    WEEKDAY_CRON,
+    WEEKDAY_NAMES_ZH,
     ScheduleTemplateId,
     build_inputs,
+    weekly_review_cron,
 )
 from tools.base import BaseTool, Tool, ToolContext, parse_args
 
 _TARGET_PATTERN: Final = re.compile(r"^[A-Z0-9][A-Z0-9.\-]{0,15}$")
+_TIME_PATTERN: Final = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
+Weekday = Literal["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
 
 class ProposeScheduleInput(BaseModel):
@@ -39,32 +44,56 @@ class ProposeScheduleInput(BaseModel):
             "stock. weekly_catalyst: a Monday announcements/insider scan for ONE Taiwan stock. "
             "The four FULL analysis reports (5-year tables, charts, seasonality, risk), each for "
             "ONE symbol and sent weekly: tw_stock_report (Taiwan stock), us_stock_report (US "
-            "stock), tw_etf_report (Taiwan ETF), us_etf_report (US ETF)."
+            "stock), tw_etf_report (Taiwan ETF), us_etf_report (US ETF). "
+            "weekly_watchlist_review: a weekly descriptive review of the user's OWN watchlist "
+            "(each symbol's week move, events due in the next 7 days, data freshness). It takes "
+            "no tickers; the user may name a weekday and a time."
         )
     )
     targets: list[str] = Field(
-        min_length=1,
+        default_factory=list,
         max_length=MAX_TARGETS,
         description=(
             "Ticker codes, e.g. ['2330'] or ['2330', '2317']. Only pre_open_brief takes more than "
-            "one; every other template takes exactly one."
+            "one; every other template takes exactly one. weekly_watchlist_review takes none."
         ),
+    )
+    weekday: Weekday | None = Field(
+        default=None,
+        description="weekly_watchlist_review only: the day it runs. Default sat.",
+    )
+    time: str | None = Field(
+        default=None,
+        description="weekly_watchlist_review only: 'HH:MM' Taipei time (24h). Default 09:00.",
     )
 
     @field_validator("targets")
     @classmethod
     def _normalise_targets(cls, value: list[str]) -> list[str]:
         cleaned = list(dict.fromkeys(item.strip().upper() for item in value if item.strip()))
-        if not cleaned:
-            raise ValueError("at least one ticker code is required")
         for item in cleaned:
             if not _TARGET_PATTERN.match(item):
                 raise ValueError(f"'{item}' is not a ticker code")
         return cleaned
 
+    @field_validator("time")
+    @classmethod
+    def _check_time(cls, value: str | None) -> str | None:
+        if value is not None and not _TIME_PATTERN.match(value.strip()):
+            raise ValueError("time must look like 09:00")
+        return value.strip() if value is not None else None
+
     @model_validator(mode="after")
     def _arity(self) -> Self:
         template = SCHEDULE_TEMPLATES[self.template]
+        if not template.takes_targets:
+            if self.targets:
+                raise ValueError(f"'{self.template.value}' takes no ticker codes")
+            return self
+        if self.weekday is not None or self.time is not None:
+            raise ValueError("weekday and time are only for weekly_watchlist_review")
+        if not self.targets:
+            raise ValueError("at least one ticker code is required")
         if not template.multiple and len(self.targets) != 1:
             raise ValueError(f"'{self.template.value}' takes exactly one ticker code")
         return self
@@ -96,7 +125,8 @@ class ProposeScheduleTool(BaseTool):
     name = "propose_schedule"
     description = (
         "Propose a recurring briefing (a scheduled analysis) when the user asks to be briefed "
-        "regularly, e.g. '每天開盤前幫我看 2330', 'send me a weekly ETF report'. This ONLY shows "
+        "regularly, e.g. '每天開盤前幫我看 2330', 'send me a weekly ETF report', "
+        "'每週六幫我回顧自選股' (weekly_watchlist_review, no ticker needed). This ONLY shows "
         "a confirmation card — it creates nothing; the schedule exists only after the user taps "
         "建立. Call it once per schedule, then tell the user briefly that the proposal is on "
         "screen; never say it was created or set. Use ask_user first if the stock or cadence is "
@@ -111,22 +141,39 @@ class ProposeScheduleTool(BaseTool):
         del ctx  # no I/O, no identity needed — the signed-in user creates the job from the card
         typed = parse_args(ProposeScheduleInput, args)
         template = SCHEDULE_TEMPLATES[typed.template]
+        spec, cadence = template.trigger_spec, template.cadence
+        if not template.takes_targets:
+            hour, minute = _hour_minute(typed.time)
+            spec = weekly_review_cron(typed.weekday, hour, minute)
+            cadence = _weekly_cadence(typed.weekday, hour, minute)
         return ProposeScheduleOutput(
             template=typed.template,
             targets=typed.targets,
             market=template.market,
-            cadence=template.cadence,
+            cadence=cadence,
             trigger={
                 "type": template.trigger_type,
-                "spec": template.trigger_spec,
+                "spec": spec,
                 "market": template.market.value,
             },
             action={
                 "skill_ref": template.skill_ref,
                 "inputs": build_inputs(template, typed.targets),
             },
-            summary=f"{template.cadence}：{'、'.join(typed.targets)}",
+            summary=f"{cadence}：{'、'.join(typed.targets) or '我的自選股'}",
         )
+
+
+def _hour_minute(value: str | None) -> tuple[int, int]:
+    if value is None:
+        return 9, 0
+    hour, _, minute = value.partition(":")
+    return int(hour), int(minute)
+
+
+def _weekly_cadence(weekday: str | None, hour: int, minute: int) -> str:
+    day = WEEKDAY_CRON[weekday] if weekday is not None else 6
+    return f"每週{WEEKDAY_NAMES_ZH[day]} {hour:02d}:{minute:02d}"
 
 
 def build_registration_table() -> list[tuple[Tool, bool]]:

@@ -1,8 +1,8 @@
 ---
 name: schedule-proposal
-version: 1.0.0
-description: 排程提案 — turn "brief me every day/week…" requests into a confirmable recurring-briefing card for Taiwan/US stocks or an ETF. Proposes only; the user confirms on the card.
-triggers: [每天, 每日, 每週, 每周, 每月, 每個交易日, 每天開盤前, 每天收盤後, 每天早上, 每週一, 每週五, 每日簡報, 定期, 固定時間, 排程, 週報, 日報, 天天, 幫我定時, daily briefing, weekly report, recurring, schedule a brief, every day, every morning, every week, 每天幫我, 每日幫我, 每週幫我, 每周幫我, 每月幫我, 每天固定, 每週固定, 定期幫我, 定期寄給我, 定期產生]
+version: 1.1.0
+description: 排程提案 — turn "brief me every day/week…" requests into a confirmable recurring-briefing card for Taiwan/US stocks or an ETF, or a weekly review of the user's own watchlist. Proposes only; the user confirms on the card.
+triggers: [每週自選股回顧, 每週回顧我的自選, 每週回顧自選, 每週幫我回顧, 每週六早上, 每週六, 每週日, 每週末, 週末幫我, 自選股週報, 定期回顧自選, 固定回顧自選, 每週看一下我的自選, weekly watchlist review, review my watchlist every, watchlist review every, every saturday, every sunday, every weekend, 每天, 每日, 每週, 每周, 每月, 每個交易日, 每天開盤前, 每天收盤後, 每天早上, 每週一, 每週五, 每日簡報, 定期, 固定時間, 排程, 週報, 日報, 天天, 幫我定時, daily briefing, weekly report, recurring, schedule a brief, every day, every morning, every week, 每天幫我, 每日幫我, 每週幫我, 每周幫我, 每月幫我, 每天固定, 每週固定, 定期幫我, 定期寄給我, 定期產生]
 design_pattern: tool_wrapper
 inputs:
   template:
@@ -10,7 +10,13 @@ inputs:
     required: true
   targets:
     type: array
-    required: true
+    required: false
+  weekday:
+    type: string
+    required: false
+  time:
+    type: string
+    required: false
 tools: [propose_schedule, ask_user]
 output_structure:
   - '一則提案卡：簡報種類、標的、執行時間'
@@ -39,8 +45,10 @@ outputs: markdown
    - 每週一的公告與內部人動態掃描 (one Taiwan stock) → `weekly_catalyst`
    - 完整分析報告（五年財務表、圖表、季節性、風險；每週一份，一次一檔）：台股個股 → `tw_stock_report`、美股個股 →
      `us_stock_report`、台股 ETF → `tw_etf_report`、美股 ETF → `us_etf_report`
-3. Call `propose_schedule` once with the `template` and the ticker `targets`. It shows a
-   confirmation card and creates nothing.
+   - 每週回顧「我自己的自選股」（一週漲跌、未來 7 天事件、資料日期；不需要股票代號）→ `weekly_watchlist_review`。
+     使用者說了星期或時間就帶 `weekday`（mon…sun）和 `time`（HH:MM，台北時間），沒說就用預設的每週六 09:00。
+3. Call `propose_schedule` once with the `template` and the ticker `targets` (leave `targets` empty
+   for `weekly_watchlist_review`). It shows a confirmation card and creates nothing.
 4. Reply with exactly ONE short sentence: the proposal is on screen and only exists once the user
    taps 建立. No bullet list, no "TL;DR" or summary line, and do not restate the card's template /
    stock / time — the card already shows them. Never say the schedule "has been set".

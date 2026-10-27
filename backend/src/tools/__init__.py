@@ -70,6 +70,7 @@ from tools import (
     tw_ranking_tools,
     us_macro_tools,
     us_market_index_strip_tools,
+    watchlist_review_tools,
     web_search_tools,
 )
 from tools.registry import ToolRegistry, build_default_registry
@@ -173,6 +174,14 @@ def build_default_tool_registry(  # noqa: PLR0913 — one keyword per optional t
     if account_reader is not None:
         for account_tool in account_tools.build_account_tools(account_reader, registry):
             registry.register(account_tool, immediate=False)
+        # The weekly review also reads the ingest-owned Parquet store and the calendar feed.
+        if parquet_store is not None:
+            registry.register(
+                watchlist_review_tools.build_weekly_review_tool(
+                    account_reader, parquet_store, router
+                ),
+                immediate=False,
+            )
     return registry
 
 

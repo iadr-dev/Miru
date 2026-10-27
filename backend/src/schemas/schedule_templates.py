@@ -29,6 +29,7 @@ class ScheduleTemplateId(StrEnum):
     US_STOCK_REPORT = "us_stock_report"
     TW_ETF_REPORT = "tw_etf_report"
     US_ETF_REPORT = "us_etf_report"
+    WEEKLY_WATCHLIST_REVIEW = "weekly_watchlist_review"
 
 
 @dataclass(frozen=True)
@@ -41,6 +42,9 @@ class ScheduleTemplate:
     # The skill input that carries the user's target(s), and whether it takes a list.
     target_input: str
     multiple: bool
+    # False for a briefing about the user's whole account rather than named stocks (the weekly
+    # watchlist review): it takes no ticker `targets`, only its fixed `extra_inputs`.
+    takes_targets: bool = True
     extra_inputs: Mapping[str, object] = MappingProxyType({})
     # Plain-language cadence, for the agent and the proposal card.
     cadence: str = ""
@@ -53,6 +57,48 @@ MAX_TARGETS: Final = 10
 # Only the multi-target TW briefing takes a list of stocks, so only it supports this.
 WATCHLIST_INPUT: Final = "watchlist_id"
 WATCHLIST_SKILL: Final = "daily-context-brief"
+
+# The weekly watchlist review is the personal counterpart of the market-wide morning brief: it runs
+# the existing `watchlist-review` skill in its weekly mode over ALL of the owner's watchlist groups,
+# so there are no tickers to name. The skill input below is how a run (and the worker's "nothing to
+# review" check) recognises it; the day and time are the user's, the default is Saturday 09:00
+# Taipei (after Friday's close in both Taipei and New York).
+WEEKLY_REVIEW_SKILL: Final = "watchlist-review"
+WEEKLY_REVIEW_INPUT: Final = "review"
+WEEKLY_REVIEW_MODE: Final = "weekly"
+WEEKLY_REVIEW_DEFAULT_CRON: Final = "0 9 * * 6"
+WEEKDAY_CRON: Final[dict[str, int]] = {
+    "sun": 0,
+    "mon": 1,
+    "tue": 2,
+    "wed": 3,
+    "thu": 4,
+    "fri": 5,
+    "sat": 6,
+}
+WEEKDAY_NAMES_ZH: Final[dict[int, str]] = {
+    0: "日",
+    1: "一",
+    2: "二",
+    3: "三",
+    4: "四",
+    5: "五",
+    6: "六",
+}
+
+
+def is_weekly_review(skill_ref: str, inputs: Mapping[str, object]) -> bool:
+    """Whether a schedule action is the weekly watchlist review."""
+    return skill_ref == WEEKLY_REVIEW_SKILL and inputs.get(WEEKLY_REVIEW_INPUT) == (
+        WEEKLY_REVIEW_MODE
+    )
+
+
+def weekly_review_cron(weekday: str | None, hour: int, minute: int) -> str:
+    """The cron spec for the review on `weekday` (mon..sun; None = Saturday) at `hour:minute`."""
+    day = WEEKDAY_CRON[weekday] if weekday is not None else 6
+    return f"{minute} {hour} * * {day}"
+
 
 SCHEDULE_TEMPLATES: Final[dict[ScheduleTemplateId, ScheduleTemplate]] = {
     ScheduleTemplateId.PRE_OPEN_BRIEF: ScheduleTemplate(
@@ -142,6 +188,18 @@ SCHEDULE_TEMPLATES: Final[dict[ScheduleTemplateId, ScheduleTemplate]] = {
         extra_inputs=MappingProxyType({"market": "US"}),
         cadence="每週六（美東上午 9:00，週五收盤後）",
     ),
+    ScheduleTemplateId.WEEKLY_WATCHLIST_REVIEW: ScheduleTemplate(
+        id=ScheduleTemplateId.WEEKLY_WATCHLIST_REVIEW,
+        skill_ref=WEEKLY_REVIEW_SKILL,
+        trigger_type="cron",
+        trigger_spec=WEEKLY_REVIEW_DEFAULT_CRON,
+        market=Market.TW,
+        target_input="",
+        multiple=False,
+        takes_targets=False,
+        extra_inputs=MappingProxyType({WEEKLY_REVIEW_INPUT: WEEKLY_REVIEW_MODE}),
+        cadence="每週六 09:00",
+    ),
 }
 
 
@@ -149,6 +207,8 @@ def build_inputs(template: ScheduleTemplate, targets: list[str]) -> dict[str, ob
     """The skill `inputs` for these targets: a list for a multi-target skill, the one id otherwise,
     plus any fixed inputs the skill needs."""
     inputs: dict[str, object] = dict(template.extra_inputs)
+    if not template.takes_targets:
+        return inputs
     inputs[template.target_input] = list(targets) if template.multiple else targets[0]
     return inputs
 
@@ -156,7 +216,15 @@ def build_inputs(template: ScheduleTemplate, targets: list[str]) -> dict[str, ob
 __all__ = [
     "MAX_TARGETS",
     "SCHEDULE_TEMPLATES",
+    "WEEKDAY_CRON",
+    "WEEKDAY_NAMES_ZH",
+    "WEEKLY_REVIEW_DEFAULT_CRON",
+    "WEEKLY_REVIEW_INPUT",
+    "WEEKLY_REVIEW_MODE",
+    "WEEKLY_REVIEW_SKILL",
     "ScheduleTemplate",
     "ScheduleTemplateId",
     "build_inputs",
+    "is_weekly_review",
+    "weekly_review_cron",
 ]
