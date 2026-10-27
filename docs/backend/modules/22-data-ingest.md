@@ -188,8 +188,14 @@ the adapter also decides which run dates it owns:
   no new version and sends no `data.updated` signal (nothing changed), so the backfill sweep over the
   many dates of a period dataset does not rewrite thousands of empty partitions on every run.
 - **A period that is not complete yet** (before the statutory filing deadline) is `STALE` without a
-  request: a partition with rows is never re-fetched, so serving a half-filed period would freeze it
-  half-filed. The next source is asked and the date stays a gap for the next gap-fill.
+  request, with the detail `period not yet due: filing deadline YYYY-MM-DD` (2026-09-30's quarter:
+  2026-11-29; October's revenue: 2026-11-10): a partition with rows is never re-fetched, so serving a
+  half-filed period would freeze it half-filed. The next source is asked, and when none serves it
+  (FinMind's free tier refuses) the day is journaled `SKIPPED` with that detail, not `FAILED`. Unlike
+  an exchange-confirmed closure (§1b) it leaves NO marker and no placeholder: the date stays a gap,
+  every `only_missing` backfill asks again, and the period is picked up the first run after the
+  deadline. (This was the one stray failure per statement dataset in the 2026-10-27 backfill: the
+  2026-09-30 quarter, 1 of ~743 runs.)
 - **Never half a market**, as §1b: every required page must answer.
 - **Provenance**: the journal detail names the source and the page counts, e.g.
   `served by filings_official: MOPS t21sc03 2026-06: listed 1089 + OTC 895 + emerging 339 rows`.
