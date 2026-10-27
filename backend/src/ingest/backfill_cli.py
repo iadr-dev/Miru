@@ -38,6 +38,12 @@ form genuinely accepts a past month (confirmed live this session: real per-fund 
 non-latest months, not just "now"), so it gets a real monthly backfill over `years` with a
 skip-if-already-ingested check, the same shape `_backfill_shareholding_distribution` uses for its
 own weekly cadence.
+
+`--event-history` is a mode of its own (like `--fill-missing-companies`): the attention-stock and
+disposition feeds cannot be pulled for a past day from their daily upstream, but the exchanges'
+history reports take a date range, so `run_event_history_backfill` writes the missing past daily
+snapshots from those (`ingest/event_history.py`, module 22 section 1f). It needs `--yes`, never runs
+in production, takes the same single-writer lease, and never replaces a stored snapshot.
 """
 
 from __future__ import annotations
@@ -57,6 +63,7 @@ from ingest.context import IngestContext
 from ingest.daemon import build_ingest_context_from_settings, close_ingest_context
 from ingest.data_updates import CoalescingDataUpdatePublisher
 from ingest.derived_catchup import catch_up_tw, catch_up_us
+from ingest.event_history import backfill_event_history
 from ingest.jobs import (
     DAILY_WHOLE_MARKET_JOBS,
     ETF_EXPENSE_RATIO_DATASET,
@@ -159,7 +166,18 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default=None,
         help="Partition date(s) for --fill-missing-companies (the stored partition dates).",
     )
+    parser.add_argument(
+        "--event-history",
+        action="store_true",
+        help=(
+            "Instead of a backfill, rebuild the MISSING past daily snapshots of attention_stocks "
+            "and disposition_events over --years from the exchanges' history reports (one request "
+            "pair per month and dataset). Never replaces a stored snapshot; safe to re-run."
+        ),
+    )
     args = parser.parse_args(argv)
+    if args.event_history and (args.fill_missing_companies is not None or args.market != "tw"):
+        parser.error("--event-history is a TW refresh on its own (--market tw, no other mode)")
     if (args.fill_missing_companies is None) != (args.dates is None):
         parser.error("--fill-missing-companies and --dates must be given together")
     if args.fill_missing_companies is not None and args.market != "tw":
@@ -547,13 +565,43 @@ async def run_fill_missing_companies(
     return tuple(runs)
 
 
+async def run_event_history_backfill(
+    settings: Settings, ctx: IngestContext, *, override: bool, years: int
+) -> tuple[JobRun, ...]:
+    """`--event-history`: write the missing past daily snapshots of the two 處置王-board feeds
+    (`ingest/event_history.py`) over `[target - years*250 trading days, target]`. Same gates as the
+    backfill: never in production, and only with the explicit `--yes` (or `INGEST_ON_STARTUP`)."""
+    _check_not_production(settings)
+    if not (override or settings.ingest_on_startup):
+        logger.warning("ingest_backfill_cli_refused", reason=_NEEDS_YES_REASON)
+        return ()
+    target = last_available_trading_day(ctx.calendar, now=datetime.now(UTC))
+    start = ctx.calendar.shift_business_days(target, -(years * 250))
+    logger.info(
+        "ingest_backfill_cli_started",
+        mode="event_history",
+        start=start.isoformat(),
+        target=target.isoformat(),
+    )
+    runs = await backfill_event_history(ctx, start=start, end=target, only_missing=True)
+    written = sum(r.rows_written for r in runs)
+    failed = sum(r.status is RunStatus.FAILED for r in runs)
+    sys.stdout.write(
+        f"event history {start.isoformat()}..{target.isoformat()}: {len(runs)} runs, "
+        f"{written} rows written, {failed} failed\n"
+    )
+    return runs
+
+
 async def _run_backfill(
     args: argparse.Namespace, settings: Settings, ctx: IngestContext, years: int
 ) -> int:
     if args.recheck_plan:
         forgotten = ctx.store.clear_plan_denials()
         logger.info("ingest_backfill_cli_plan_denials_cleared", cleared=forgotten)
-    if args.fill_missing_companies is not None:
+    if args.event_history:
+        runs = await run_event_history_backfill(settings, ctx, override=args.yes, years=years)
+    elif args.fill_missing_companies is not None:
         runs = await run_fill_missing_companies(
             settings,
             ctx,
@@ -607,6 +655,7 @@ __all__ = [
     "parse_args",
     "run_backfill_cli",
     "run_derived_compute_catchup",
+    "run_event_history_backfill",
     "run_fill_missing_companies",
     "run_us_backfill_cli",
 ]

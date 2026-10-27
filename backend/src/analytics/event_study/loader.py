@@ -1,8 +1,10 @@
 """Read the stored event feeds and the price window for the event study (read-only).
 
-The attention-stock, disposition and material-announcement feeds are forward-only daily
-snapshots: their history starts the day the daily job first ran, whatever the price history
-holds. `EventCoverage` reports exactly which snapshots were read so the output can say so.
+The attention-stock, disposition and material-announcement feeds are daily snapshots. Their live
+history starts the day the daily job first ran; for attention and disposition the earlier days
+are rebuilt from the exchanges' range reports (`ingest/event_history.py`) into the same
+partitions, so this loader reads both alike. `EventCoverage` reports exactly which snapshots
+were read so the output can say how far back they go.
 """
 
 from __future__ import annotations
@@ -73,10 +75,7 @@ def snapshot_dates(store: ParquetStore, dataset: str) -> list[date_]:
 def _snapshot_rows(
     store: ParquetStore, dataset: str, days: Sequence[date_]
 ) -> list[dict[str, object]]:
-    rows: list[dict[str, object]] = []
-    for day in days:
-        rows.extend(store.read_partition(dataset, _MARKET, day))
-    return rows
+    return store.read_range_batched(dataset, _MARKET, days)
 
 
 def load_snapshot_events(

@@ -644,6 +644,28 @@ class ParquetStore:
             return rows
         return self._read_range_filtered(dataset, market, run_dates, symbols=symbols)
 
+    def read_range_batched(
+        self, dataset: str, market: str, run_dates: Sequence[date_]
+    ) -> list[dict[str, object]]:
+        """`read_range` for a long window of small partitions: ONE DuckDB query over every
+        partition's current version instead of a connection per date (ten seconds for the ~800
+        daily snapshots of a three-year event history, against a fraction of that). Rows come back
+        oldest partition first, a gap is omitted, and each row carries the same path columns
+        `read_partition` gives it."""
+        globs = self._existing_globs(dataset, market, run_dates)
+        if not globs:
+            return []
+        con = duckdb.connect()
+        try:
+            relation = con.execute(
+                "SELECT * FROM read_parquet(?, union_by_name => true) ORDER BY date",
+                [globs],
+            )
+            columns = [d[0] for d in relation.description or []]
+            return [dict(zip(columns, row, strict=True)) for row in relation.fetchall()]
+        finally:
+            con.close()
+
     def _read_range_filtered(
         self,
         dataset: str,

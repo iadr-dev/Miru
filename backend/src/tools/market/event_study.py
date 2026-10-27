@@ -459,6 +459,17 @@ def _event_rows(
     return tuple(rows)
 
 
+# A feed that starts within this many days of the price history covers it for practical purposes.
+_FEED_START_TOLERANCE_DAYS = 10
+
+
+def _feed_starts_late(window: EventDataWindow) -> bool:
+    first, prices = window.event_feed_first_snapshot, window.price_window_start
+    if first is None or prices is None:
+        return True
+    return (first - prices).days > _FEED_START_TOLERANCE_DAYS
+
+
 def _limitations(
     kind: EventType,
     horizons: tuple[HorizonStats, ...],
@@ -501,20 +512,20 @@ def _limitations(
                 text_zh="減資前的價格基準與減資後不同，事前漲跌不可比較，因此不列出。",
             )
         )
-    else:
+    elif _feed_starts_late(window):
         first = window.event_feed_first_snapshot
         found.append(
             EventLimitation(
                 code="short_event_history",
                 text=(
-                    "The event feed is forward-only: it holds daily snapshots only from "
-                    f"{first} ({window.event_feed_snapshots} of them), whatever the price "
-                    "history covers. Events before that date are not in this sample."
+                    "The event feed holds daily snapshots only from "
+                    f"{first} ({window.event_feed_snapshots} of them), later than the price "
+                    "history starts. Events before that date are not in this sample."
                 ),
                 text_zh=(
-                    f"事件資料只能向前累積，僅有 {first} 起的每日快照"
-                    f"（共 {window.event_feed_snapshots} 份），"
-                    "與價格資料涵蓋多久無關；更早的事件不在樣本內。"
+                    f"事件資料僅有 {first} 起的每日快照"
+                    f"（共 {window.event_feed_snapshots} 份），比價格資料的起點晚；"
+                    "更早的事件不在樣本內。"
                 ),
             )
         )

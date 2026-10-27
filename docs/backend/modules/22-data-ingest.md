@@ -387,6 +387,77 @@ special handling every date of such a dataset was refused and journaled FAILED.
   `failed_runs`. A genuine failure (bad key, rate limit, outage) still FAILs its dates and makes
   the exit code `1`, so `dev-backend.sh --backfill` lists the market as failed.
 
+## 1f. Event history — past snapshots of the attention and disposition feeds
+
+`attention_stocks` and `disposition_events` (the 處置王 board, the screener gates, the watchlist
+exclusions, the event study) are daily snapshots of the exchanges' CURRENT lists. The daily upstream
+takes no date, so the stored series starts the day `job_attention_stocks` / `job_disposition_events`
+first ran. The exchanges also publish both lists with history by date range, and
+`ingest/event_history.py` uses those to write the snapshots of the past trading days that have none.
+
+**Design: reconstruct the daily snapshots (not a second dataset).** For each past trading day D the
+partition the daily job would have written is rebuilt, in the same dataset, with the same partition
+key (`dataset/market=TW/date=D`) and the same row shape (`AttentionStockRow` / `DispositionEventRow`,
+`security_type` `twse` / `tpex`). Every reader therefore sees a longer series with no change of its
+own, and the daily jobs are unchanged. A separate history dataset would have needed every reader
+taught about it; reconstruction was chosen because it reproduces the real snapshots faithfully
+(below).
+
+- **Sources** (`sources/exchange_event_history/`, the shared `ThrottledJsonClient`: at least 2.5 s
+  between TWSE requests, 2.0 s between TPEx requests, bounded retry, `Accept: application/json`):
+  TWSE `rwd/zh/announcement/punish` (disposition) and `rwd/zh/announcement/notice` (attention) with
+  `startDate`/`endDate` (`YYYYMMDD`); TPEx `www/zh-tw/bulletin/disposal` and `bulletin/attention`
+  with `startDate`/`endDate` (`YYYY/MM/DD`). Dates are Republic-of-China (`113/01/11`, `113.01.18`,
+  periods joined by `~` or U+FF5E). The disposition reports return every period that OVERLAPS the
+  range, so a month query repeats a period that spans two months (deduplicated on exchange, symbol
+  and `period_start`).
+- **What a snapshot of day D holds.** `disposition_events`: every disposition announced on or before
+  D whose period has not ended before D (an extension is its own later row, listed while it
+  overlaps). `attention_stocks`: the flags announced on D and on the previous trading day (the live
+  list holds the last two announcement days). Warrants are kept in the rows, as in the live feed;
+  the readers that exclude them (the event study) still do.
+- **Never half a market.** Both exchanges are asked for the same range; an error from either (a
+  Cloudflare / block page, a bad status, a layout change, a report shorter than its own
+  `總累計次數`, an answer for another range) fails the whole month. An explicit empty answer
+  (`NoDataPublishedError`: `data: []`, or only TPEx's `本日無處置資料` placeholder rows) is an empty
+  side, not an error; a challenge page is retried by the client like any transient failure and then
+  fails the month.
+- **Only missing days.** A day that already has a partition (a real forward snapshot, or a
+  reconstructed one) is never touched, so a real snapshot is never replaced and a second run makes no
+  request. A day inside the last `_SETTLE_DAYS` (10) days is written only as far as the reports reach
+  on BOTH exchanges (the reports trail the day): the rest is skipped with a journal line and is
+  written by a later run, so an unposted day never becomes a permanent empty list.
+- **Request budget.** One TWSE + one TPEx request per dataset and calendar month: about 160 requests
+  for three years (2.5 s apart per host, the two hosts in parallel, about four minutes).
+- **Journal.** Every written day is a `SUCCESS` `JobRun` (detail `reconstructed from the exchange
+  history reports`), a month that could not be read is one `FAILED` run naming the month and the
+  reason, skipped unposted days are one `SKIPPED` run.
+
+**Fidelity** (rebuilt 2026-09-04..2026-10-27 into a throwaway store and diffed against the real
+forward snapshots stored for those days: 25 attention days and 28 disposition days that both exist).
+Every real row is rebuilt: 959 / 959 attention rows and 733 / 733 disposition rows (recall 100%).
+On the shared rows `company_name`, `announced_date`, `period_end`, `measure` and `detail` are
+identical (733 / 733), attention `company_name`, `reason`, `close` and `pe` too (959 / 959); the
+disposition `reason` is identical for TWSE (216 / 216) and worded shorter by TPEx's report than by
+its live feed (392 / 517; no reader uses it). The rebuilt series has MORE rows than the real one
+(precision 87% disposition) because the live jobs missed rows: the whole TPEx side on the three
+days its live request failed (2026-09-07, -08, -11), TWSE dispositions announced the same evening
+(the job ran before TWSE posted them), and, for attention, one announcement day on a few days the
+live list was behind. The stored attention snapshots hold NO TWSE rows at all (the OpenAPI
+`announcement/notice` dump answers its empty placeholder), so the rebuilt series is the first to hold
+the listed market's flags (about 15 to 25 a day).
+
+**How to run it.** `python -m ingest.backfill_cli --yes --event-history [--years N]` (dev only: the
+CLI refuses in production and without `--yes`, takes the single-writer lease like every backfill, and
+the daemon must not be running). `--years` defaults to `dev_backfill_years` (3). Re-running is
+idempotent; after a `FAILED` month, run it again.
+
+**Limits.** The reports are the exchanges' own history, so what they omit is omitted here (they keep
+roughly a decade). A day inside the settle window waits for the reports. The TWSE attention gap above
+is in the LIVE job (`fetch_whole_market_attention_stocks`), not in this module: from the first
+forward day on, attention snapshots still lack listed flags until that job is fixed, which makes
+attention counts before and after the rebuilt window not strictly comparable.
+
 ## 2. Cadence — what is scheduled today
 
 The scheduler is `ingest/daemon.py`'s `IngestDaemon`: a **leader-gated, wall-clock poll loop**. One
@@ -682,6 +753,9 @@ process shapes.
 - **`--fill-missing-companies DATASET --dates YYYY-MM-DD ...`** replaces the backfill with the
   additive refresh of a partial period-keyed partition (§1c): it adds the companies the official
   source has and the stored partition lacks, and prints the company count before and after.
+- **`--event-history`** replaces the backfill with the rebuild of the missing past daily snapshots of
+  `attention_stocks` / `disposition_events` from the exchanges' history reports (§1f), over `--years`.
+  Same gates as the backfill (never in production, `--yes`, the single-writer lease).
 - **Exit code** is `1` if any `JobRun` has `status=RunStatus.FAILED`, else `0`.
 
 **FinMind quota.** Ingest shares the FinMind token with the API, and every call it makes is
@@ -907,4 +981,6 @@ DuckDB/Parquet is correct; ClickHouse would be premature ops + cost.
 stocks, disposition events) the jobs with their own fetch logic. Modules import only downward
 (`specs` <- `whole_market` <- the rest). A test that stubs a fetcher patches it on the module that
 calls it (for example `ingest.jobs.risk_lists`), not on the package.
+
+`ingest/event_history.py` (not a job of the package: an operator backfill, §1f) rebuilds past attention / disposition snapshots from `sources/exchange_event_history/`.
 
