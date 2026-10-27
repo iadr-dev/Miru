@@ -89,7 +89,7 @@ class IndexContributionRow(BaseModel):
     rank: int = 0  # 1-based position within its own side (positive/negative) — real when locked
     symbol: str | None
     stock_name: str | None
-    weight_per: float | None  # 市值比重 (%) on trade_date: market-value share, not free-float adjusted
+    weight_per: float | None  # 市值比重 (%): market-value share, not free-float adjusted
     pct_change: float | None  # (close - prior_close) / prior_close, a fraction not a percent
     contribution_estimate: float | None  # weight_per * pct_change — see contribution_caveat
     locked: bool = False
