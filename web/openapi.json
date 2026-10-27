@@ -5760,6 +5760,389 @@
     "title": "EtfWeightRankRow",
     "type": "object"
    },
+   "EventChartRow": {
+    "additionalProperties": false,
+    "description": "One bar of the chart: a statistic of the excess return at one horizon, labelled with n.",
+    "properties": {
+     "excess_return_pct": {
+      "title": "Excess Return Pct",
+      "type": "number"
+     },
+     "horizon_days": {
+      "title": "Horizon Days",
+      "type": "integer"
+     },
+     "label": {
+      "title": "Label",
+      "type": "string"
+     },
+     "n_events": {
+      "title": "N Events",
+      "type": "integer"
+     },
+     "statistic": {
+      "enum": [
+       "mean",
+       "median"
+      ],
+      "title": "Statistic",
+      "type": "string"
+     }
+    },
+    "required": [
+     "label",
+     "horizon_days",
+     "statistic",
+     "excess_return_pct",
+     "n_events"
+    ],
+    "title": "EventChartRow",
+    "type": "object"
+   },
+   "EventCounts": {
+    "additionalProperties": false,
+    "description": "How many candidate events there were and what happened to each on the way.",
+    "properties": {
+     "candidates": {
+      "default": 0,
+      "title": "Candidates",
+      "type": "integer"
+     },
+     "excluded_extended": {
+      "default": 0,
+      "title": "Excluded Extended",
+      "type": "integer"
+     },
+     "excluded_non_equity": {
+      "default": 0,
+      "title": "Excluded Non Equity",
+      "type": "integer"
+     },
+     "excluded_outside_filter": {
+      "default": 0,
+      "title": "Excluded Outside Filter",
+      "type": "integer"
+     },
+     "excluded_unparsed": {
+      "default": 0,
+      "title": "Excluded Unparsed",
+      "type": "integer"
+     },
+     "low_volume": {
+      "default": 0,
+      "title": "Low Volume",
+      "type": "integer"
+     },
+     "measured": {
+      "default": 0,
+      "title": "Measured",
+      "type": "integer"
+     },
+     "missing_price": {
+      "default": 0,
+      "title": "Missing Price",
+      "type": "integer"
+     },
+     "not_yet_effective": {
+      "default": 0,
+      "title": "Not Yet Effective",
+      "type": "integer"
+     },
+     "outside_price_window": {
+      "default": 0,
+      "title": "Outside Price Window",
+      "type": "integer"
+     },
+     "rows_seen": {
+      "default": 0,
+      "title": "Rows Seen",
+      "type": "integer"
+     }
+    },
+    "title": "EventCounts",
+    "type": "object"
+   },
+   "EventDataWindow": {
+    "additionalProperties": false,
+    "description": "What the numbers are built from. `latest_price_date` bounds every horizon; the snapshot\nfields show how far back the event feed itself goes (it is forward-only).",
+    "properties": {
+     "event_feed_first_snapshot": {
+      "anyOf": [
+       {
+        "format": "date",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Event Feed First Snapshot"
+     },
+     "event_feed_last_snapshot": {
+      "anyOf": [
+       {
+        "format": "date",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Event Feed Last Snapshot"
+     },
+     "event_feed_snapshots": {
+      "default": 0,
+      "title": "Event Feed Snapshots",
+      "type": "integer"
+     },
+     "first_event_date": {
+      "anyOf": [
+       {
+        "format": "date",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "First Event Date"
+     },
+     "last_event_date": {
+      "anyOf": [
+       {
+        "format": "date",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Event Date"
+     },
+     "latest_price_date": {
+      "anyOf": [
+       {
+        "format": "date",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Latest Price Date"
+     },
+     "price_window_start": {
+      "anyOf": [
+       {
+        "format": "date",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Price Window Start"
+     }
+    },
+    "title": "EventDataWindow",
+    "type": "object"
+   },
+   "EventDefinition": {
+    "additionalProperties": false,
+    "properties": {
+     "en": {
+      "title": "En",
+      "type": "string"
+     },
+     "event_type": {
+      "$ref": "#/components/schemas/EventType"
+     },
+     "zh": {
+      "title": "Zh",
+      "type": "string"
+     }
+    },
+    "required": [
+     "event_type",
+     "en",
+     "zh"
+    ],
+    "title": "EventDefinition",
+    "type": "object"
+   },
+   "EventHorizonReturn": {
+    "additionalProperties": false,
+    "properties": {
+     "excess_return_pct": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Excess Return Pct"
+     },
+     "horizon_days": {
+      "title": "Horizon Days",
+      "type": "integer"
+     },
+     "not_measured": {
+      "anyOf": [
+       {
+        "enum": [
+         "censored",
+         "missing_price"
+        ],
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Not Measured"
+     },
+     "return_pct": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Return Pct"
+     }
+    },
+    "required": [
+     "horizon_days"
+    ],
+    "title": "EventHorizonReturn",
+    "type": "object"
+   },
+   "EventLimitation": {
+    "additionalProperties": false,
+    "properties": {
+     "code": {
+      "enum": [
+       "short_price_history",
+       "short_event_history",
+       "per_symbol_only",
+       "insufficient_sample",
+       "event_clustering",
+       "survivorship",
+       "unadjusted_prices",
+       "price_basis_break",
+       "no_costs",
+       "not_predictive"
+      ],
+      "title": "Code",
+      "type": "string"
+     },
+     "text": {
+      "title": "Text",
+      "type": "string"
+     },
+     "text_zh": {
+      "title": "Text Zh",
+      "type": "string"
+     }
+    },
+    "required": [
+     "code",
+     "text",
+     "text_zh"
+    ],
+    "title": "EventLimitation",
+    "type": "object"
+   },
+   "EventRow": {
+    "additionalProperties": false,
+    "description": "One past event with its own outcome. Facts about that event, not a pattern to act on.",
+    "properties": {
+     "day0_date": {
+      "anyOf": [
+       {
+        "format": "date",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Day0 Date"
+     },
+     "event_date": {
+      "format": "date",
+      "title": "Event Date",
+      "type": "string"
+     },
+     "name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Name"
+     },
+     "pre_event_return_pct": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Pre Event Return Pct"
+     },
+     "returns": {
+      "items": {
+       "$ref": "#/components/schemas/EventHorizonReturn"
+      },
+      "title": "Returns",
+      "type": "array"
+     },
+     "status": {
+      "enum": [
+       "measured",
+       "not_yet_effective",
+       "outside_price_window",
+       "missing_price",
+       "low_volume"
+      ],
+      "title": "Status",
+      "type": "string"
+     },
+     "symbol": {
+      "title": "Symbol",
+      "type": "string"
+     }
+    },
+    "required": [
+     "symbol",
+     "event_date",
+     "status"
+    ],
+    "title": "EventRow",
+    "type": "object"
+   },
+   "EventType": {
+    "enum": [
+     "disposition_start",
+     "disposition_end",
+     "attention_listed",
+     "capital_reduction_resume",
+     "buyback_start",
+     "buyback_end"
+    ],
+    "title": "EventType",
+    "type": "string"
+   },
    "ExchangeRateRow": {
     "additionalProperties": false,
     "description": "`exchange_rate` — one day's TWD-vs-foreign-currency reference rate row. Free tier;\n`symbol` is the foreign-currency code (e.g. USD/EUR/JPY), TWD is implicit as the other leg.\nModeled `Market.TW`-scoped: this is a TWD-context dataset (the counter-currency is always\nTWD), not a generic world-FX table.",
@@ -8851,6 +9234,145 @@
      "market"
     ],
     "title": "GetEtfsHoldingStockOutput",
+    "type": "object"
+   },
+   "GetEventStudyOutput": {
+    "additionalProperties": false,
+    "properties": {
+     "by_year": {
+      "items": {
+       "$ref": "#/components/schemas/YearStats"
+      },
+      "title": "By Year",
+      "type": "array"
+     },
+     "chart_hint": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/ChartHint"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "chart_rows": {
+      "items": {
+       "$ref": "#/components/schemas/EventChartRow"
+      },
+      "title": "Chart Rows",
+      "type": "array"
+     },
+     "counts": {
+      "$ref": "#/components/schemas/EventCounts"
+     },
+     "currentness_caveat": {
+      "minLength": 1,
+      "title": "Currentness Caveat",
+      "type": "string"
+     },
+     "data_available": {
+      "title": "Data Available",
+      "type": "boolean"
+     },
+     "data_window": {
+      "$ref": "#/components/schemas/EventDataWindow"
+     },
+     "event_definition": {
+      "$ref": "#/components/schemas/EventDefinition"
+     },
+     "event_type": {
+      "$ref": "#/components/schemas/EventType"
+     },
+     "events": {
+      "items": {
+       "$ref": "#/components/schemas/EventRow"
+      },
+      "title": "Events",
+      "type": "array"
+     },
+     "health_status": {
+      "$ref": "#/components/schemas/HealthStatus"
+     },
+     "horizons": {
+      "items": {
+       "$ref": "#/components/schemas/HorizonStats"
+      },
+      "title": "Horizons",
+      "type": "array"
+     },
+     "limitations": {
+      "items": {
+       "$ref": "#/components/schemas/EventLimitation"
+      },
+      "title": "Limitations",
+      "type": "array"
+     },
+     "market": {
+      "title": "Market",
+      "type": "string"
+     },
+     "min_sample_size": {
+      "default": 30,
+      "title": "Min Sample Size",
+      "type": "integer"
+     },
+     "pre_event": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/HorizonStats"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "pre_event_days": {
+      "default": 5,
+      "title": "Pre Event Days",
+      "type": "integer"
+     },
+     "proxy": {
+      "$ref": "#/components/schemas/MarketProxy"
+     },
+     "source_id": {
+      "default": "ingest-store",
+      "title": "Source Id",
+      "type": "string"
+     },
+     "symbol": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Symbol"
+     },
+     "unavailable_reason": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Unavailable Reason"
+     }
+    },
+    "required": [
+     "market",
+     "event_type",
+     "data_available",
+     "currentness_caveat",
+     "health_status",
+     "event_definition",
+     "proxy"
+    ],
+    "title": "GetEventStudyOutput",
     "type": "object"
    },
    "GetFactorCatalogOutput": {
@@ -12868,6 +13390,153 @@
     "title": "HoldingStatus",
     "type": "string"
    },
+   "HorizonStats": {
+    "additionalProperties": false,
+    "description": "One forward window. Statistics are percentages; they are None exactly when `status` is\n`insufficient_sample` (fewer than `min_sample_size` events), where only the counts are given.",
+    "properties": {
+     "horizon_days": {
+      "title": "Horizon Days",
+      "type": "integer"
+     },
+     "max_events_on_one_day": {
+      "title": "Max Events On One Day",
+      "type": "integer"
+     },
+     "mean_excess_pct": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Mean Excess Pct"
+     },
+     "mean_pct": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Mean Pct"
+     },
+     "median_excess_pct": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Median Excess Pct"
+     },
+     "median_pct": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Median Pct"
+     },
+     "n_censored": {
+      "title": "N Censored",
+      "type": "integer"
+     },
+     "n_event_days": {
+      "title": "N Event Days",
+      "type": "integer"
+     },
+     "n_events": {
+      "title": "N Events",
+      "type": "integer"
+     },
+     "n_missing_price": {
+      "title": "N Missing Price",
+      "type": "integer"
+     },
+     "n_symbols": {
+      "title": "N Symbols",
+      "type": "integer"
+     },
+     "n_with_proxy": {
+      "default": 0,
+      "title": "N With Proxy",
+      "type": "integer"
+     },
+     "p25_pct": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "P25 Pct"
+     },
+     "p75_pct": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "P75 Pct"
+     },
+     "share_positive_pct": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Share Positive Pct"
+     },
+     "status": {
+      "enum": [
+       "ok",
+       "insufficient_sample"
+      ],
+      "title": "Status",
+      "type": "string"
+     },
+     "stdev_pct": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Stdev Pct"
+     }
+    },
+    "required": [
+     "horizon_days",
+     "status",
+     "n_events",
+     "n_symbols",
+     "n_event_days",
+     "max_events_on_one_day",
+     "n_censored",
+     "n_missing_price"
+    ],
+    "title": "HorizonStats",
+    "type": "object"
+   },
    "IndexContributionRow": {
     "additionalProperties": false,
     "description": "`locked=True` rows (governance.md §4 top-N-preview exception) have every field but `rank`\nnulled server-side.",
@@ -14908,6 +15577,30 @@
      "as_of"
     ],
     "title": "MarketIndexStripItemRow",
+    "type": "object"
+   },
+   "MarketProxy": {
+    "additionalProperties": false,
+    "properties": {
+     "en": {
+      "title": "En",
+      "type": "string"
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "zh": {
+      "title": "Zh",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "en",
+     "zh"
+    ],
+    "title": "MarketProxy",
     "type": "object"
    },
    "MarketRankingRow": {
@@ -23883,6 +24576,83 @@
     "title": "WebSearchSourcesBlock",
     "type": "object"
    },
+   "YearStats": {
+    "additionalProperties": false,
+    "properties": {
+     "horizon_days": {
+      "title": "Horizon Days",
+      "type": "integer"
+     },
+     "mean_excess_pct": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Mean Excess Pct"
+     },
+     "mean_pct": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Mean Pct"
+     },
+     "median_excess_pct": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Median Excess Pct"
+     },
+     "median_pct": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Median Pct"
+     },
+     "n_events": {
+      "title": "N Events",
+      "type": "integer"
+     },
+     "status": {
+      "enum": [
+       "ok",
+       "insufficient_sample"
+      ],
+      "title": "Status",
+      "type": "string"
+     },
+     "year": {
+      "title": "Year",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "horizon_days",
+     "year",
+     "status",
+     "n_events"
+    ],
+    "title": "YearStats",
+    "type": "object"
+   },
    "YieldCurveSpread": {
     "additionalProperties": false,
     "description": "Whether a Treasury spread (long yield minus short yield) is below zero (\"inverted\").",
@@ -27880,6 +28650,169 @@
      }
     },
     "summary": "Etf Money Flow",
+    "tags": [
+     "market-data"
+    ]
+   }
+  },
+  "/api/v1/market/event-study": {
+   "get": {
+    "description": "Historical statistics of what stocks did over the next trading days after a dated event\n(disposition start / release, attention listing, capital-reduction restart, buy-back start /\nend) - descriptive only, with sample sizes and limits, backed by `get_event_study`.",
+    "operationId": "event_study_api_v1_market_event_study_get",
+    "parameters": [
+     {
+      "description": "The dated event to study.",
+      "in": "query",
+      "name": "event_type",
+      "required": true,
+      "schema": {
+       "$ref": "#/components/schemas/EventType",
+       "description": "The dated event to study."
+      }
+     },
+     {
+      "in": "query",
+      "name": "symbol",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "maxLength": 12,
+         "minLength": 1,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Symbol"
+      }
+     },
+     {
+      "in": "query",
+      "name": "market",
+      "required": false,
+      "schema": {
+       "$ref": "#/components/schemas/Market",
+       "default": "TW"
+      }
+     },
+     {
+      "description": "Keep events on or after this day.",
+      "in": "query",
+      "name": "start_date",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "format": "date",
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "Keep events on or after this day.",
+       "title": "Start Date"
+      }
+     },
+     {
+      "description": "Keep events on or before this day.",
+      "in": "query",
+      "name": "end_date",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "format": "date",
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "Keep events on or before this day.",
+       "title": "End Date"
+      }
+     },
+     {
+      "description": "Forward windows in trading days.",
+      "in": "query",
+      "name": "horizons",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "items": {
+          "type": "integer"
+         },
+         "type": "array"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "Forward windows in trading days.",
+       "title": "Horizons"
+      }
+     },
+     {
+      "description": "Minimum day-0 volume in shares.",
+      "in": "query",
+      "name": "min_volume",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "minimum": 1,
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "Minimum day-0 volume in shares.",
+       "title": "Min Volume"
+      }
+     },
+     {
+      "description": "How many recent events to list.",
+      "in": "query",
+      "name": "max_events",
+      "required": false,
+      "schema": {
+       "default": 20,
+       "description": "How many recent events to list.",
+       "maximum": 50,
+       "minimum": 1,
+       "title": "Max Events",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/GetEventStudyOutput"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Event Study",
     "tags": [
      "market-data"
     ]

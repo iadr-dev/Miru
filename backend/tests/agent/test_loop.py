@@ -43,6 +43,7 @@ CARD_OPTED_TOOLS: dict[str, str] = {
     "get_stock_heatmap": "stock_heatmap",
     "get_sector_rotation": "sector_rotation",
     "get_sector_rotation_rrg": "sector_rotation_rrg",
+    "get_event_study": "event_study",
     "get_company_profile": "company_profile",
     "get_dividend_schedule": "dividend_schedule",
     "get_institutional_flow": "institutional_flow",

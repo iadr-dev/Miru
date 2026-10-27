@@ -1442,6 +1442,28 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/market/event-study": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Event Study
+     * @description Historical statistics of what stocks did over the next trading days after a dated event
+     *     (disposition start / release, attention listing, capital-reduction restart, buy-back start /
+     *     end) - descriptive only, with sample sizes and limits, backed by `get_event_study`.
+     */
+    get: operations["event_study_api_v1_market_event_study_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/market/futures-snapshot": {
     parameters: {
       query?: never;
@@ -6865,6 +6887,193 @@ export interface components {
       weight_pct_delta?: number | null;
     };
     /**
+     * EventChartRow
+     * @description One bar of the chart: a statistic of the excess return at one horizon, labelled with n.
+     */
+    EventChartRow: {
+      /** Excess Return Pct */
+      excess_return_pct: number;
+      /** Horizon Days */
+      horizon_days: number;
+      /** Label */
+      label: string;
+      /** N Events */
+      n_events: number;
+      /**
+       * Statistic
+       * @enum {string}
+       */
+      statistic: "mean" | "median";
+    };
+    /**
+     * EventCounts
+     * @description How many candidate events there were and what happened to each on the way.
+     */
+    EventCounts: {
+      /**
+       * Candidates
+       * @default 0
+       */
+      candidates: number;
+      /**
+       * Excluded Extended
+       * @default 0
+       */
+      excluded_extended: number;
+      /**
+       * Excluded Non Equity
+       * @default 0
+       */
+      excluded_non_equity: number;
+      /**
+       * Excluded Outside Filter
+       * @default 0
+       */
+      excluded_outside_filter: number;
+      /**
+       * Excluded Unparsed
+       * @default 0
+       */
+      excluded_unparsed: number;
+      /**
+       * Low Volume
+       * @default 0
+       */
+      low_volume: number;
+      /**
+       * Measured
+       * @default 0
+       */
+      measured: number;
+      /**
+       * Missing Price
+       * @default 0
+       */
+      missing_price: number;
+      /**
+       * Not Yet Effective
+       * @default 0
+       */
+      not_yet_effective: number;
+      /**
+       * Outside Price Window
+       * @default 0
+       */
+      outside_price_window: number;
+      /**
+       * Rows Seen
+       * @default 0
+       */
+      rows_seen: number;
+    };
+    /**
+     * EventDataWindow
+     * @description What the numbers are built from. `latest_price_date` bounds every horizon; the snapshot
+     *     fields show how far back the event feed itself goes (it is forward-only).
+     */
+    EventDataWindow: {
+      /** Event Feed First Snapshot */
+      event_feed_first_snapshot?: string | null;
+      /** Event Feed Last Snapshot */
+      event_feed_last_snapshot?: string | null;
+      /**
+       * Event Feed Snapshots
+       * @default 0
+       */
+      event_feed_snapshots: number;
+      /** First Event Date */
+      first_event_date?: string | null;
+      /** Last Event Date */
+      last_event_date?: string | null;
+      /** Latest Price Date */
+      latest_price_date?: string | null;
+      /** Price Window Start */
+      price_window_start?: string | null;
+    };
+    /** EventDefinition */
+    EventDefinition: {
+      /** En */
+      en: string;
+      event_type: components["schemas"]["EventType"];
+      /** Zh */
+      zh: string;
+    };
+    /** EventHorizonReturn */
+    EventHorizonReturn: {
+      /** Excess Return Pct */
+      excess_return_pct?: number | null;
+      /** Horizon Days */
+      horizon_days: number;
+      /** Not Measured */
+      not_measured?: ("censored" | "missing_price") | null;
+      /** Return Pct */
+      return_pct?: number | null;
+    };
+    /** EventLimitation */
+    EventLimitation: {
+      /**
+       * Code
+       * @enum {string}
+       */
+      code:
+        | "short_price_history"
+        | "short_event_history"
+        | "per_symbol_only"
+        | "insufficient_sample"
+        | "event_clustering"
+        | "survivorship"
+        | "unadjusted_prices"
+        | "price_basis_break"
+        | "no_costs"
+        | "not_predictive";
+      /** Text */
+      text: string;
+      /** Text Zh */
+      text_zh: string;
+    };
+    /**
+     * EventRow
+     * @description One past event with its own outcome. Facts about that event, not a pattern to act on.
+     */
+    EventRow: {
+      /** Day0 Date */
+      day0_date?: string | null;
+      /**
+       * Event Date
+       * Format: date
+       */
+      event_date: string;
+      /** Name */
+      name?: string | null;
+      /** Pre Event Return Pct */
+      pre_event_return_pct?: number | null;
+      /** Returns */
+      returns?: components["schemas"]["EventHorizonReturn"][];
+      /**
+       * Status
+       * @enum {string}
+       */
+      status:
+        | "measured"
+        | "not_yet_effective"
+        | "outside_price_window"
+        | "missing_price"
+        | "low_volume";
+      /** Symbol */
+      symbol: string;
+    };
+    /**
+     * EventType
+     * @enum {string}
+     */
+    EventType:
+      | "disposition_start"
+      | "disposition_end"
+      | "attention_listed"
+      | "capital_reduction_resume"
+      | "buyback_start"
+      | "buyback_end";
+    /**
      * ExchangeRateRow
      * @description `exchange_rate` — one day's TWD-vs-foreign-currency reference rate row. Free tier;
      *     `symbol` is the foreign-currency code (e.g. USD/EUR/JPY), TWD is implicit as the other leg.
@@ -8059,6 +8268,52 @@ export interface components {
       unavailable_reason?: string | null;
       /** Weight Rank */
       weight_rank?: components["schemas"]["EtfWeightRankRow"][];
+    };
+    /** GetEventStudyOutput */
+    GetEventStudyOutput: {
+      /** By Year */
+      by_year?: components["schemas"]["YearStats"][];
+      chart_hint?: components["schemas"]["ChartHint"] | null;
+      /** Chart Rows */
+      chart_rows?: components["schemas"]["EventChartRow"][];
+      counts?: components["schemas"]["EventCounts"];
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      /** Data Available */
+      data_available: boolean;
+      data_window?: components["schemas"]["EventDataWindow"];
+      event_definition: components["schemas"]["EventDefinition"];
+      event_type: components["schemas"]["EventType"];
+      /** Events */
+      events?: components["schemas"]["EventRow"][];
+      health_status: components["schemas"]["HealthStatus"];
+      /** Horizons */
+      horizons?: components["schemas"]["HorizonStats"][];
+      /** Limitations */
+      limitations?: components["schemas"]["EventLimitation"][];
+      /** Market */
+      market: string;
+      /**
+       * Min Sample Size
+       * @default 30
+       */
+      min_sample_size: number;
+      pre_event?: components["schemas"]["HorizonStats"] | null;
+      /**
+       * Pre Event Days
+       * @default 5
+       */
+      pre_event_days: number;
+      proxy: components["schemas"]["MarketProxy"];
+      /**
+       * Source Id
+       * @default ingest-store
+       */
+      source_id: string;
+      /** Symbol */
+      symbol?: string | null;
+      /** Unavailable Reason */
+      unavailable_reason?: string | null;
     };
     /** GetFactorCatalogOutput */
     GetFactorCatalogOutput: {
@@ -9506,6 +9761,53 @@ export interface components {
      */
     HoldingStatus: "新增" | "刪除" | "加碼" | "減碼" | "no_prior_data";
     /**
+     * HorizonStats
+     * @description One forward window. Statistics are percentages; they are None exactly when `status` is
+     *     `insufficient_sample` (fewer than `min_sample_size` events), where only the counts are given.
+     */
+    HorizonStats: {
+      /** Horizon Days */
+      horizon_days: number;
+      /** Max Events On One Day */
+      max_events_on_one_day: number;
+      /** Mean Excess Pct */
+      mean_excess_pct?: number | null;
+      /** Mean Pct */
+      mean_pct?: number | null;
+      /** Median Excess Pct */
+      median_excess_pct?: number | null;
+      /** Median Pct */
+      median_pct?: number | null;
+      /** N Censored */
+      n_censored: number;
+      /** N Event Days */
+      n_event_days: number;
+      /** N Events */
+      n_events: number;
+      /** N Missing Price */
+      n_missing_price: number;
+      /** N Symbols */
+      n_symbols: number;
+      /**
+       * N With Proxy
+       * @default 0
+       */
+      n_with_proxy: number;
+      /** P25 Pct */
+      p25_pct?: number | null;
+      /** P75 Pct */
+      p75_pct?: number | null;
+      /** Share Positive Pct */
+      share_positive_pct?: number | null;
+      /**
+       * Status
+       * @enum {string}
+       */
+      status: "ok" | "insufficient_sample";
+      /** Stdev Pct */
+      stdev_pct?: number | null;
+    };
+    /**
      * IndexContributionRow
      * @description `locked=True` rows (governance.md §4 top-N-preview exception) have every field but `rank`
      *     nulled server-side.
@@ -10294,6 +10596,15 @@ export interface components {
       label: string;
       /** Value */
       value: number;
+    };
+    /** MarketProxy */
+    MarketProxy: {
+      /** En */
+      en: string;
+      /** Id */
+      id: string;
+      /** Zh */
+      zh: string;
     };
     /**
      * MarketRankingRow
@@ -14181,6 +14492,28 @@ export interface components {
       /** Sources */
       sources?: components["schemas"]["WebSearchSource"][];
     };
+    /** YearStats */
+    YearStats: {
+      /** Horizon Days */
+      horizon_days: number;
+      /** Mean Excess Pct */
+      mean_excess_pct?: number | null;
+      /** Mean Pct */
+      mean_pct?: number | null;
+      /** Median Excess Pct */
+      median_excess_pct?: number | null;
+      /** Median Pct */
+      median_pct?: number | null;
+      /** N Events */
+      n_events: number;
+      /**
+       * Status
+       * @enum {string}
+       */
+      status: "ok" | "insufficient_sample";
+      /** Year */
+      year: number;
+    };
     /**
      * YieldCurveSpread
      * @description Whether a Treasury spread (long yield minus short yield) is below zero ("inverted").
@@ -16515,6 +16848,50 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["GetEtfMoneyFlowOutput"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  event_study_api_v1_market_event_study_get: {
+    parameters: {
+      query: {
+        /** @description The dated event to study. */
+        event_type: components["schemas"]["EventType"];
+        symbol?: string | null;
+        market?: components["schemas"]["Market"];
+        /** @description Keep events on or after this day. */
+        start_date?: string | null;
+        /** @description Keep events on or before this day. */
+        end_date?: string | null;
+        /** @description Forward windows in trading days. */
+        horizons?: number[] | null;
+        /** @description Minimum day-0 volume in shares. */
+        min_volume?: number | null;
+        /** @description How many recent events to list. */
+        max_events?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["GetEventStudyOutput"];
         };
       };
       /** @description Validation Error */

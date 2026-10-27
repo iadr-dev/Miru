@@ -7,6 +7,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
 
+from analytics.event_study import EventType
 from api.dependencies import (
     AppState,
     dispatch_validated_tool,
@@ -532,6 +533,40 @@ async def sector_rotation_rrg(
     if end_date is not None:
         args["end_date"] = end_date.isoformat()
     return await _dispatch(state, "get_sector_rotation_rrg", args, ctx)
+
+
+@router.get("/market/event-study", response_model=None, responses=tool_responses("get_event_study"))
+async def event_study(
+    event_type: EventType = Query(..., description="The dated event to study."),
+    symbol: str | None = Query(None, min_length=1, max_length=12),
+    market: Market = Query(Market.TW),
+    start_date: date_ | None = Query(None, description="Keep events on or after this day."),
+    end_date: date_ | None = Query(None, description="Keep events on or before this day."),
+    horizons: list[int] | None = Query(None, description="Forward windows in trading days."),
+    min_volume: int | None = Query(None, ge=1, description="Minimum day-0 volume in shares."),
+    max_events: int = Query(20, ge=1, le=50, description="How many recent events to list."),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """Historical statistics of what stocks did over the next trading days after a dated event
+    (disposition start / release, attention listing, capital-reduction restart, buy-back start /
+    end) - descriptive only, with sample sizes and limits, backed by `get_event_study`."""
+    args: dict[str, object] = {
+        "event_type": event_type.value,
+        "market": market.value,
+        "max_events": max_events,
+    }
+    if symbol is not None:
+        args["symbol"] = symbol
+    if start_date is not None:
+        args["start_date"] = start_date.isoformat()
+    if end_date is not None:
+        args["end_date"] = end_date.isoformat()
+    if horizons:
+        args["horizons"] = horizons
+    if min_volume is not None:
+        args["min_volume"] = min_volume
+    return await _dispatch(state, "get_event_study", args, ctx)
 
 
 @router.get("/market/etf-list", response_model=None, responses=tool_responses("get_etf_list"))

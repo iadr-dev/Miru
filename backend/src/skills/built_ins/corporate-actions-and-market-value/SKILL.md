@@ -14,7 +14,7 @@ inputs:
   end_date:
     type: string
     required: false
-tools: [get_canonical_context, get_source_health, get_corporate_action_events, get_market_value, get_market_value_weight, get_day_trading, get_day_trading_suspension, get_price_limit]
+tools: [get_canonical_context, get_source_health, get_corporate_action_events, get_market_value, get_market_value_weight, get_day_trading, get_day_trading_suspension, get_price_limit, get_event_study]
 output_structure:
   - '公司行動事件: 減資恢復買賣參考價/下市櫃/分割反分割/變更面額 (若有)'
   - '市值走勢: 區間內每日市值 (Sponsor)'
@@ -22,11 +22,12 @@ output_structure:
   - '當沖標的與量值: 是否列入當沖標的與當日量值'
   - '暫停先賣後買當沖公告: 區間內公告紀錄 (Sponsor，若有)'
   - '漲跌停參考價: 區間內每日參考/漲停/跌停價'
+  - '減資恢復買賣後的歷史表現 (使用者問「這檔減資復牌後股價通常如何」時): 呼叫 get_event_study(event_type=capital_reduction_resume, symbol)，附樣本數與限制'
 freshness_rule: 每個子區塊須標明其資料日期；公司行動事件本質上是事件驅動且各自可能為空，缺一律說明「查詢區間內無此類事件」而非留白。
 boundaries:
   - get_market_value 與 get_market_value_weight 為 Sponsor 資料，未取得授權時針對遭遮蔽區塊誠實說明。
   - get_day_trading_suspension (暫停先賣後買當沖) 與 get_day_trading (當沖標的/量值) 為不同資料集 — 前者是公告事件流，後者是每日量值統計，不得混用或視為同一份資料的兩種呈現。
-  - 減資/下市/分割等公司行動事件僅為歷史事件描述，不對股價後續影響做任何推測或建議。
+  - 減資/下市/分割等公司行動事件僅為歷史事件描述，不對股價後續影響做任何推測或建議；若使用者問減資恢復買賣「之後的歷史表現」，只能以 get_event_study 的歷史統計回答 (單檔樣本通常很小，須如實說明，不得說成訊號)。
   - 所有判斷僅為資訊參考，不構成投資建議。
 resources: []
 outputs: markdown
@@ -52,4 +53,8 @@ outputs: markdown
    `get_day_trading`, never merged into the same figure.
 5. Call `get_price_limit(stock_id, market, start_date, end_date)` for daily reference/limit-up/
    limit-down price rows.
-6. Synthesize using `output_structure`, in order, every figure tagged with its trading date.
+6. For "how has this stock traded after a capital-reduction restart", call
+   `get_event_study(event_type="capital_reduction_resume", symbol=stock_id)`. One stock has very few
+   such events, so expect `insufficient_sample` windows: show the stock's own events and their
+   returns, state n, and never present them as a pattern to act on.
+7. Synthesize using `output_structure`, in order, every figure tagged with its trading date.
