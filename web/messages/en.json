@@ -2567,6 +2567,15 @@
           "cron": "Cron schedule",
           "market_event": "Market event"
         },
+        "weekdays": {
+          "0": "Sunday",
+          "1": "Monday",
+          "2": "Tuesday",
+          "3": "Wednesday",
+          "4": "Thursday",
+          "5": "Friday",
+          "6": "Saturday"
+        },
         "form": {
           "title": "Add schedule",
           "cancel": "Cancel",
@@ -2582,6 +2591,9 @@
           "watchlistPlaceholder": "Choose a group",
           "watchlistNote": "Taiwan stocks in the group at the time of each run (up to 10). Add or remove stocks in the group and the next briefing follows.",
           "errorWatchlistRequired": "Please choose a watchlist group.",
+          "weekday": "Day of the week",
+          "time": "Time (Taipei time)",
+          "errorTimeRequired": "Choose a time.",
           "note": "Each run is generated when it fires and appended to one thread. It counts toward your chat quota.",
           "save": "Save",
           "error": {
@@ -2626,6 +2638,11 @@
           "weekly_catalyst": {
             "label": "Weekly catalyst scan",
             "cadence": "Mondays at 08:30"
+          },
+          "weekly_watchlist_review": {
+            "label": "Weekly watchlist review",
+            "cadence": "Every {weekday} at {time}",
+            "description": "Covers all of your watchlist groups (Taiwan and US listed separately): each symbol's move over the week, ex-dividend and other events due in the next 7 days, and the data date. It only organises data; it is not investment advice."
           }
         },
         "editLabel": "Edit the schedule for {skill}",

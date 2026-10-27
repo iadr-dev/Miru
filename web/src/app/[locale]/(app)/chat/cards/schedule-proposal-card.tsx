@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { useScheduleCadence } from "@/hooks/use-schedule-cadence";
 import { Link } from "@/i18n/navigation";
 import { createSchedule, listSchedules, SettingsApiError } from "@/lib/api/settings";
 import { FRESHNESS } from "@/lib/freshness";
@@ -13,6 +14,7 @@ import {
   parseScheduleProposal,
   toScheduleRequest,
 } from "@/lib/schedules/proposal";
+import { SCHEDULE_TEMPLATES } from "@/lib/schedules/templates";
 
 const SCHEDULES_KEY = ["settings", "schedules"] as const;
 
@@ -27,6 +29,7 @@ export function ScheduleProposalCard({
 }: Readonly<{ data: Record<string, unknown> }>): ReactNode {
   const t = useTranslations("chat.cards.scheduleProposal");
   const tt = useTranslations("settings.alerts.schedules.templates");
+  const cadenceText = useScheduleCadence();
   const queryClient = useQueryClient();
   const [dismissed, setDismissed] = useState(false);
 
@@ -74,9 +77,11 @@ export function ScheduleProposalCard({
           <p className="font-medium text-[14px] text-[var(--text)]">
             {tt(`${proposal.template}.label`)}
           </p>
-          <p className="mt-0.5 text-[14px] text-[var(--text)]">{proposal.targets.join("、")}</p>
+          {proposal.targets.length > 0 ? (
+            <p className="mt-0.5 text-[14px] text-[var(--text)]">{proposal.targets.join("、")}</p>
+          ) : null}
           <p className="mt-0.5 text-[12px] text-[var(--text-muted)]">
-            {tt(`${proposal.template}.cadence`)}
+            {cadenceText(SCHEDULE_TEMPLATES[proposal.template], proposal.trigger)}
           </p>
         </div>
       </div>

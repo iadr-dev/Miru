@@ -2567,6 +2567,15 @@
           "cron": "定時排程",
           "market_event": "市場事件"
         },
+        "weekdays": {
+          "0": "日",
+          "1": "一",
+          "2": "二",
+          "3": "三",
+          "4": "四",
+          "5": "五",
+          "6": "六"
+        },
         "form": {
           "title": "新增排程",
           "cancel": "取消",
@@ -2581,6 +2590,9 @@
           "watchlistPlaceholder": "選擇群組",
           "watchlistNote": "每次執行時取群組內的台股（最多 10 檔）。在群組新增或移除股票，下一次簡報就會跟著變。",
           "errorWatchlistRequired": "請選擇自選股群組。",
+          "weekday": "星期",
+          "time": "時間（台北時間）",
+          "errorTimeRequired": "請選擇執行時間。",
           "targetsMany": "股票代號（最多 {max} 檔，以逗號分隔）",
           "note": "每次執行時才產生內容，並累積在同一個對話中，會計入你的對話額度。",
           "save": "儲存",
@@ -2626,6 +2638,11 @@
           "weekly_catalyst": {
             "label": "每週催化事件掃描",
             "cadence": "每週一 08:30"
+          },
+          "weekly_watchlist_review": {
+            "label": "每週自選股回顧",
+            "cadence": "每週{weekday} {time}",
+            "description": "涵蓋你所有自選股群組（台股與美股分開列示）：每檔的一週漲跌、未來 7 天的除權息與其他事件，以及資料日期。只整理資料，不構成投資建議。"
           }
         },
         "editLabel": "編輯 {skill} 的排程",
