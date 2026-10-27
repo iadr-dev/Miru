@@ -48,11 +48,12 @@ from scheduler.templates import (
 from scheduler.worker import SchedulerContext, SchedulerWorker, _safe_body, as_utc
 from schemas.alerts import TW_ONLY_KINDS
 from schemas.enums import Capability, Market, Tier
+from tests.scheduler import clock
 from tests.scheduler.conftest import insert_user
 
 PRICE = PRICE_EOD_JOB.dataset
 FLOW = INSTITUTIONAL_FLOW_JOB.dataset
-TODAY = datetime.now(ZoneInfo("Asia/Taipei")).date()
+TODAY = clock.taipei_today()  # the pinned instant, not the wall clock (tests/scheduler/clock.py)
 
 
 def day(n: int) -> date:

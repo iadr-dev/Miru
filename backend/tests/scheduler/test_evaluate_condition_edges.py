@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
-from zoneinfo import ZoneInfo
+from datetime import date, timedelta
 
 from ingest.jobs import ATTENTION_STOCKS_DATASET, PRICE_EOD_JOB
 from scheduler.evaluator import Evaluation, SnapshotView, evaluate_condition
 from scheduler.templates import AttentionListEntry, ClosePrice, DailyChange, VolumeSurge
 from schemas.enums import Market
+from tests.scheduler import clock
 
 PRICE = PRICE_EOD_JOB.dataset
-TODAY = datetime.now(ZoneInfo("Asia/Taipei")).date()
+TODAY = clock.taipei_today()  # the pinned instant, not the wall clock (tests/scheduler/clock.py)
 
 
 def day(n: int) -> date:
