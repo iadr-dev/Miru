@@ -187,13 +187,14 @@ def _bars_by_symbol(
 
 
 def _price_section(
-    store: ParquetStore, market: Market, symbols: list[str], names: dict[str, str], run_day: date
+    store: ParquetStore, market: Market, symbols: list[str], names: dict[str, str], now: datetime
 ) -> tuple[tuple[WeeklyMove, ...], Freshness]:
     dataset = price_eod_dataset_for(market.value)
     dates = store.list_partition_dates(dataset, market.value)
+    run_day = now.astimezone(_TAIPEI).date()
     base, end = week_bounds(dates, run_day)
     calendar = real_calendar(store, market.value)
-    local_now = datetime.combine(run_day, time(12), tzinfo=_MARKET_TZ[market])
+    local_now = now.astimezone(_MARKET_TZ[market])
     expected = expected_trading_day(calendar, local_now) if dates else None
     freshness = freshness_of(market, end, expected, base)
     if end is None:
@@ -387,11 +388,12 @@ def _load_market(
     market: Market,
     symbols: list[str],
     window: tuple[date, date],
-    run_day: date,
+    now: datetime,
 ) -> _MarketInputs:
+    run_day = now.astimezone(_TAIPEI).date()
     names = names_by_symbol_for(store, market.value)
     scope = _Scope(market, tuple(symbols), names, window, run_day)
-    moves, freshness = _price_section(store, market, symbols, names, run_day)
+    moves, freshness = _price_section(store, market, symbols, names, now)
     events, issues = _dividend_events(scope, store)
     statuses: list[ReviewStatus] = []
     if market is Market.TW:
@@ -476,7 +478,7 @@ async def _feed_for(
                         tls_policy=ctx.tls_policy,
                     )
             except Exception:
-                logger.warning("weekly_review_calendar_feed_failed")
+                logger.warning("weekly_review_calendar_feed_failed", exc_info=True)
                 complete = False
                 return []
         if result.health.status is not HealthStatus.OK:
@@ -586,7 +588,7 @@ class GetWatchlistWeeklyReviewTool(BaseTool):
             if not distinct[market]:
                 continue
             inputs = await anyio.to_thread.run_sync(
-                _load_market, self._store, market, symbols, window, run_day
+                _load_market, self._store, market, symbols, window, now
             )
             events = list(inputs.events)
             issues = list(inputs.issues)

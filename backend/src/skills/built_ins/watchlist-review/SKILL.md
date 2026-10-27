@@ -2,7 +2,7 @@
 name: watchlist-review
 version: 2.0.0
 description: 自選股回顧 — descriptive review of the signed-in user's OWN watchlist - the week in review (each stock's week move, events due in the next 7 days, data freshness; also what a scheduled 每週自選股回顧 runs), how the stocks moved lately, upcoming ex-dividend / calendar events, and the cached descriptive factor score. Facts only, never a recommendation.
-triggers: [我的自選股表現, 自選股表現, 自選股漲跌, 自選股今天, 自選股最近, 自選股股利, 自選股除息, 自選股配息, 自選股財報, 自選股法說, 自選股事件, 自選股行事曆, 自選股評分, 自選股回顧, 看一下我的自選, 我的自選股怎麼樣, 自選股本週, 自選股這週, 自選股週回顧, 本週自選股, 這週自選股, how is my watchlist, my watchlist performance, watchlist dividends, watchlist earnings, watchlist review, watchlist calendar, dividends coming up, watchlist this week, watchlist week in review]
+triggers: [我的自選股表現, 自選股表現, 自選股漲跌, 自選股今天, 自選股最近, 自選股股利, 自選股除息, 自選股配息, 自選股財報, 自選股法說, 自選股事件, 自選股行事曆, 自選股評分, 自選股回顧, 看一下我的自選, 我的自選股怎麼樣, 自選股本週, 自選股這週, 自選股週回顧, 自選股本週表現, 自選股怎麼樣, 週回顧, 本週自選股, 這週自選股, how is my watchlist, my watchlist performance, watchlist dividends, watchlist earnings, watchlist review, watchlist calendar, dividends coming up, watchlist this week, watchlist week in review]
 design_pattern: pipeline
 inputs:
   watchlist_name:

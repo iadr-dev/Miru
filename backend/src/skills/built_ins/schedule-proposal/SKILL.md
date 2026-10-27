@@ -2,7 +2,7 @@
 name: schedule-proposal
 version: 1.1.0
 description: 排程提案 — turn "brief me every day/week…" requests into a confirmable recurring-briefing card for Taiwan/US stocks or an ETF, or a weekly review of the user's own watchlist. Proposes only; the user confirms on the card.
-triggers: [每週自選股回顧, 每週回顧我的自選, 每週回顧自選, 每週幫我回顧, 每週六早上, 每週六, 每週日, 每週末, 週末幫我, 自選股週報, 定期回顧自選, 固定回顧自選, 每週看一下我的自選, weekly watchlist review, review my watchlist every, watchlist review every, every saturday, every sunday, every weekend, 每天, 每日, 每週, 每周, 每月, 每個交易日, 每天開盤前, 每天收盤後, 每天早上, 每週一, 每週五, 每日簡報, 定期, 固定時間, 排程, 週報, 日報, 天天, 幫我定時, daily briefing, weekly report, recurring, schedule a brief, every day, every morning, every week, 每天幫我, 每日幫我, 每週幫我, 每周幫我, 每月幫我, 每天固定, 每週固定, 定期幫我, 定期寄給我, 定期產生]
+triggers: [每週自選股回顧, 每週回顧我的自選, 每週回顧自選, 每週幫我回顧, 每週六早上, 每週六, 每週日, 每週末, 週末幫我, 自選股週報, 定期回顧自選, 固定回顧自選, 每週看一下我的自選, weekly watchlist review, weekly watchlist, review my watchlist every, watchlist review every, every saturday, every sunday, every weekend, 每天, 每日, 每週, 每周, 每月, 每個交易日, 每天開盤前, 每天收盤後, 每天早上, 每週一, 每週五, 每日簡報, 定期, 固定時間, 排程, 週報, 日報, 天天, 幫我定時, daily briefing, weekly report, recurring, schedule a brief, every day, every morning, every week, 每天幫我, 每日幫我, 每週幫我, 每周幫我, 每月幫我, 每天固定, 每週固定, 定期幫我, 定期寄給我, 定期產生]
 design_pattern: tool_wrapper
 inputs:
   template:

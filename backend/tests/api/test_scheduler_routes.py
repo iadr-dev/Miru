@@ -57,6 +57,54 @@ class TestOpenToAllTiers:
         assert resp.json()["action"]["skill_ref"] == "daily-context-brief"
 
 
+def _weekly_review_body(spec: str = "0 9 * * 6") -> dict[str, object]:
+    return {
+        "trigger": {"type": "cron", "spec": spec, "market": "TW"},
+        "action": {"skill_ref": "watchlist-review", "inputs": {"review": "weekly"}},
+        "delivery_channels": ["in_app"],
+    }
+
+
+class TestWeeklyWatchlistReview:
+    def test_every_tier_can_schedule_it_and_it_fires_on_the_chosen_weekday(
+        self, client: TestClient, settings: Settings
+    ) -> None:
+        for tier in (Tier.FREE, Tier.PRO):
+            headers, _ = sign_in(client, settings, tier=tier)
+            resp = client.post(
+                "/api/v1/schedules", json=_weekly_review_body("30 20 * * 0"), headers=headers
+            )
+            assert resp.status_code == 201
+            assert resp.json()["action"] == {
+                "skill_ref": "watchlist-review",
+                "inputs": {"review": "weekly"},
+            }
+            assert resp.json()["next_run"] is not None
+
+    def test_a_wildcard_time_is_refused(self, client: TestClient, settings: Settings) -> None:
+        headers, _ = sign_in(client, settings, tier=Tier.FREE)
+        resp = client.post(
+            "/api/v1/schedules", json=_weekly_review_body("* 9 * * 6"), headers=headers
+        )
+        assert resp.status_code == 422
+        assert resp.json()["code"] == "invalid_trigger"
+
+    def test_it_counts_toward_the_schedule_cap(
+        self, client: TestClient, settings: Settings
+    ) -> None:
+        headers, _ = sign_in(client, settings, tier=Tier.FREE)
+        for _ in range(MAX_SCHEDULES):
+            assert (
+                client.post(
+                    "/api/v1/schedules", json=_weekly_review_body(), headers=headers
+                ).status_code
+                == 201
+            )
+        over = client.post("/api/v1/schedules", json=_weekly_review_body(), headers=headers)
+        assert over.status_code == 409
+        assert over.json()["code"] == "cap_reached"
+
+
 class TestScheduleValidation:
     def test_wildcard_cron_rejected(self, client: TestClient, settings: Settings) -> None:
         headers, _ = sign_in(client, settings, tier=Tier.PRO)
