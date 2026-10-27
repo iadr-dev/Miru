@@ -2,7 +2,7 @@
 
 import { GlobeIcon } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { ExpandModal } from "@/components/ui/expand-modal";
@@ -10,6 +10,7 @@ import { QueryState } from "@/components/ui/query-state";
 import { getNewsFeed } from "@/lib/api/market";
 import { queryKeys } from "@/lib/api/query-keys";
 import { cn } from "@/lib/cn";
+import { formatNewsTime } from "@/lib/format-news-time";
 import { safeHttpUrl } from "@/lib/safe-url";
 import { sourceLogoUrl } from "@/lib/source-logo";
 import type { NewsFeedItem } from "@/types/market/news";
@@ -108,6 +109,8 @@ function NewsFeedList({ items }: { readonly items: readonly NewsFeedItem[] }): R
 }
 
 function NewsFeedRow({ item }: { readonly item: NewsFeedItem }): ReactNode {
+  const locale = useLocale();
+  const when = formatNewsTime(item.published_at, locale);
   // `item.link` is third-party RSS/Finnhub content, never trusted as-is (web/OVERVIEW.md §8) —
   // reject a `javascript:`/`data:` URI before it ever reaches an `href`.
   const href = safeHttpUrl(item.link);
@@ -120,7 +123,9 @@ function NewsFeedRow({ item }: { readonly item: NewsFeedItem }): ReactNode {
         </span>
         <span className="mt-1 flex items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
           {item.source}
-          <span className="font-num tabular-nums">{item.published_at}</span>
+          <time dateTime={item.published_at} title={when.full} className="font-num tabular-nums">
+            {when.label}
+          </time>
         </span>
       </span>
     </>
