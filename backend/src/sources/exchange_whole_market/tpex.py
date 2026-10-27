@@ -112,22 +112,31 @@ def parse_all_session_volume(body: JsonObject, run_date: date_) -> list[Row]:
     seen: set[str] = set()
     for raw in as_list(body.get("tables")) or []:
         table = as_object(raw)
-        fields = as_list(table.get("fields")) if table else None
-        rows = table_rows(table) if table and fields else []
-        if not fields or not rows:
-            continue
-        code = column_index(fields, "代號")
-        shares = column_index(fields, "成交股數")
-        amount = column_index(fields, "成交金額(元)")
-        for row in rows:
-            symbol = clean_cell(cell(row, code))
-            volume, turnover = to_count(cell(row, shares)), to_count(cell(row, amount))
-            if symbol in seen or not is_symbol(symbol) or volume is None or turnover is None:
-                continue
-            seen.add(symbol)
-            totals.append({"symbol": symbol, "volume": volume, "turnover": turnover})
+        if table is not None:
+            totals.extend(_table_totals(table, seen))
     if not totals:
         raise ExchangeFetchError("dailyQuotes: report has no rows")
+    return totals
+
+
+def _table_totals(table: JsonObject, seen: set[str]) -> list[Row]:
+    """The `{symbol, volume, turnover}` rows of one dailyQuotes table whose code is not in `seen`
+    yet (added to it). A table without fields or rows (the empty 管理股票 one) yields nothing."""
+    fields = as_list(table.get("fields"))
+    rows = table_rows(table)
+    if not fields or not rows:
+        return []
+    code = column_index(fields, "代號")
+    shares = column_index(fields, "成交股數")
+    amount = column_index(fields, "成交金額(元)")
+    totals: list[Row] = []
+    for row in rows:
+        symbol = clean_cell(cell(row, code))
+        volume, turnover = to_count(cell(row, shares)), to_count(cell(row, amount))
+        if symbol in seen or not is_symbol(symbol) or volume is None or turnover is None:
+            continue
+        seen.add(symbol)
+        totals.append({"symbol": symbol, "volume": volume, "turnover": turnover})
     return totals
 
 

@@ -131,6 +131,25 @@ class ChainOutcome:
     # detail): kept aside, and served only if no later source does.
     incomplete: tuple[str, SourceResult] | None = None
 
+    def keep_if_incomplete(self, source_id: str, result: SourceResult) -> None:
+        """Set a failed answer aside if it carries complete rows tagged `ROUND_LOT_VOLUME`."""
+        if ROUND_LOT_VOLUME in result.health.detail and result_rows(result):
+            self.incomplete = self.incomplete or (source_id, result)
+
+    def serve_incomplete_if_nothing_else(self, capability: Capability, run_date: date_) -> None:
+        """Nothing complete served: the tagged answer beats no data at all (its tag stays in the
+        detail). A market closure is never overridden."""
+        if self.winner is not None or self.incomplete is None or self.market_closed:
+            return
+        self.winner_id, self.winner = self.incomplete
+        logger.warning(
+            "ingest_whole_market_served_incomplete",
+            capability=capability.value,
+            run_date=run_date.isoformat(),
+            source=self.winner_id,
+            detail=self.winner.health.detail,
+        )
+
     @property
     def served_incomplete(self) -> bool:
         """The winner is the tagged round-lot-volume answer, served because nothing better was."""
@@ -190,8 +209,7 @@ async def walk_chain(
                 source=link.source_id,
                 detail=result.health.detail,
             )
-            if ROUND_LOT_VOLUME in result.health.detail and result_rows(result):
-                outcome.incomplete = outcome.incomplete or (link.source_id, result)
+            outcome.keep_if_incomplete(link.source_id, result)
         elif result_rows(result) or result.health.status is HealthStatus.OK:
             # Rows, or a healthy answer of `OK` with none: the source states the date holds no
             # rows by definition (a period dataset on a date no period is filed under), so the
@@ -201,16 +219,7 @@ async def walk_chain(
             break
         else:
             outcome.empties.append((link.source_id, result))
-    if outcome.winner is None and outcome.incomplete is not None and not outcome.market_closed:
-        # Nothing complete: the tagged answer beats no data at all. The tag stays in the detail.
-        outcome.winner_id, outcome.winner = outcome.incomplete
-        logger.warning(
-            "ingest_whole_market_served_incomplete",
-            capability=capability.value,
-            run_date=run_date.isoformat(),
-            source=outcome.winner_id,
-            detail=outcome.winner.health.detail,
-        )
+    outcome.serve_incomplete_if_nothing_else(capability, run_date)
     return outcome
 
 
