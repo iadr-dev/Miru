@@ -21,7 +21,8 @@ from schemas.capabilities import (
     ConvertibleBondPutProvisionRow,
 )
 from schemas.enums import Capability, DataClass
-from tools._rows import fetch_rows
+from schemas.source import HealthStatus
+from tools._rows import fetch_rows, worst_health
 from tools.base import BaseTool, Tool, ToolContext, parse_args
 from tools.common import DateRangeInput
 
@@ -30,6 +31,9 @@ class _CaveatOutput(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     currentness_caveat: str = Field(min_length=1)
+    # Worst status among the bundled fetches. An empty section is ambiguous on its own:
+    # `unreachable` means the source could not be fetched (an outage, NOT "no data").
+    health_status: HealthStatus
 
 
 class GetConvertibleBondProfileOutput(_CaveatOutput):
@@ -68,7 +72,7 @@ class GetConvertibleBondProfileTool(BaseTool):
             model=ConvertibleBondInfoRow,
             key="rows",
         )
-        _overview_result, overview_rows = await fetch_rows(
+        overview_result, overview_rows = await fetch_rows(
             self._router,
             Capability.CB_DAILY_OVERVIEW,
             symbol,
@@ -77,7 +81,7 @@ class GetConvertibleBondProfileTool(BaseTool):
             key="rows",
             params=params,
         )
-        _put_result, put_rows = await fetch_rows(
+        put_result, put_rows = await fetch_rows(
             self._router,
             Capability.CB_PUT_PROVISION,
             symbol,
@@ -88,6 +92,7 @@ class GetConvertibleBondProfileTool(BaseTool):
         )
         return GetConvertibleBondProfileOutput(
             currentness_caveat=info_result.currentness_caveat,
+            health_status=worst_health(info_result, overview_result, put_result),
             info=info_rows,
             daily_overview=overview_rows,
             put_provision=put_rows,
@@ -132,7 +137,7 @@ class GetConvertibleBondFlowTool(BaseTool):
             key="rows",
             params=params,
         )
-        _flow_result, flow_rows = await fetch_rows(
+        flow_result, flow_rows = await fetch_rows(
             self._router,
             Capability.CB_INSTITUTIONAL_FLOW,
             symbol,
@@ -141,7 +146,7 @@ class GetConvertibleBondFlowTool(BaseTool):
             key="rows",
             params=params,
         )
-        _monthly_result, monthly_rows = await fetch_rows(
+        monthly_result, monthly_rows = await fetch_rows(
             self._router,
             Capability.CB_MONTHLY_ANALYSIS,
             symbol,
@@ -152,6 +157,7 @@ class GetConvertibleBondFlowTool(BaseTool):
         )
         return GetConvertibleBondFlowOutput(
             currentness_caveat=daily_result.currentness_caveat,
+            health_status=worst_health(daily_result, flow_result, monthly_result),
             daily=daily_rows,
             institutional_flow=flow_rows,
             monthly_analysis=monthly_rows,

@@ -43,7 +43,10 @@ outputs: markdown
 1. For "what is the news on X / the market today", call `get_news_feed(query, market)`. For TW,
    `query` is a search phrase or ticker (default `台股`); for other markets the general market
    news is returned. Present headlines with source, publish time and link. Quote or summarize
-   each item and attribute it — never restate a headline as this platform's own analysis.
+   each item and attribute it — never restate a headline as this platform's own analysis. Check
+   `health_status` first: when it is `unreachable` (or any non-`ok` tier) an empty `items` means
+   the news sources could not be reached, not that there was no news - say the source is
+   temporarily unavailable, never "no news found". `stale` means the feeds answered with nothing.
 2. For "what are retail investors talking about", call `get_ptt_board(board, lookback_days)`
    (`Stock`, `Tech_Job` or `Warrant`; `lookback_days` up to 14). It returns the board's index
    listing (title, author, push count, post tag) — not post bodies. Read it as an attention

@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
 import { NewsSourceLogo } from "@/components/ui/news-source-logo";
 import { QueryFailure } from "@/components/ui/query-state";
 import { getNewsFeed, getSymbolInfo } from "@/lib/api/market";
@@ -11,6 +12,8 @@ import { queryKeys } from "@/lib/api/query-keys";
 import { getSecFilings } from "@/lib/api/stock-detail";
 import { cn } from "@/lib/cn";
 import { safeHttpUrl } from "@/lib/safe-url";
+import type { NewsFeedItem, NewsFeedResponse } from "@/types/market/news";
+import { isSourceDown } from "@/types/market/shared";
 import type { Market } from "@/types/settings";
 
 type NewsFilingsSubTab = "news" | "filings";
@@ -70,7 +73,6 @@ function NewsFeedList({
   readonly symbol: string;
   readonly market: Market;
 }): ReactNode {
-  const t = useTranslations("usStock.newsFilings");
   const symbolInfoQuery = useQuery({
     queryKey: queryKeys.symbolRead("symbol_info", symbol, market),
     queryFn: () => getSymbolInfo([symbol], market),
@@ -90,8 +92,28 @@ function NewsFeedList({
   const deduped = Array.from(
     new Map((newsQuery.data?.items ?? []).map((item) => [item.link, item])).values(),
   );
-  const items = deduped.slice(0, NEWS_ROW_LIMIT);
+  return (
+    <NewsRows
+      items={deduped.slice(0, NEWS_ROW_LIMIT)}
+      health={newsQuery.data?.health_status ?? (newsQuery.isError ? "unreachable" : "ok")}
+    />
+  );
+}
+
+/** Items present (always shown), source down (an outage is NOT "no related news"), or genuinely
+ * nothing. */
+export function NewsRows({
+  items,
+  health,
+}: {
+  readonly items: readonly NewsFeedItem[];
+  readonly health: NewsFeedResponse["health_status"];
+}): ReactNode {
+  const t = useTranslations("usStock.newsFilings");
   if (items.length === 0) {
+    if (isSourceDown(health)) {
+      return <EmptyState compact title={t("newsUnavailable")} />;
+    }
     return <p className="text-[13px] text-[var(--text-muted)]">{t("newsEmpty")}</p>;
   }
 

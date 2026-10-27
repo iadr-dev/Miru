@@ -1660,6 +1660,8 @@ export interface paths {
      *     third-party feed from `get_calendar_events_feed`'s existing yfinance economic calendar, see
      *     that tool's own docstring. `from_date`/`to_date` (given together) override `days_ahead` and
      *     can address a genuinely past range, for a caller paging back to a prior month/week.
+     *     `health_status` is `unreachable` when the calendar source could not be fetched (an outage,
+     *     not an empty window), `stale` when it answered with no events.
      */
     get: operations["macro_calendar_api_v1_market_macro_calendar_get"];
     put?: never;
@@ -1772,6 +1774,8 @@ export interface paths {
      *     company-news call; RSS feeds are always fetched whole (not query-filterable upstream). Any
      *     other market: RSS is skipped (TW-only outlets) and Finnhub's general-market-news category is
      *     used instead of a `query`-scoped company-news call — see `get_news_feed`'s own docstring.
+     *     `health_status` is `unreachable` when every source failed (an outage, not "no news"),
+     *     `stale` when the sources answered with nothing.
      */
     get: operations["news_feed_api_v1_market_news_feed_get"];
     put?: never;
@@ -7692,6 +7696,7 @@ export interface components {
     GetBusinessIndicatorOutput: {
       /** Currentness Caveat */
       currentness_caveat: string;
+      health_status: components["schemas"]["HealthStatus"];
       /** Rows */
       rows?: components["schemas"]["BusinessIndicatorRow"][];
     };
@@ -8594,6 +8599,9 @@ export interface components {
       currentness_caveat: string;
       /** Events */
       events?: components["schemas"]["MacroReleaseEventRow"][];
+      health_status: components["schemas"]["HealthStatus"];
+      /** Source Id */
+      source_id: string;
     };
     /** GetMacroIndicatorsOutput */
     GetMacroIndicatorsOutput: {
@@ -8611,6 +8619,7 @@ export interface components {
       gold_price?: components["schemas"]["GoldPriceRow"][];
       /** Government Bond Yield */
       government_bond_yield?: components["schemas"]["GovernmentBondYieldRow"][];
+      health_status: components["schemas"]["HealthStatus"];
     };
     /** GetMarginMaintenanceOutput */
     GetMarginMaintenanceOutput: {
@@ -8694,8 +8703,11 @@ export interface components {
     GetNewsFeedOutput: {
       /** Currentness Caveat */
       currentness_caveat: string;
+      health_status: components["schemas"]["HealthStatus"];
       /** Items */
       items?: components["schemas"]["NewsFeedItemOut"][];
+      /** Source Id */
+      source_id: string;
     };
     /** GetOptionsChainOutput */
     GetOptionsChainOutput: {

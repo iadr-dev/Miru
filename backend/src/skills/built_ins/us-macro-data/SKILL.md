@@ -51,6 +51,9 @@ outputs: markdown
 4. For "what is the consensus / when is the Fed decision", call `get_macro_calendar(impact,
    days_ahead, from_date, to_date)`: GDP, CPI, PCE, PMI, jobs report and central-bank rate
    decisions with consensus, prior and actual. Keep expected, prior and actual values apart.
+   When `health_status` is `unreachable` (or any non-`ok` tier) an empty `events` means the
+   calendar source could not be reached, not that nothing is scheduled - say it is temporarily
+   unavailable, never "no events".
 5. For "was the number revised", call `get_series_revisions(series_id)`: first release, latest
    value, revision size and the values in between.
 6. Present only what the tools returned, each with its date. If a series or window is empty,

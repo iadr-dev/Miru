@@ -23,7 +23,8 @@ from schemas.capabilities import (
 )
 from schemas.enums import Capability, DataClass, Market
 from schemas.market import Symbol
-from tools._rows import fetch_rows
+from schemas.source import HealthStatus
+from tools._rows import fetch_rows, worst_health
 from tools.base import BaseTool, Tool, ToolContext, is_entitled, parse_args
 from tools.common import MarketOnlyInput
 
@@ -32,6 +33,9 @@ class _RowsOutput(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     currentness_caveat: str = Field(min_length=1)
+    # Worst status among the bundled fetches. An empty section is ambiguous on its own:
+    # `unreachable` means the source could not be fetched (an outage, NOT "no data").
+    health_status: HealthStatus
 
 
 class GetMacroIndicatorsInput(BaseModel):
@@ -99,7 +103,7 @@ class GetMacroIndicatorsTool(BaseTool):
             key="rows",
             params=params,
         )
-        _rate_result, rate_rows = await fetch_rows(
+        rate_result, rate_rows = await fetch_rows(
             self._router,
             Capability.CENTRAL_BANK_RATE,
             # Confirmed live against FinMind: the whole-panel form (empty `data_id`) returns
@@ -113,7 +117,7 @@ class GetMacroIndicatorsTool(BaseTool):
             key="rows",
             params=params,
         )
-        _gold_result, gold_rows = await fetch_rows(
+        gold_result, gold_rows = await fetch_rows(
             self._router,
             Capability.GOLD_PRICE,
             Symbol(id="", market=Market.GLOBAL),
@@ -122,7 +126,7 @@ class GetMacroIndicatorsTool(BaseTool):
             key="rows",
             params=params,
         )
-        _oil_result, oil_rows = await fetch_rows(
+        oil_result, oil_rows = await fetch_rows(
             self._router,
             Capability.CRUDE_OIL_PRICES,
             # Same free-tier rule as `EXCHANGE_RATE` above: the whole-panel form is Sponsor-only,
@@ -133,7 +137,7 @@ class GetMacroIndicatorsTool(BaseTool):
             key="rows",
             params=params,
         )
-        _bond_result, bond_rows = await fetch_rows(
+        bond_result, bond_rows = await fetch_rows(
             self._router,
             Capability.GOVERNMENT_BOND_YIELD,
             # Confirmed live against FinMind: `GovernmentBondsYield`'s whole-panel form (empty
@@ -148,9 +152,10 @@ class GetMacroIndicatorsTool(BaseTool):
             key="rows",
             params=params,
         )
+        fetched = [fx_result, rate_result, gold_result, oil_result, bond_result]
         fear_rows: tuple[FearGreedIndexRow, ...] = ()
         if is_entitled(DataClass.SPONSOR, ctx.tier):
-            _fear_result, fear_rows = await fetch_rows(
+            fear_result, fear_rows = await fetch_rows(
                 self._router,
                 Capability.FEAR_GREED_INDEX,
                 Symbol(id="", market=Market.US),
@@ -159,8 +164,10 @@ class GetMacroIndicatorsTool(BaseTool):
                 key="rows",
                 params=params,
             )
+            fetched.append(fear_result)
         return GetMacroIndicatorsOutput(
             currentness_caveat=fx_result.currentness_caveat,
+            health_status=worst_health(*fetched),
             exchange_rate=fx_rows,
             central_bank_rate=rate_rows,
             gold_price=gold_rows,
@@ -203,6 +210,7 @@ class GetBusinessIndicatorTool(BaseTool):
         )
         return GetBusinessIndicatorOutput(
             currentness_caveat=result.currentness_caveat,
+            health_status=result.health.status,
             rows=rows,
         )
 

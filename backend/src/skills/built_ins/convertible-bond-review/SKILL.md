@@ -43,7 +43,9 @@ outputs: markdown
    equity's stock id.
 3. Call `get_convertible_bond_flow(cb_id, market, start_date, end_date)` (Sponsor-tier) —
    bundles EOD trading, three-major-institutional-investor flow, and monthly custody-balance
-   analysis for the same bond.
+   analysis for the same bond. Both CB tools carry `health_status` (the worst status among the
+   bundled sources): when it is `unreachable` (or any non-`ok` tier), an empty section means the
+   source could not be reached, not that the bond has no data - say so.
 4. If the caller is unentitled to either Sponsor tool, report around the masked section rather
    than treating the bond as having no data at all.
 5. Synthesize using `output_structure`, in order. Never compute or imply a conversion-value/

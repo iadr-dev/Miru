@@ -17,7 +17,23 @@ from pydantic import BaseModel
 from dataaccess.router import DataAccessRouter
 from schemas.enums import Capability, TLSPolicy
 from schemas.market import Symbol
-from schemas.source import SourceResult
+from schemas.source import HealthStatus, SourceResult
+
+# Least healthy first: a bundle reports the worst status among its fetches.
+_HEALTH_SEVERITY = (
+    HealthStatus.UNREACHABLE,
+    HealthStatus.UNAVAILABLE,
+    HealthStatus.UNAVAILABLE_TIER,
+    HealthStatus.STALE,
+    HealthStatus.OK,
+)
+
+
+def worst_health(*results: SourceResult) -> HealthStatus:
+    """The least healthy status among a bundled tool's fetches, so an outage in any section is
+    never reported as `ok` (a non-ok value next to some rows means a section is missing)."""
+    statuses = {r.health.status for r in results}
+    return next((s for s in _HEALTH_SEVERITY if s in statuses), HealthStatus.OK)
 
 
 def validate_rows[RowT: BaseModel](
@@ -56,4 +72,4 @@ async def fetch_rows[RowT: BaseModel](  # noqa: PLR0913 — every kwarg is load-
     return result, validate_rows(model, result.payload, key)
 
 
-__all__ = ["fetch_rows", "validate_rows"]
+__all__ = ["fetch_rows", "validate_rows", "worst_health"]

@@ -269,6 +269,15 @@ def _closes(data: Row | None) -> dict[str, tuple[str, float | None]]:
     return out
 
 
+_DOWN_STATUSES = frozenset({"unreachable", "unavailable"})
+
+
+def _source_down(data: Row | None) -> bool:
+    """True when the tool answered but its source could not be reached (an outage, not an empty
+    result)."""
+    return data is not None and data.get("health_status") in _DOWN_STATUSES
+
+
 def _headlines(data: Row | None) -> tuple[BriefHeadline, ...]:
     # A third-party headline can carry price targets or buy/sell calls; those never enter the
     # briefing (the same scan every output passes).
@@ -725,6 +734,12 @@ class GetMorningBriefTool(BaseTool):
             c.unavailable.append(
                 f"類股與漲跌家數的資料日為 {sector_day}，較最新交易日 {tw_day} 落後"
             )
+        # An outage reads as an empty list; the tool's health status tells the two apart.
+        c.unavailable.extend(
+            f"{name}（來源暫時無法取得）"
+            for name, row in (("新聞標題", news), ("今日行事曆", calendar))
+            if _source_down(row)
+        )
         empty = {
             "匯率、黃金與原油": not _macro(macro),
             "加權指數": tw_rows[0].text == _NA,

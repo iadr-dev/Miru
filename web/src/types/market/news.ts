@@ -21,7 +21,9 @@ export const newsFeedItemSchema = z.object({
 export type NewsFeedItem = z.infer<typeof newsFeedItemSchema>;
 
 export const newsFeedResponseSchema = z.object({
+  source_id: z.string(),
   currentness_caveat: z.string(),
+  health_status: healthStatusSchema,
   items: z.array(newsFeedItemSchema).default([]),
 });
 

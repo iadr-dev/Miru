@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useMemo, useState } from "react";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { MonthGridCalendar } from "@/components/ui/month-grid-calendar";
 import { QueryState } from "@/components/ui/query-state";
@@ -14,7 +15,8 @@ import { queryKeys } from "@/lib/api/query-keys";
 import { cn } from "@/lib/cn";
 import { toIsoDate } from "@/lib/month-grid";
 import { safeHttpUrl } from "@/lib/safe-url";
-import type { MacroReleaseEventRow } from "@/types/market/macro";
+import type { MacroCalendarResponse, MacroReleaseEventRow } from "@/types/market/macro";
+import { isSourceDown } from "@/types/market/shared";
 
 const COLLAPSED_ROW_COUNT = 10;
 // Padding either side of the visible day-strip week / calendar month, in days — generous enough
@@ -124,7 +126,7 @@ export function MacroCalendarPanel(): ReactNode {
       <QueryState query={query} skeleton={<CardSkeletonBody height={380} />}>
         {(data) => {
           if (data.events.length === 0) {
-            return <p className="text-[13px] text-[var(--text-muted)]">{t("empty")}</p>;
+            return <MacroCalendarEmpty health={data.health_status} />;
           }
           if (view === "calendar") {
             return (
@@ -184,6 +186,19 @@ export function MacroCalendarPanel(): ReactNode {
       </QueryState>
     </section>
   );
+}
+
+/** No events in the window: an unreachable calendar source is an outage, not an empty window. */
+export function MacroCalendarEmpty({
+  health,
+}: {
+  readonly health: MacroCalendarResponse["health_status"];
+}): ReactNode {
+  const t = useTranslations("market.cards.macroCalendar");
+  if (isSourceDown(health)) {
+    return <EmptyState compact title={t("unavailable")} />;
+  }
+  return <p className="text-[13px] text-[var(--text-muted)]">{t("empty")}</p>;
 }
 
 function addDays(date: Date, days: number): Date {
