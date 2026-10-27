@@ -220,7 +220,7 @@ class MarketProxy(BaseModel):
 
 class EventDataWindow(BaseModel):
     """What the numbers are built from. `latest_price_date` bounds every horizon; the snapshot
-    fields show how far back the stored event snapshots go."""
+    fields show how far back the event feed itself goes (it is forward-only)."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
