@@ -196,7 +196,9 @@ class ThrottledJsonClient:
                 headers={"User-Agent": USER_AGENT, "Accept": reader.accept},
             ) as client:
                 if call.form is None:
-                    response = await client.get(call.url, params=call.params)
+                    # `params={}` would replace a query string already in the URL (a page
+                    # selected by `?strMode=2`); no params leaves the URL as given.
+                    response = await client.get(call.url, params=call.params or None)
                 else:
                     response = await client.post(call.url, data=call.form)
         except httpx.TimeoutException as exc:

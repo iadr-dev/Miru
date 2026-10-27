@@ -1,0 +1,975 @@
+{
+ "00400A": {
+  "categories": [
+   "ETF"
+  ],
+  "type": "twse"
+ },
+ "00411A": {
+  "categories": [
+   "上櫃ETF"
+  ],
+  "type": "tpex"
+ },
+ "020000": {
+  "categories": [
+   "ETN"
+  ],
+  "type": "twse"
+ },
+ "020001": {
+  "categories": [
+   "指數投資證券(ETN)"
+  ],
+  "type": "tpex"
+ },
+ "1101": {
+  "categories": [
+   "水泥工業"
+  ],
+  "type": "twse"
+ },
+ "1101B": {
+  "categories": [
+   "水泥工業"
+  ],
+  "type": "twse"
+ },
+ "1201": {
+  "categories": [
+   "食品工業"
+  ],
+  "type": "twse"
+ },
+ "1240": {
+  "categories": [
+   "農業科技業"
+  ],
+  "type": "tpex"
+ },
+ "1256": {
+  "categories": [
+   "食品工業"
+  ],
+  "type": "twse"
+ },
+ "1259": {
+  "categories": [
+   "觀光餐旅"
+  ],
+  "type": "tpex"
+ },
+ "1260": {
+  "categories": [
+   "食品工業"
+  ],
+  "type": "emerging"
+ },
+ "1264": {
+  "categories": [
+   "食品工業"
+  ],
+  "type": "tpex"
+ },
+ "1269": {
+  "categories": [
+   "觀光餐旅"
+  ],
+  "type": "emerging"
+ },
+ "1271": {
+  "categories": [
+   "生技醫療業"
+  ],
+  "type": "emerging"
+ },
+ "1301": {
+  "categories": [
+   "塑膠工業"
+  ],
+  "type": "twse"
+ },
+ "1312A": {
+  "categories": [
+   "塑膠工業"
+  ],
+  "type": "twse"
+ },
+ "1316": {
+  "categories": [
+   "建材營造"
+  ],
+  "type": "twse"
+ },
+ "1319": {
+  "categories": [
+   "汽車工業"
+  ],
+  "type": "twse"
+ },
+ "1336": {
+  "categories": [
+   "電子零組件業"
+  ],
+  "type": "tpex"
+ },
+ "1337": {
+  "categories": [
+   "塑膠工業"
+  ],
+  "type": "twse"
+ },
+ "1338": {
+  "categories": [
+   "汽車工業"
+  ],
+  "type": "twse"
+ },
+ "1342": {
+  "categories": [
+   "其他"
+  ],
+  "type": "twse"
+ },
+ "1343": {
+  "categories": [
+   "綠能環保"
+  ],
+  "type": "emerging"
+ },
+ "1402": {
+  "categories": [
+   "紡織纖維"
+  ],
+  "type": "twse"
+ },
+ "1432": {
+  "categories": [
+   "運動休閒"
+  ],
+  "type": "twse"
+ },
+ "1471": {
+  "categories": [
+   "電子工業",
+   "電子零組件業"
+  ],
+  "type": "twse"
+ },
+ "1480": {
+  "categories": [
+   "鋼鐵工業"
+  ],
+  "type": "emerging"
+ },
+ "1503": {
+  "categories": [
+   "電機機械"
+  ],
+  "type": "twse"
+ },
+ "1522": {
+  "categories": [
+   "汽車工業"
+  ],
+  "type": "twse"
+ },
+ "1565": {
+  "categories": [
+   "生技醫療業"
+  ],
+  "type": "tpex"
+ },
+ "1569": {
+  "categories": [
+   "電腦及週邊設備業"
+  ],
+  "type": "tpex"
+ },
+ "1570": {
+  "categories": [
+   "電機機械"
+  ],
+  "type": "tpex"
+ },
+ "1584": {
+  "categories": [
+   "其他"
+  ],
+  "type": "tpex"
+ },
+ "1591": {
+  "categories": [
+   "電機機械"
+  ],
+  "type": "tpex"
+ },
+ "1593": {
+  "categories": [
+   "運動休閒類"
+  ],
+  "type": "tpex"
+ },
+ "1594": {
+  "categories": [
+   "電機機械"
+  ],
+  "type": "emerging"
+ },
+ "1595": {
+  "categories": [
+   "半導體業"
+  ],
+  "type": "tpex"
+ },
+ "1603": {
+  "categories": [
+   "電器電纜"
+  ],
+  "type": "twse"
+ },
+ "1626": {
+  "categories": [
+   "電器電纜"
+  ],
+  "type": "twse"
+ },
+ "1707": {
+  "categories": [
+   "化學生技醫療",
+   "生技醫療業"
+  ],
+  "type": "twse"
+ },
+ "1708": {
+  "categories": [
+   "化學工業",
+   "化學生技醫療"
+  ],
+  "type": "twse"
+ },
+ "1742": {
+  "categories": [
+   "化學工業"
+  ],
+  "type": "tpex"
+ },
+ "1785": {
+  "categories": [
+   "其他電子類"
+  ],
+  "type": "tpex"
+ },
+ "1802": {
+  "categories": [
+   "玻璃陶瓷"
+  ],
+  "type": "twse"
+ },
+ "1903": {
+  "categories": [
+   "造紙工業"
+  ],
+  "type": "twse"
+ },
+ "2002": {
+  "categories": [
+   "鋼鐵工業"
+  ],
+  "type": "twse"
+ },
+ "2002A": {
+  "categories": [
+   "鋼鐵工業"
+  ],
+  "type": "twse"
+ },
+ "2035": {
+  "categories": [
+   "鋼鐵工業"
+  ],
+  "type": "tpex"
+ },
+ "2061": {
+  "categories": [
+   "電器電纜"
+  ],
+  "type": "tpex"
+ },
+ "2062": {
+  "categories": [
+   "居家生活"
+  ],
+  "type": "twse"
+ },
+ "2072": {
+  "categories": [
+   "綠能環保"
+  ],
+  "type": "twse"
+ },
+ "2101": {
+  "categories": [
+   "橡膠工業"
+  ],
+  "type": "twse"
+ },
+ "2208": {
+  "categories": [
+   "航運業"
+  ],
+  "type": "twse"
+ },
+ "2230": {
+  "categories": [
+   "居家生活類"
+  ],
+  "type": "tpex"
+ },
+ "2237": {
+  "categories": [
+   "創新板股票",
+   "汽車工業"
+  ],
+  "type": "twse"
+ },
+ "2252": {
+  "categories": [
+   "其他電子業"
+  ],
+  "type": "emerging"
+ },
+ "2301": {
+  "categories": [
+   "電子工業",
+   "電腦及週邊設備業"
+  ],
+  "type": "twse"
+ },
+ "2302": {
+  "categories": [
+   "半導體業",
+   "電子工業"
+  ],
+  "type": "twse"
+ },
+ "2312": {
+  "categories": [
+   "其他電子業",
+   "電子工業"
+  ],
+  "type": "twse"
+ },
+ "2314": {
+  "categories": [
+   "通信網路業",
+   "電子工業"
+  ],
+  "type": "twse"
+ },
+ "2323": {
+  "categories": [
+   "光電業",
+   "電子工業"
+  ],
+  "type": "twse"
+ },
+ "2330": {
+  "categories": [
+   "半導體業",
+   "電子工業"
+  ],
+  "type": "twse"
+ },
+ "2347": {
+  "categories": [
+   "電子工業",
+   "電子通路業"
+  ],
+  "type": "twse"
+ },
+ "2348A": {
+  "categories": [
+   "其他"
+  ],
+  "type": "twse"
+ },
+ "2427": {
+  "categories": [
+   "資訊服務業",
+   "電子工業"
+  ],
+  "type": "twse"
+ },
+ "2432": {
+  "categories": [
+   "創新板股票",
+   "電子工業",
+   "電腦及週邊設備業"
+  ],
+  "type": "twse"
+ },
+ "2596": {
+  "categories": [
+   "建材營造"
+  ],
+  "type": "tpex"
+ },
+ "2616": {
+  "categories": [
+   "油電燃氣業"
+  ],
+  "type": "twse"
+ },
+ "2637": {
+  "categories": [
+   "航運業"
+  ],
+  "type": "twse"
+ },
+ "2640": {
+  "categories": [
+   "數位雲端類"
+  ],
+  "type": "tpex"
+ },
+ "2641": {
+  "categories": [
+   "航運業"
+  ],
+  "type": "tpex"
+ },
+ "2644": {
+  "categories": [
+   "航運業"
+  ],
+  "type": "emerging"
+ },
+ "2701": {
+  "categories": [
+   "觀光餐旅"
+  ],
+  "type": "twse"
+ },
+ "2723": {
+  "categories": [
+   "觀光餐旅"
+  ],
+  "type": "twse"
+ },
+ "2724": {
+  "categories": [
+   "其他"
+  ],
+  "type": "tpex"
+ },
+ "2726": {
+  "categories": [
+   "觀光餐旅"
+  ],
+  "type": "tpex"
+ },
+ "2762": {
+  "categories": [
+   "運動休閒"
+  ],
+  "type": "twse"
+ },
+ "2801": {
+  "categories": [
+   "金融保險"
+  ],
+  "type": "twse"
+ },
+ "2836A": {
+  "categories": [
+   "金融保險"
+  ],
+  "type": "twse"
+ },
+ "2882": {
+  "categories": [
+   "金融保險"
+  ],
+  "type": "twse"
+ },
+ "2901": {
+  "categories": [
+   "貿易百貨"
+  ],
+  "type": "twse"
+ },
+ "2923": {
+  "categories": [
+   "建材營造"
+  ],
+  "type": "twse"
+ },
+ "2924": {
+  "categories": [
+   "居家生活類"
+  ],
+  "type": "tpex"
+ },
+ "2926": {
+  "categories": [
+   "文化創意業"
+  ],
+  "type": "tpex"
+ },
+ "2929": {
+  "categories": [
+   "貿易百貨"
+  ],
+  "type": "twse"
+ },
+ "2940": {
+  "categories": [
+   "運動休閒"
+  ],
+  "type": "emerging"
+ },
+ "2942": {
+  "categories": [
+   "居家生活"
+  ],
+  "type": "emerging"
+ },
+ "3066": {
+  "categories": [
+   "光電業"
+  ],
+  "type": "tpex"
+ },
+ "3073": {
+  "categories": [
+   "綠能環保類"
+  ],
+  "type": "tpex"
+ },
+ "3081": {
+  "categories": [
+   "通信網路業"
+  ],
+  "type": "tpex"
+ },
+ "3097": {
+  "categories": [
+   "電腦及週邊設備業"
+  ],
+  "type": "emerging"
+ },
+ "3117": {
+  "categories": [
+   "電子零組件業"
+  ],
+  "type": "emerging"
+ },
+ "3130": {
+  "categories": [
+   "數位雲端"
+  ],
+  "type": "twse"
+ },
+ "3147": {
+  "categories": [
+   "資訊服務業"
+  ],
+  "type": "tpex"
+ },
+ "3150": {
+  "categories": [
+   "創新板股票",
+   "半導體業",
+   "電子工業"
+  ],
+  "type": "twse"
+ },
+ "3194": {
+  "categories": [
+   "資訊服務業"
+  ],
+  "type": "emerging"
+ },
+ "3224": {
+  "categories": [
+   "電子通路業"
+  ],
+  "type": "tpex"
+ },
+ "3473": {
+  "categories": [
+   "通信網路業"
+  ],
+  "type": "emerging"
+ },
+ "3595": {
+  "categories": [
+   "光電業"
+  ],
+  "type": "emerging"
+ },
+ "3603": {
+  "categories": [
+   "電子通路業"
+  ],
+  "type": "emerging"
+ },
+ "3644": {
+  "categories": [
+   "半導體業"
+  ],
+  "type": "emerging"
+ },
+ "3661": {
+  "categories": [
+   "半導體業",
+   "電子工業"
+  ],
+  "type": "twse"
+ },
+ "3664": {
+  "categories": [
+   "通信網路業"
+  ],
+  "type": "tpex"
+ },
+ "3665": {
+  "categories": [
+   "其他電子業",
+   "電子工業"
+  ],
+  "type": "twse"
+ },
+ "3673": {
+  "categories": [
+   "光電業",
+   "電子工業"
+  ],
+  "type": "twse"
+ },
+ "4137": {
+  "categories": [
+   "化學生技醫療",
+   "生技醫療業"
+  ],
+  "type": "twse"
+ },
+ "4139": {
+  "categories": [
+   "生技醫療業"
+  ],
+  "type": "tpex"
+ },
+ "4195": {
+  "categories": [
+   "創新板股票",
+   "化學生技醫療",
+   "生技醫療業"
+  ],
+  "type": "twse"
+ },
+ "4303": {
+  "categories": [
+   "塑膠工業"
+  ],
+  "type": "tpex"
+ },
+ "4401": {
+  "categories": [
+   "紡織纖維"
+  ],
+  "type": "tpex"
+ },
+ "4431": {
+  "categories": [
+   "其他"
+  ],
+  "type": "emerging"
+ },
+ "4439": {
+  "categories": [
+   "紡織纖維"
+  ],
+  "type": "twse"
+ },
+ "4442": {
+  "categories": [
+   "紡織纖維"
+  ],
+  "type": "tpex"
+ },
+ "4582": {
+  "categories": [
+   "創新板股票",
+   "綠能環保"
+  ],
+  "type": "twse"
+ },
+ "4590": {
+  "categories": [
+   "創新板股票",
+   "電機機械"
+  ],
+  "type": "twse"
+ },
+ "4738": {
+  "categories": [
+   "化學工業"
+  ],
+  "type": "emerging"
+ },
+ "4763": {
+  "categories": [
+   "化學工業",
+   "化學生技醫療"
+  ],
+  "type": "twse"
+ },
+ "4912": {
+  "categories": [
+   "電子工業",
+   "電子零組件業"
+  ],
+  "type": "twse"
+ },
+ "4924": {
+  "categories": [
+   "綠能環保類"
+  ],
+  "type": "tpex"
+ },
+ "4966": {
+  "categories": [
+   "半導體業"
+  ],
+  "type": "tpex"
+ },
+ "4977": {
+  "categories": [
+   "通信網路業",
+   "電子工業"
+  ],
+  "type": "twse"
+ },
+ "5215": {
+  "categories": [
+   "電子工業",
+   "電腦及週邊設備業"
+  ],
+  "type": "twse"
+ },
+ "5223": {
+  "categories": [
+   "電腦及週邊設備業"
+  ],
+  "type": "tpex"
+ },
+ "5227": {
+  "categories": [
+   "電子零組件業"
+  ],
+  "type": "tpex"
+ },
+ "5284": {
+  "categories": [
+   "其他"
+  ],
+  "type": "twse"
+ },
+ "5538": {
+  "categories": [
+   "鋼鐵工業"
+  ],
+  "type": "twse"
+ },
+ "5543": {
+  "categories": [
+   "建材營造"
+  ],
+  "type": "tpex"
+ },
+ "5859": {
+  "categories": [
+   "金融業"
+  ],
+  "type": "emerging"
+ },
+ "5864": {
+  "categories": [
+   "金融業"
+  ],
+  "type": "tpex"
+ },
+ "5871A": {
+  "categories": [
+   "其他"
+  ],
+  "type": "twse"
+ },
+ "6428": {
+  "categories": [
+   "文化創意業"
+  ],
+  "type": "emerging"
+ },
+ "6473": {
+  "categories": [
+   "數位雲端"
+  ],
+  "type": "emerging"
+ },
+ "6592": {
+  "categories": [
+   "其他"
+  ],
+  "type": "twse"
+ },
+ "6639": {
+  "categories": [
+   "油電燃氣業"
+  ],
+  "type": "emerging"
+ },
+ "6641": {
+  "categories": [
+   "綠能環保"
+  ],
+  "type": "twse"
+ },
+ "6671": {
+  "categories": [
+   "居家生活"
+  ],
+  "type": "twse"
+ },
+ "6741": {
+  "categories": [
+   "數位雲端類"
+  ],
+  "type": "tpex"
+ },
+ "6854": {
+  "categories": [
+   "創新板股票",
+   "半導體業",
+   "電子工業"
+  ],
+  "type": "twse"
+ },
+ "6908": {
+  "categories": [
+   "創新板股票",
+   "電子工業",
+   "電子通路業"
+  ],
+  "type": "twse"
+ },
+ "6924": {
+  "categories": [
+   "創新板股票",
+   "電子工業",
+   "電子零組件業"
+  ],
+  "type": "twse"
+ },
+ "6950": {
+  "categories": [
+   "數位雲端"
+  ],
+  "type": "emerging"
+ },
+ "6976": {
+  "categories": [
+   "生技醫療業"
+  ],
+  "type": "emerging"
+ },
+ "7631": {
+  "categories": [
+   "其他電子業",
+   "創新板股票",
+   "電子工業"
+  ],
+  "type": "twse"
+ },
+ "7798": {
+  "categories": [
+   "建材營造"
+  ],
+  "type": "emerging"
+ },
+ "7812": {
+  "categories": [
+   "創新板股票",
+   "通信網路業",
+   "電子工業"
+  ],
+  "type": "twse"
+ },
+ "7823": {
+  "categories": [
+   "創新板股票",
+   "數位雲端"
+  ],
+  "type": "twse"
+ },
+ "7827": {
+  "categories": [
+   "創新板股票",
+   "化學生技醫療",
+   "生技醫療業"
+  ],
+  "type": "twse"
+ },
+ "7835": {
+  "categories": [
+   "創新板股票",
+   "數位雲端"
+  ],
+  "type": "twse"
+ },
+ "7840": {
+  "categories": [
+   "農業科技"
+  ],
+  "type": "emerging"
+ },
+ "7862": {
+  "categories": [
+   "紡織纖維"
+  ],
+  "type": "emerging"
+ },
+ "8112A": {
+  "categories": [
+   "電子工業",
+   "電子通路業"
+  ],
+  "type": "twse"
+ },
+ "8349": {
+  "categories": [
+   "鋼鐵工業"
+  ],
+  "type": "tpex"
+ },
+ "8349A": {
+  "categories": [
+   "鋼鐵工業"
+  ],
+  "type": "tpex"
+ },
+ "8455": {
+  "categories": [
+   "其他電子類"
+  ],
+  "type": "tpex"
+ },
+ "8917": {
+  "categories": [
+   "油電燃氣業"
+  ],
+  "type": "tpex"
+ }
+}
