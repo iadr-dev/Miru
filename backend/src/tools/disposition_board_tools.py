@@ -335,8 +335,8 @@ class GetDispositionBoardTool(BaseTool):
                 market=market,
                 data_available=False,
                 unavailable_reason="Disposition-board ingest has not captured any day yet for "
-                "this market — history only starts accumulating once "
-                "job_attention_stocks/job_disposition_events first run; there is no backfill.",
+                "this market — the daily jobs job_attention_stocks/job_disposition_events "
+                "have not run, and the event-history backfill has not rebuilt earlier days.",
             )
         report_date = data.report_date
         by_symbol_disposition = data.by_symbol_disposition

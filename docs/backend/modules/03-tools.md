@@ -109,11 +109,15 @@ Free and paid callers get the same full result (no teaser, no preview; see
   `min_volume` are dropped and counted. Per horizon: n, distinct stocks, distinct event days.
 - **Minimum sample.** A horizon (and a by-year cell) with fewer than 30 events returns counts and
   `status = insufficient_sample` with no statistic.
-- **Honest history.** The disposition, attention and announcement feeds are forward-only daily
-  snapshots, so their history starts the day the daily job first ran (`data_window.
-  event_feed_first_snapshot`), not at the 2023 start of the price history; the typed
-  `limitations` say so, with clustering (events share market moves), survivorship, unadjusted
-  closes and no costs.
+- **Honest history.** The disposition and attention feeds are daily snapshots; their live history
+  starts the day the daily job first ran, and `ingest.backfill_cli --event-history` rebuilds the
+  earlier days from the exchanges' range reports into the same partitions
+  ([22](22-data-ingest.md) §1f), so the loader reads one series back to the start of the price
+  history (about three years). The announcement feed (buy-back types) is still forward-only. The
+  window actually read is reported in `data_window.event_feed_first_snapshot`, and the typed
+  `short_event_history` limitation appears only when the feed starts more than ten days after the
+  prices (a store that was not backfilled), together with clustering (events share market moves),
+  survivorship, unadjusted closes and no costs.
 - **Card.** `card_type = event_study` with a `chart_hint` bar chart of mean / median excess return
   per horizon (label carries n); the generic chart renderer draws it, and its data sheet holds the
   plotted values. The recent-events table (`events`) is in the payload for the model's answer.
