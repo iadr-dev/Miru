@@ -343,7 +343,8 @@ convention) or don't exist yet at all. Corrections are called out inline below.
 - `propose_schedule` (`propose_schedule_tools.py::ProposeScheduleTool`) — **propose-only**, the
   recurring-briefing twin of `propose_alert` (`card_type = "schedule_proposal"`). The model picks a
   `template` from the `schemas/schedule_templates.py` catalogue (`pre_open_brief`,
-  `after_close_chip`, `disposition_watch`, `weekly_catalyst`, `weekly_etf`, `us_after_close`) and
+  `after_close_chip`, `disposition_watch`, `weekly_catalyst`, `weekly_etf`, `us_after_close`,
+  `weekly_watchlist_review`) and
   ticker `targets` (one for every template except the pre-open brief, up to 10); it never supplies a
   cron or a skill name. The output carries the resolved `trigger` and `action` — the exact bodies
   `POST /schedules` takes — and the card posts them on 建立. No I/O, creates nothing. Reachable via
@@ -439,6 +440,7 @@ write path, and they only draft a card).
 | `get_my_automations` | alert rules (target, `describe()` condition text, status, last triggered), scheduled briefings (cadence, next run) and the 策略盯盤 subscription | 100 alerts, 50 schedules (true counts reported) | `account-overview` |
 | `get_my_usage` | today's chat quota used / limit by tier (BYOK or Pro: no limit), optional LLM calls and tokens today (FinMind-independent) | top 5 models | `account-overview` |
 | `get_my_notifications` | most recent in-app notifications (title, short body, source, time, read); never marks anything read | default 20, max 50 | `account-overview` |
+| `get_watchlist_weekly_review` (`watchlist_review_tools.py`) | the weekly review of the user's own watchlist groups (TW and US apart): each symbol's week move from stored closes (best/worst `top_n`, symbols without a figure), events due in the next 7 days with source and date, per-market freshness and unreadable sources, and the finished `report` / `notice` text. `health_status`, `caveats` and a currentness caveat included | 60 distinct symbols per run (shared between markets; the true count is reported); calendar feed 6 at a time, 12 s each | `watchlist-review`; the scheduled `weekly_watchlist_review` |
 
 Rules that make a `private` tool safe:
 
@@ -458,6 +460,11 @@ Rules that make a `private` tool safe:
 - **Free for every signed-in tier.** `is_entitled(PRIVATE, tier)` is true at every tier; reading your
   own data is not a paid feature.
 - **Not offered over MCP** (see below).
+- `get_watchlist_weekly_review` follows the same rules (user from the context only, `extra="forbid"`, read-only, free
+  at every signed-in tier) and is registered only where both the account reader and the Parquet store exist. Its numbers
+  come from `analytics/watchlist_review.py` (pure: week bounds, `weekly_move`, event window, rendering) over the stored
+  `price_eod` / `us_price_eod`, dividend, `disposition_events` and `attention_stocks` datasets; the exchange calendar feed
+  is the one router read and a failure is reported in the output, not hidden. It has no REST route (chat and the scheduler only).
 
 ### `public`/AI — derived analytics & scoring ([20](20-analytics-scoring.md))
 Registered tools (module 20 owns the engines behind them):

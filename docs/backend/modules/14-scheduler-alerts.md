@@ -215,6 +215,51 @@ ScheduleJob
 | 收盤籌碼摘要 (`after_close_chip`) | `chip-flow-review` | after_close, once chip data lands |
 | 處置/注意觀察 (`disposition_watch`) | `disposition-watch` | after_close |
 | 事件週曆 (`weekly_catalyst`) | `catalyst-scan` | Mon 08:30 |
+| 每週自選股回顧 (`weekly_watchlist_review`) | `watchlist-review` (weekly mode) | cron, **the user's weekday and time**; default Sat 09:00 Taipei |
+
+**Weekly watchlist review (`weekly_watchlist_review`).** The personal counterpart of the market-wide
+morning brief and the stock-level `weekly_catalyst`: once a week the owner gets a short, descriptive,
+data-grounded summary of THEIR OWN watchlist groups. It is built like the other skill-backed templates
+(`schemas/schedule_templates.py` entry, a `ScheduleJob` running a governed skill through
+`Orchestrator.run_skill`, the schedule's one persistent thread, an in-app notification that is a
+160-character preview plus a deep link to the thread - the "summary + link" convention), with these
+differences:
+
+- **No tickers.** `takes_targets = False`; the action is `watchlist-review` with `inputs = {review: weekly}`
+  (the skill's weekly mode). The trigger is a plain cron in Taipei time that the user composes from a weekday
+  and a time (`POST /schedules` validates it like any cron: concrete minute and hour). The default is
+  Saturday 09:00, after Friday's close in Taipei and New York. Settings and `propose_schedule`
+  (`weekday` = mon..sun, `time` = HH:MM) both build it; the web form recognises the job by its skill input,
+  not by an exact cron.
+- **Numbers are code, not model.** The skill calls `get_watchlist_weekly_review` once ([03](03-tools.md)) and
+  relays its finished `report`; the model may add one sentence but does not compute, reorder or drop a line.
+  The week's move is `analytics/watchlist_review.py::weekly_move` over stored closes: the market's latest
+  stored trading day against the last trading day on or before seven days earlier (Friday against the previous
+  Friday; a holiday week moves both ends to the nearest trading day). Closes are unadjusted: a symbol with a
+  split-like one-day break in the window is flagged, shown raw and kept out of the best/worst lists; a symbol
+  with no close on either day is listed as "cannot compute" with the reason (suspended, newly listed, no data).
+- **Events due in the next seven days** (the run day and the six after, inclusive): ex-dividend / ex-rights from
+  the stored dividend dataset, shareholder meetings / cash-capital-increase record dates from the exchange
+  calendar feed (the one router leg, bounded and reported when it fails), disposition periods starting or ending
+  and who is under disposition or recently listed as an attention stock from the stored risk lists, and the
+  statutory 財報 / 月營收 filing deadlines from `calendar/rules.py`. Each line carries its source and date. Not
+  covered, and said so in every report: buyback windows, 法說會 dates, per-company report dates (no source),
+  and the US event calendar beyond stored ex-dividend dates.
+- **Freshness is stated, never omitted.** Per market: the data date, "older than expected" when the newest stored
+  day is behind the last open day (scheduled calendar minus confirmed closures; a missing day is stale, not a
+  holiday), and one line per unreadable or empty source.
+- **Scope and caps.** All of the owner's groups, TW and US in separate sections, distinct symbols; at most 60
+  symbols per run (the `get_my_watchlists` quote bound), shared evenly between the markets, with the true count
+  and the number left out in the report.
+- **Empty watchlist.** The worker checks before the quota gate and the model run: a user with no watchlist
+  symbol gets one calm notice ("本週沒有可回顧的自選股…"), the job is `ok` with reason `nothing_to_review`, the
+  cadence moves on, and no chat is spent.
+- **Quota and keys** are those of every skill-backed schedule: a run counts against the owner's daily chat
+  allowance (`UsageQuotaGate`) unless they run on their own key (their saved default model; the `byok_key_required`
+  skip applies); it is not a platform-only job, so there is no `assert_no_byok_scope`. It counts toward
+  `MAX_SCHEDULES` like any schedule and is open to every signed-in tier (the tool is `private`).
+- Every string of the report passes `governance/textscan.py` (tests render each state through `check_output`);
+  nothing in it ranks symbols to act on or suggests an action.
 
 The four **full reports** are weekly on purpose: each run makes ~10 data calls and counts against the
 owner's chat quota, and a five-year report does not change daily. The catalogue lives in
