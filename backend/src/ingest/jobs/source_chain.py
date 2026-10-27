@@ -203,10 +203,17 @@ class ChainOutcome:
 
 
 def _without_remembered_denial(
-    ctx: IngestContext, outcome: ChainOutcome, chain: list[ChainLink], plan_key: tuple[str, str]
+    ctx: IngestContext,
+    outcome: ChainOutcome,
+    chain: list[ChainLink],
+    plan_key: tuple[str, str],
+    *,
+    enabled: bool,
 ) -> list[ChainLink]:
     """`chain` without FinMind while a plan denial for the capability is younger than
-    `PLAN_DENIAL_TTL`: it is not asked, and the outcome records why."""
+    `PLAN_DENIAL_TTL`: it is not asked, and the outcome records why. A no-op unless `enabled`."""
+    if not enabled or FINMIND_ID not in outcome.chain_ids:
+        return chain
     if not ctx.store.is_plan_denied(*plan_key, ttl=PLAN_DENIAL_TTL):
         return chain
     outcome.failures.append((FINMIND_ID, "not in the FinMind plan (remembered)"))
@@ -247,8 +254,7 @@ async def walk_chain(  # noqa: PLR0913 - the optional knobs are keyword-only by 
     chain = resolve_chain(ctx, capability, market)
     outcome = ChainOutcome(chain_ids=[link.source_id for link in chain])
     plan_key = ((market or ctx.market).value, capability.value)
-    if skip_plan_denied and FINMIND_ID in outcome.chain_ids:
-        chain = _without_remembered_denial(ctx, outcome, chain, plan_key)
+    chain = _without_remembered_denial(ctx, outcome, chain, plan_key, enabled=skip_plan_denied)
     for link in chain:
         result = await link.source.fetch_whole_market(
             capability, tls_policy=ctx.tls_policy, start_date=(source_date or run_date).isoformat()
