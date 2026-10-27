@@ -40,6 +40,9 @@ class JobRun:
     status: RunStatus
     detail: str = ""
     journaled_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    # SKIPPED because the dataset is not in the FinMind plan (and no free source serves it):
+    # reported apart from the other skips, and never as a failure.
+    tier_skipped: bool = False
 
 
 def journal_run(
@@ -52,14 +55,35 @@ def journal_run(
 ) -> JobRun:
     """Record one ingest run. Emits a single structured log line — never logs the FinMind
     token or any raw upstream payload, only the required audit fields."""
-    run = JobRun(
-        dataset=dataset,
-        run_date=run_date,
-        rows_written=rows_written,
-        status=status,
-        detail=detail,
-        journaled_at=datetime.now(UTC),
+    return _record(
+        JobRun(
+            dataset=dataset,
+            run_date=run_date,
+            rows_written=rows_written,
+            status=status,
+            detail=detail,
+            journaled_at=datetime.now(UTC),
+        )
     )
+
+
+def journal_tier_skip(dataset: str, run_date: date_, detail: str) -> JobRun:
+    """Record a run skipped because the dataset is not in the FinMind plan (nothing else serves
+    it): SKIPPED, flagged so a summary can count it apart from every other skip."""
+    return _record(
+        JobRun(
+            dataset=dataset,
+            run_date=run_date,
+            rows_written=0,
+            status=RunStatus.SKIPPED,
+            detail=detail,
+            journaled_at=datetime.now(UTC),
+            tier_skipped=True,
+        )
+    )
+
+
+def _record(run: JobRun) -> JobRun:
     logger.info(
         "ingest_run_journaled",
         dataset=run.dataset,
@@ -67,8 +91,9 @@ def journal_run(
         rows_written=run.rows_written,
         status=run.status.value,
         detail=run.detail,
+        tier_skipped=run.tier_skipped,
     )
     return run
 
 
-__all__ = ["JobRun", "RunStatus", "journal_run"]
+__all__ = ["JobRun", "RunStatus", "journal_run", "journal_tier_skip"]

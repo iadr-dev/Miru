@@ -72,7 +72,14 @@ async def backfill_range(
     )
     runs: list[JobRun] = []
     for run_date in dates:
-        runs.append(await run_whole_market_job(spec, run_date, ctx))
+        run = await run_whole_market_job(spec, run_date, ctx)
+        runs.append(run)
+        if run.tier_skipped:
+            # Not in the FinMind plan: every other date would be refused the same way, so the
+            # dataset is not walked any further (one probe per dataset per run). The denial is
+            # remembered for `PLAN_DENIAL_TTL`, which also covers the next run.
+            logger.info("ingest_backfill_tier_skipped", dataset=spec.dataset, detail=run.detail)
+            break
     logger.info(
         "ingest_backfill_completed",
         dataset=spec.dataset,

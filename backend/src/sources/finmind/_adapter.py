@@ -9,6 +9,7 @@ logged, never returned in any payload.
 from __future__ import annotations
 
 import asyncio
+import re
 from datetime import UTC, datetime, timedelta
 from typing import cast
 
@@ -28,9 +29,38 @@ logger = structlog.get_logger(__name__)
 
 _DATA_ENDPOINT = "/data"
 _HTTP_OK = 200
+_HTTP_BAD_REQUEST = 400
 _HTTP_PAYMENT_REQUIRED = 402  # FinMind's rate-limit-exceeded status
+# FinMind refuses a dataset (or the whole-market-by-date form) outside the account's level with
+# HTTP 400 and {"status": 400, "msg": "Your level is register. Please update your user level. ..."}
+# (captured live: tests/sources/finmind/_responses.py). A bad token is also a 400 ("Token is
+# illegal."), a ban a 403 and the rate limit a 402, so no status or field tells a plan denial
+# apart: the message is the one discriminator, matched here and nowhere else.
+PLAN_DENIAL_MESSAGE = re.compile(
+    r"^Your level is \w+\. Please update your user level", re.IGNORECASE
+)
+_MAX_ERROR_MSG_CHARS = 120
+type _Envelope = dict[str, object]  # a parsed FinMind JSON object
 # After a 402, ingest waits for the window to reset and retries a call this many times.
 _INGEST_402_RETRIES = 1
+
+
+def is_plan_denial(body: _Envelope) -> bool:
+    """Whether a FinMind error body is the out-of-plan answer, and not a bad key, a ban or the
+    rate limit."""
+    msg = body.get("msg")
+    return isinstance(msg, str) and PLAN_DENIAL_MESSAGE.match(msg.strip()) is not None
+
+
+def _error_message(response: httpx.Response) -> str:
+    """FinMind's own `msg` of an error answer, trimmed ("" when the body has none). It never
+    carries the token (FinMind echoes only the key's tail, in a separate field)."""
+    try:
+        body: object = response.json()
+    except ValueError:
+        return ""
+    msg = cast("_Envelope", body).get("msg") if isinstance(body, dict) else None
+    return msg[:_MAX_ERROR_MSG_CHARS] if isinstance(msg, str) else ""
 
 
 class FinMindQuotaRefusedError(RuntimeError):
@@ -190,6 +220,18 @@ class FinMindAdapter:
             health=SourceHealth(status=HealthStatus.UNREACHABLE, detail=detail),
         )
 
+    def _plan_denied_result(self, config: _DatasetConfig) -> SourceResult:
+        return _result(
+            data_class=config.data_class,
+            timing_class=config.timing_class,
+            caveat=config.caveat,
+            payload={},
+            health=SourceHealth(
+                status=HealthStatus.UNAVAILABLE_TIER,
+                detail=f"not in the FinMind plan: {config.dataset}",
+            ),
+        )
+
     async def _reserve_call(self, config: _DatasetConfig) -> SourceResult | None:
         """Count this call against the token's cap before sending it. An interactive caller over
         the cap gets an error result at once (no request is sent); ingest waits for the window to
@@ -257,7 +299,11 @@ class FinMindAdapter:
         has lapsed, so it stops loudly instead of waiting an hour per date forever."""
         status_code = exc.response.status_code
         if status_code != _HTTP_PAYMENT_REQUIRED:
-            return self._error_result(config, detail=f"FinMind HTTP {status_code}")
+            msg = _error_message(exc.response)
+            if status_code == _HTTP_BAD_REQUEST and PLAN_DENIAL_MESSAGE.match(msg.strip()):
+                return self._plan_denied_result(config)
+            suffix = f": {msg}" if msg else ""
+            return self._error_result(config, detail=f"FinMind HTTP {status_code}{suffix}")
         await self._quota.mark_exhausted()
         if self._quota.role != "ingest":
             return self._error_result(config, detail="FinMind rate limit exceeded (402)")
@@ -284,8 +330,11 @@ class FinMindAdapter:
         if not isinstance(raw, dict):
             return self._error_result(config, detail="FinMind response is not an object")
 
+        envelope = cast("_Envelope", raw)
+        if is_plan_denial(envelope):  # the same answer under an HTTP 200
+            return self._plan_denied_result(config)
         try:
-            validated = self.validate(cast("dict[str, object]", raw))
+            validated = self.validate(envelope)
         except ValueError as exc:
             return _result(
                 data_class=config.data_class,
