@@ -82,8 +82,9 @@ def test_user_chosen_day_and_time_become_a_concrete_cron(
 
 
 def test_a_wildcard_time_is_still_refused_as_too_frequent() -> None:
+    trigger = ScheduleTrigger(type=TriggerType.CRON, spec="* * * * 6", market=Market.TW)
     with pytest.raises(InvalidTriggerError):
-        validate_trigger(ScheduleTrigger(type=TriggerType.CRON, spec="* * * * 6", market=Market.TW))
+        validate_trigger(trigger)
 
 
 def test_the_action_names_a_registered_governed_skill() -> None:

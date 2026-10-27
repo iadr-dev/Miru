@@ -66,7 +66,8 @@ WATCHLIST_SKILL: Final = "daily-context-brief"
 WEEKLY_REVIEW_SKILL: Final = "watchlist-review"
 WEEKLY_REVIEW_INPUT: Final = "review"
 WEEKLY_REVIEW_MODE: Final = "weekly"
-WEEKLY_REVIEW_DEFAULT_CRON: Final = "0 9 * * 6"
+_SATURDAY_0900: Final = "0 9 * * 6"
+WEEKLY_REVIEW_DEFAULT_CRON: Final = _SATURDAY_0900
 WEEKDAY_CRON: Final[dict[str, int]] = {
     "sun": 0,
     "mon": 1,
@@ -159,7 +160,7 @@ SCHEDULE_TEMPLATES: Final[dict[ScheduleTemplateId, ScheduleTemplate]] = {
         id=ScheduleTemplateId.US_STOCK_REPORT,
         skill_ref="stock-report-us",
         trigger_type="cron",
-        trigger_spec="0 9 * * 6",
+        trigger_spec=_SATURDAY_0900,
         market=Market.US,
         target_input="symbol_id",
         multiple=False,
@@ -181,7 +182,7 @@ SCHEDULE_TEMPLATES: Final[dict[ScheduleTemplateId, ScheduleTemplate]] = {
         id=ScheduleTemplateId.US_ETF_REPORT,
         skill_ref="etf-report",
         trigger_type="cron",
-        trigger_spec="0 9 * * 6",
+        trigger_spec=_SATURDAY_0900,
         market=Market.US,
         target_input="etf_id",
         multiple=False,

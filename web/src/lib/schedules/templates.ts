@@ -255,8 +255,10 @@ export const DEFAULT_WEEKLY_WHEN: WeeklyWhen = { weekday: 6, time: "09:00" };
 const WEEKLY_CRON = /^(\d{1,2}) (\d{1,2}) \* \* ([0-7])$/;
 const TIME_OF_DAY = /^([01]?\d|2[0-3]):([0-5]\d)$/;
 
+const WEEKDAY_SET: ReadonlySet<number> = new Set(WEEKDAY_ORDER);
+
 function isWeekday(value: number): value is Weekday {
-  return WEEKDAY_ORDER.some((day) => day === value);
+  return WEEKDAY_SET.has(value);
 }
 
 /** The weekday and time a weekly cron ("30 20 * * 0") names, or null for any other spec. */

@@ -271,11 +271,13 @@ async def test_reviews_both_markets_from_the_stored_data(tmp_path: Path) -> None
     assert moves["2317"].change_pct == -5.0
     assert moves["6999"].status == "no_base_price"
     assert {m.symbol: m.change_pct for m in us.moves} == {"AAPL": 2.5, "MSFT": 0.0}
-    assert tw.freshness.data_as_of == FRIDAY and not tw.freshness.stale
+    assert tw.freshness.data_as_of == FRIDAY
+    assert not tw.freshness.stale
     assert tw.freshness.base_date == PREV_FRIDAY
 
     report = out.report
-    assert "### 台股（3 檔）" in report and "### 美股（2 檔）" in report
+    assert "### 台股（3 檔）" in report
+    assert "### 美股（2 檔）" in report
     assert "漲幅居前：2330 台積電 +3.00%（1,000.00 → 1,030.00）" in report
     assert "跌幅居前：2317 -5.00%" in report
     assert "6999（前一週沒有收盤價（可能是新掛牌））" in report

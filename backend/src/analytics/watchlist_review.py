@@ -289,24 +289,28 @@ def select_events(
     )
 
 
-def statutory_deadlines(start: date_, end: date_, market: Market = Market.TW) -> list[ReviewEvent]:
-    """The 財報 and 月營收 statutory filing deadlines that fall inside `[start, end]`. They apply to
-    every listed company, not to one stock, and say nothing about when a given company reports."""
+def _financial_deadlines(start: date_, end: date_, market: Market) -> list[ReviewEvent]:
     found: list[ReviewEvent] = []
     for year in range(start.year - 1, end.year + 1):
         for quarter in range(1, 5):
             day = financial_statement_deadline(year, quarter)
-            if start <= day <= end:
-                label = "年報" if quarter == 4 else f"第{quarter}季財報"  # noqa: PLR2004
-                found.append(
-                    ReviewEvent(
-                        market=market,
-                        kind="financial_deadline",
-                        event_date=day,
-                        source=SOURCE_RULE,
-                        detail=f"{label}（上市櫃公司）",
-                    )
+            if not start <= day <= end:
+                continue
+            label = "年報" if quarter == 4 else f"第{quarter}季財報"  # noqa: PLR2004
+            found.append(
+                ReviewEvent(
+                    market=market,
+                    kind="financial_deadline",
+                    event_date=day,
+                    source=SOURCE_RULE,
+                    detail=f"{label}（上市櫃公司）",
                 )
+            )
+    return found
+
+
+def _revenue_deadlines(start: date_, end: date_, market: Market) -> list[ReviewEvent]:
+    found: list[ReviewEvent] = []
     year, month = (start.year, start.month - 1) if start.month > 1 else (start.year - 1, 12)
     while (year, month) <= (end.year, end.month):
         day = monthly_revenue_deadline(year, month)
@@ -322,6 +326,12 @@ def statutory_deadlines(start: date_, end: date_, market: Market = Market.TW) ->
             )
         year, month = (year, month + 1) if month < 12 else (year + 1, 1)  # noqa: PLR2004
     return found
+
+
+def statutory_deadlines(start: date_, end: date_, market: Market = Market.TW) -> list[ReviewEvent]:
+    """The 財報 and 月營收 statutory filing deadlines that fall inside `[start, end]`. They apply to
+    every listed company, not to one stock, and say nothing about when a given company reports."""
+    return [*_financial_deadlines(start, end, market), *_revenue_deadlines(start, end, market)]
 
 
 # ---------------------------------------------------------------------------------------------
@@ -379,17 +389,11 @@ def _freshness_line(fresh: Freshness) -> str:
     return line + "。"
 
 
-def _market_section(section: MarketReview, window: tuple[date_, date_], top_n: int) -> list[str]:
-    label = _MARKET_LABEL.get(section.market, section.market.value)
-    covered = (
-        f"{section.symbols_total} 檔"
-        if section.symbols_covered == section.symbols_total
-        else f"{section.symbols_total} 檔，本次涵蓋 {section.symbols_covered} 檔"
-    )
-    lines = ["", f"### {label}（{covered}）"]
+def _move_lines(section: MarketReview, top_n: int) -> list[str]:
     fresh = section.freshness
     ok = [m for m in section.moves if m.status == "ok"]
     gaps = [m for m in section.moves if m.status != "ok"]
+    lines: list[str] = []
     if ok and fresh.base_date and fresh.data_as_of:
         lines.append(
             f"**一週變動**（{fresh.data_as_of.isoformat()} 收盤對 {fresh.base_date.isoformat()} "
@@ -402,13 +406,7 @@ def _market_section(section: MarketReview, window: tuple[date_, date_], top_n: i
             lines.append("- 跌幅居前：" + "；".join(_move_line(m) for m in worst))
         if not best and not worst:
             lines.append("- 本週沒有明顯漲跌的標的（皆持平或價格基準有異動）。")
-        breaks = [m for m in ok if m.basis_break]
-        if breaks:
-            names = "、".join(_who(m.symbol, m.name) for m in breaks)
-            lines.append(
-                "- 價格基準可能受分割、減資或面額變更影響，以下為未還原的原始數字，不列入排行："
-                f"{names}"
-            )
+        lines.extend(_break_lines([m for m in ok if m.basis_break]))
         lines.append(f"- 已計算週變動：{len(ok)} 檔。")
     else:
         lines.append("**一週變動**：目前無法計算（缺少足夠的收盤資料）。")
@@ -417,7 +415,20 @@ def _market_section(section: MarketReview, window: tuple[date_, date_], top_n: i
             f"- 無法計算：{len(gaps)} 檔 — "
             + "；".join(f"{_who(m.symbol, m.name)}（{_gap_reason(m)}）" for m in gaps)
         )
-    lines.append(f"**未來 7 天事件**（{window[0].isoformat()} 至 {window[1].isoformat()}）")
+    return lines
+
+
+def _break_lines(breaks: list[WeeklyMove]) -> list[str]:
+    if not breaks:
+        return []
+    names = "、".join(_who(m.symbol, m.name) for m in breaks)
+    return [
+        f"- 價格基準可能受分割、減資或面額變更影響，以下為未還原的原始數字，不列入排行：{names}"
+    ]
+
+
+def _event_lines(section: MarketReview, window: tuple[date_, date_]) -> list[str]:
+    lines = [f"**未來 7 天事件**（{window[0].isoformat()} 至 {window[1].isoformat()}）"]
     if section.events:
         lines.extend(f"- {_event_line(e)}" for e in section.events)
     else:
@@ -425,7 +436,20 @@ def _market_section(section: MarketReview, window: tuple[date_, date_], top_n: i
     if section.statuses:
         lines.append("**目前狀態**")
         lines.extend(f"- {_status_line(s)}" for s in section.statuses)
-    lines.append(_freshness_line(fresh))
+    return lines
+
+
+def _market_section(section: MarketReview, window: tuple[date_, date_], top_n: int) -> list[str]:
+    label = _MARKET_LABEL.get(section.market, section.market.value)
+    covered = (
+        f"{section.symbols_total} 檔"
+        if section.symbols_covered == section.symbols_total
+        else f"{section.symbols_total} 檔，本次涵蓋 {section.symbols_covered} 檔"
+    )
+    lines = ["", f"### {label}（{covered}）"]
+    lines.extend(_move_lines(section, top_n))
+    lines.extend(_event_lines(section, window))
+    lines.append(_freshness_line(section.freshness))
     lines.extend(
         f"- 注意：{issue.source}暫時無法讀取（{issue.detail}），相關事件可能不完整。"
         for issue in section.issues

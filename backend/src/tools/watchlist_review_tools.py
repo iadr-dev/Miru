@@ -314,6 +314,37 @@ def _stale_issue(source: str, market: Market, latest: date, run_day: date) -> li
     return []
 
 
+def _disposition_events(scope: _Scope, row: DispositionEventRow) -> list[ReviewEvent]:
+    """The row's period start and end, for whichever falls inside the window."""
+    span = f"處置期間 {row.period_start.isoformat()} 至 {row.period_end.isoformat()}"
+    ends: list[tuple[EventKind, date]] = [
+        ("disposition_start", row.period_start),
+        ("disposition_end", row.period_end),
+    ]
+    return [
+        _event(scope, row.symbol, kind, day, source=SOURCE_DISPOSITION, detail=span)
+        for kind, day in ends
+        if scope.in_window(day)
+    ]
+
+
+def _disposition_status(
+    scope: _Scope, row: DispositionEventRow, as_of: date
+) -> ReviewStatus | None:
+    """Under disposition on the data date and still so on the run day."""
+    if not (row.period_start <= as_of <= row.period_end and row.period_end >= scope.run_day):
+        return None
+    return ReviewStatus(
+        symbol=row.symbol,
+        market=scope.market,
+        name=scope.names.get(row.symbol),
+        kind="disposition_active",
+        since=row.period_start,
+        until=row.period_end,
+        source=SOURCE_DISPOSITION,
+    )
+
+
 def _disposition_inputs(
     scope: _Scope, store: ParquetStore, as_of: date
 ) -> tuple[list[ReviewEvent], list[ReviewStatus], list[SourceIssue]]:
@@ -322,50 +353,13 @@ def _disposition_inputs(
     latest = _latest_on_or_before(store, DISPOSITION_EVENTS_DATASET, market, scope.run_day)
     if latest is None:
         return [], [], [_no_data(SOURCE_DISPOSITION, market)]
-    issues = _stale_issue(SOURCE_DISPOSITION, market, latest, scope.run_day)
-    events: list[ReviewEvent] = []
-    statuses: list[ReviewStatus] = []
     wanted = set(scope.symbols)
     raw = store.read_partition(DISPOSITION_EVENTS_DATASET, market.value, latest)
-    for row in rows_from_store(DispositionEventRow, raw):
-        if row.symbol not in wanted:
-            continue
-        span = f"處置期間 {row.period_start.isoformat()} 至 {row.period_end.isoformat()}"
-        if scope.in_window(row.period_start):
-            events.append(
-                _event(
-                    scope,
-                    row.symbol,
-                    "disposition_start",
-                    row.period_start,
-                    source=SOURCE_DISPOSITION,
-                    detail=span,
-                )
-            )
-        if scope.in_window(row.period_end):
-            events.append(
-                _event(
-                    scope,
-                    row.symbol,
-                    "disposition_end",
-                    row.period_end,
-                    source=SOURCE_DISPOSITION,
-                    detail=span,
-                )
-            )
-        if row.period_start <= as_of <= row.period_end and row.period_end >= scope.run_day:
-            statuses.append(
-                ReviewStatus(
-                    symbol=row.symbol,
-                    market=market,
-                    name=scope.names.get(row.symbol),
-                    kind="disposition_active",
-                    since=row.period_start,
-                    until=row.period_end,
-                    source=SOURCE_DISPOSITION,
-                )
-            )
-    return events, statuses, issues
+    rows = [r for r in rows_from_store(DispositionEventRow, raw) if r.symbol in wanted]
+    events = [event for row in rows for event in _disposition_events(scope, row)]
+    maybe = [_disposition_status(scope, row, as_of) for row in rows]
+    statuses = [status for status in maybe if status is not None]
+    return events, statuses, _stale_issue(SOURCE_DISPOSITION, market, latest, scope.run_day)
 
 
 def _attention_inputs(
