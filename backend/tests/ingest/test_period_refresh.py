@@ -313,8 +313,9 @@ async def test_an_invalid_official_row_is_not_added(tmp_path: object) -> None:
 
 
 async def test_a_dataset_that_is_not_period_keyed_is_refused(tmp_path: object) -> None:
+    ctx = _ctx(tmp_path, None)
     with pytest.raises(ValueError, match="not a period-keyed dataset"):
-        await fill_missing_companies(PRICE_EOD_JOB, MONDAY_FEB_2, _ctx(tmp_path, None))
+        await fill_missing_companies(PRICE_EOD_JOB, MONDAY_FEB_2, ctx)
 
 
 def test_the_refreshable_datasets_are_the_four_period_keyed_ones() -> None:
@@ -388,9 +389,10 @@ async def test_the_cli_needs_the_explicit_yes_and_never_runs_in_production(
 
     assert refused == ()
     assert official.calls == []
+    production = _settings(env="production")
     with pytest.raises(ProductionHardStopError):
         await run_fill_missing_companies(
-            _settings(env="production"),
+            production,
             ctx,
             override=True,
             dataset="TaiwanStockMonthRevenue",
