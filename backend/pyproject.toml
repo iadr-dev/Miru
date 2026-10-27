@@ -212,6 +212,7 @@ module = [
   "analytics.screener.engine",
   "analytics.strategy_watch.strategies",
   "analytics.strategy_watch.intraday",
+  "analytics.watchlist_review",
   "agent.*",
   "governance.*",
   "conversation.*",
