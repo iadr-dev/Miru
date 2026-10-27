@@ -49,8 +49,9 @@ function levelParts(levels: PatternLevels, t: PatternsT): string[] {
 function resolutionLine(hit: ChartPatternHit, t: PatternsT): string | null {
   if (hit.failed_at) return t("chartPatterns.failedOn", { date: hit.failed_at.trade_date });
   if (hit.confirmed_at) {
-    const side = hit.broken_side ? ` · ${t(`chartPatterns.side.${hit.broken_side}`)}` : "";
-    return `${t("chartPatterns.confirmedOn", { date: hit.confirmed_at.trade_date })}${side}`;
+    const confirmed = t("chartPatterns.confirmedOn", { date: hit.confirmed_at.trade_date });
+    if (!hit.broken_side) return confirmed;
+    return [confirmed, t(`chartPatterns.side.${hit.broken_side}`)].join(" · ");
   }
   return null;
 }

@@ -88,7 +88,9 @@ class TestDouble:
         assert neckline.name == "neckline"
         assert neckline.start.price == pytest.approx(neckline.end.price)  # horizontal
         assert hit.breakout_level == pytest.approx(neckline.end.price)
-        assert hit.confirmed_at is None and hit.failed_at is None and hit.broken_side is None
+        assert hit.confirmed_at is None
+        assert hit.failed_at is None
+        assert hit.broken_side is None
         assert hit.height > 0
         assert (hit.window_start.bar_index, hit.window_end.bar_index) == (20, 60)
 
@@ -136,7 +138,8 @@ class TestDouble:
 
         assert len(hits) == 1
         assert hits[0].status == "failed"
-        assert hits[0].confirmed_at is not None and hits[0].failed_at is not None
+        assert hits[0].confirmed_at is not None
+        assert hits[0].failed_at is not None
         assert hits[0].failed_at.bar_index > hits[0].confirmed_at.bar_index
 
     def test_structure_broken_before_confirmation_fails(self, mirror: bool) -> None:
@@ -145,7 +148,8 @@ class TestDouble:
 
         assert len(hits) == 1
         assert hits[0].status == "failed"
-        assert hits[0].confirmed_at is None and hits[0].failed_at is not None
+        assert hits[0].confirmed_at is None
+        assert hits[0].failed_at is not None
 
     def test_noisy_shape_still_detected(self, mirror: bool) -> None:
         hits = _scan(self._pts(_m(), mirror), jitter=0.002)
@@ -263,7 +267,8 @@ class TestConsolidation:
         assert roles == {"upper_touch", "lower_touch"}
         assert sum(p.role == "upper_touch" for p in hit.pivots) >= 2
         assert sum(p.role == "lower_touch" for p in hit.pivots) >= 2
-        assert hit.breakout_level is None and hit.broken_side is None
+        assert hit.breakout_level is None
+        assert hit.broken_side is None
         upper, lower = hit.lines
         assert upper.start.price > lower.start.price
         assert upper.end.price > lower.end.price
@@ -292,7 +297,8 @@ class TestConsolidation:
         up_hits, down_hits = _of(up, pattern), _of(down, pattern)
         assert [h.status for h in up_hits] == ["confirmed"]
         assert up_hits[0].broken_side == "above"
-        assert up_hits[0].confirmed_at is not None and up_hits[0].breakout_level is not None
+        assert up_hits[0].confirmed_at is not None
+        assert up_hits[0].breakout_level is not None
         assert [h.status for h in down_hits] == ["confirmed"]
         assert down_hits[0].broken_side == "below"
 
@@ -332,7 +338,8 @@ def test_closing_back_through_the_opposite_boundary_fails(pattern: str, points: 
     hits = _of(_scan(whipsaw), pattern)
 
     assert [h.status for h in hits] == ["failed"]
-    assert hits[0].confirmed_at is not None and hits[0].failed_at is not None
+    assert hits[0].confirmed_at is not None
+    assert hits[0].failed_at is not None
     assert hits[0].broken_side == "above"
 
 
@@ -385,7 +392,11 @@ def test_too_few_bars_or_mismatched_dates_return_nothing() -> None:
 def test_scan_is_deterministic() -> None:
     bars, dates = _bars(_hs(tail=[(95, 85)]), jitter=0.002)
 
-    assert cp.scan_chart_patterns(bars, dates) == cp.scan_chart_patterns(bars, dates)
+    first = cp.scan_chart_patterns(bars, dates)
+    second = cp.scan_chart_patterns(bars, dates)
+
+    assert first
+    assert first == second
 
 
 def test_window_edge_first_peak_needs_span_bars_before_it() -> None:
@@ -531,7 +542,8 @@ def test_real_hit_levels_match_the_raw_bars() -> None:
     assert by_date["2025-12-18"].price == 1415.0
     assert by_date["2025-10-31"].price == 1525.0  # neckline highs
     assert by_date["2025-12-11"].price == 1515.0
-    assert hit.confirmed_at is not None and hit.confirmed_at.price == 1530.0
+    assert hit.confirmed_at is not None
+    assert hit.confirmed_at.price == 1530.0
 
 
 # -- governance ------------------------------------------------------------------------------
