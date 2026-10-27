@@ -1,19 +1,29 @@
 import { z } from "zod";
 import type { CreateScheduleRequest } from "@/lib/api/settings";
 import { type ScheduleJob, scheduleActionSchema, scheduleTriggerSchema } from "@/types/settings";
-import { SCHEDULE_TEMPLATE_IDS } from "./templates";
+import { SCHEDULE_TEMPLATE_IDS, SCHEDULE_TEMPLATES } from "./templates";
 
 /** The `schedule_proposal` rich card the agent's `propose_schedule` tool emits
  * (backend/src/tools/propose_schedule_tools.py). Like the alert card, the agent only *proposes*:
  * tapping 建立 makes the frontend call the ordinary `POST /schedules` with the resolved trigger and
  * action the card carries, so the shape is the create-request shape, parsed defensively because it
  * arrives as an open record. */
-export const scheduleProposalSchema = z.object({
-  template: z.enum(SCHEDULE_TEMPLATE_IDS),
-  targets: z.array(z.string().min(1)).min(1),
-  trigger: scheduleTriggerSchema,
-  action: scheduleActionSchema,
-});
+export const scheduleProposalSchema = z
+  .object({
+    template: z.enum(SCHEDULE_TEMPLATE_IDS),
+    targets: z.array(z.string().min(1)),
+    trigger: scheduleTriggerSchema,
+    action: scheduleActionSchema,
+  })
+  // Only the account-wide briefing (the weekly watchlist review) has no tickers.
+  .refine(
+    (proposal) =>
+      !SCHEDULE_TEMPLATES[proposal.template].takesTargets || proposal.targets.length > 0,
+    {
+      message: "a briefing about named stocks needs at least one",
+      path: ["targets"],
+    },
+  );
 export type ScheduleProposal = z.infer<typeof scheduleProposalSchema>;
 
 /** A malformed proposal yields null so the card renders nothing rather than offering a button that

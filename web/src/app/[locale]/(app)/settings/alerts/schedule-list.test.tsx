@@ -463,3 +463,161 @@ describe("ScheduleForm validation and submit", () => {
     expect(screen.getByRole("form")).toBeTruthy();
   });
 });
+
+describe("weekly watchlist review", () => {
+  const review = t.templates.weekly_watchlist_review;
+  const days = t.weekdays;
+
+  function reviewJob(spec = "0 9 * * 6", over: Partial<ScheduleJob> = {}): ScheduleJob {
+    return job({
+      id: "r1",
+      trigger: { type: "cron", spec, market: "TW" },
+      action: { skill_ref: "watchlist-review", inputs: { review: "weekly" } },
+      ...over,
+    });
+  }
+
+  async function openReview(jobs: ScheduleJob[] = []): Promise<HTMLElement> {
+    const c = await openCreate(jobs);
+    pick(f.template, "weekly_watchlist_review");
+    return c;
+  }
+
+  it("is listed in the briefing select with its label", async () => {
+    await openCreate();
+    const select = screen.getByLabelText(f.template) as HTMLSelectElement;
+    const option = [...select.options].find((o) => o.value === "weekly_watchlist_review");
+    expect(option?.textContent).toBe(review.label);
+  });
+
+  it("has no ticker box or scope choice: a description, a weekday and a time instead", async () => {
+    const c = await openReview();
+    expect(screen.queryByLabelText(f.targetsOne)).toBeNull();
+    expect(screen.queryByLabelText(f.scope)).toBeNull();
+    expect(screen.getByText(review.description)).toBeTruthy();
+    expect((screen.getByLabelText(f.weekday) as HTMLSelectElement).value).toBe("6");
+    expect((screen.getByLabelText(f.time) as HTMLInputElement).value).toBe("09:00");
+    expect(screen.getByText("每週六 09:00")).toBeTruthy();
+    expect(html(c)).toMatchSnapshot();
+  });
+
+  it("lists the seven weekdays, Monday first", async () => {
+    await openReview();
+    const select = screen.getByLabelText(f.weekday) as HTMLSelectElement;
+    expect([...select.options].map((o) => o.textContent)).toEqual([
+      days["1"],
+      days["2"],
+      days["3"],
+      days["4"],
+      days["5"],
+      days["6"],
+      days["0"],
+    ]);
+  });
+
+  it("stacks at 390px and has 44px tap targets, with the description across both columns", async () => {
+    const c = await openReview();
+    const fieldset = c.querySelector("fieldset");
+    expect(fieldset?.className).toContain("grid");
+    expect(fieldset?.className).toContain("sm:grid-cols-2");
+    expect(fieldset?.className).not.toMatch(/(^| )grid-cols-2/);
+    for (const label of [f.template, f.weekday, f.time]) {
+      expect(screen.getByLabelText(label).className).toContain("min-h-11");
+    }
+    expect(screen.getByText(review.description).className).toContain("sm:col-span-2");
+    expect(c.querySelector("form")?.className).not.toContain("overflow");
+    // Nothing forces a width: no fixed pixel widths on the controls.
+    expect(c.innerHTML).not.toMatch(/ w-\[\d+px\]/);
+  });
+
+  it("creates the default schedule: Saturday 09:00, no tickers, in-app delivery", async () => {
+    vi.mocked(createSchedule).mockResolvedValue(reviewJob() as never);
+    await openReview();
+    submitForm(f.title);
+    await settle();
+    expect(createSchedule).toHaveBeenCalledWith({
+      trigger: { type: "cron", spec: "0 9 * * 6", market: "TW" },
+      action: { skill_ref: "watchlist-review", inputs: { review: "weekly" } },
+      delivery_channels: ["in_app"],
+    });
+    expect(screen.queryByRole("form")).toBeNull();
+  });
+
+  it("creates it on the weekday and time the user picked", async () => {
+    vi.mocked(createSchedule).mockResolvedValue(reviewJob() as never);
+    await openReview();
+    pick(f.weekday, "0");
+    type(f.time, "20:30");
+    submitForm(f.title);
+    await settle();
+    expect(createSchedule).toHaveBeenCalledWith(
+      expect.objectContaining({ trigger: { type: "cron", spec: "30 20 * * 0", market: "TW" } }),
+    );
+  });
+
+  it("asks for a time when it is cleared, and creates nothing", async () => {
+    await openReview();
+    type(f.time, "");
+    submitForm(f.title);
+    expect(screen.getByRole("alert").textContent).toBe(f.errorTimeRequired);
+    expect(createSchedule).not.toHaveBeenCalled();
+    type(f.time, "08:15");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("shows in the list as the label with the user's own weekday and time", async () => {
+    const c = mount([reviewJob("30 20 * * 0", { next_run: "2026-10-25T12:30:00Z" })]);
+    await settle();
+    const row = c.querySelector("li");
+    expect(row?.textContent).toContain(review.label);
+    expect(row?.textContent).toContain("每週日 20:30");
+    expect(row?.textContent).not.toContain("、");
+    for (const control of screen.getAllByRole("button")) {
+      expect(control.className).not.toContain("size-8");
+    }
+  });
+
+  it("editing fills the weekday and time from the cron and locks the briefing type", async () => {
+    mount([reviewJob("15 7 * * 1")]);
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: /^編輯 .+ 的排程$/ }));
+    expect((screen.getByLabelText(f.template) as HTMLSelectElement).disabled).toBe(true);
+    expect((screen.getByLabelText(f.template) as HTMLSelectElement).value).toBe(
+      "weekly_watchlist_review",
+    );
+    expect((screen.getByLabelText(f.weekday) as HTMLSelectElement).value).toBe("1");
+    expect((screen.getByLabelText(f.time) as HTMLInputElement).value).toBe("07:15");
+    expect(screen.queryByLabelText(f.targetsOne)).toBeNull();
+  });
+
+  it("saving an edit sends the new trigger with the expected version", async () => {
+    vi.mocked(updateSchedule).mockResolvedValue(reviewJob() as never);
+    mount([reviewJob("0 9 * * 6", { version: 7 })]);
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: /^編輯 .+ 的排程$/ }));
+    pick(f.weekday, "5");
+    type(f.time, "18:45");
+    submitForm(f.editTitle);
+    await settle();
+    expect(updateSchedule).toHaveBeenCalledWith("r1", {
+      action: { skill_ref: "watchlist-review", inputs: { review: "weekly" } },
+      trigger: { type: "cron", spec: "45 18 * * 5", market: "TW" },
+      expected_version: 7,
+    });
+  });
+
+  it("a hand-written cron opens on the default weekday and time", async () => {
+    mount([reviewJob("0 9 * * 1-5")]);
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: /^編輯 .+ 的排程$/ }));
+    expect((screen.getByLabelText(f.weekday) as HTMLSelectElement).value).toBe("6");
+    expect((screen.getByLabelText(f.time) as HTMLInputElement).value).toBe("09:00");
+  });
+
+  it("switching away from it brings the ticker box back", async () => {
+    await openReview();
+    pick(f.template, "after_close_chip");
+    expect(screen.getByLabelText(f.targetsOne)).toBeTruthy();
+    expect(screen.queryByLabelText(f.weekday)).toBeNull();
+  });
+});

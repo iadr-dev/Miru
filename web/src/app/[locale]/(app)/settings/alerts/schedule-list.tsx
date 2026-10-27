@@ -9,6 +9,7 @@ import { Select, TextInput, ToggleSwitch } from "@/components/settings/form-cont
 import { SettingsError, SettingsLoading } from "@/components/settings/settings-states";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { useScheduleCadence } from "@/hooks/use-schedule-cadence";
 import { Link } from "@/i18n/navigation";
 import { queryKeys } from "@/lib/api/query-keys";
 import {
@@ -23,7 +24,10 @@ import { parseServerDate } from "@/lib/parse-server-date";
 import {
   buildScheduleAction,
   buildWatchlistAction,
+  buildWeeklyTrigger,
   checkTargets,
+  DEFAULT_WEEKLY_WHEN,
+  isTimeOfDay,
   MAX_TARGETS,
   SCHEDULE_TEMPLATE_IDS,
   SCHEDULE_TEMPLATES,
@@ -33,7 +37,11 @@ import {
   type TargetCheck,
   targetsOfJob,
   templateOfJob,
+  WEEKDAY_ORDER,
+  type Weekday,
+  type WeeklyWhen,
   watchlistOfJob,
+  weeklyWhenOfTrigger,
 } from "@/lib/schedules/templates";
 import { groupNameStyle } from "@/lib/watchlist-color";
 import type { ScheduleJob } from "@/types/settings";
@@ -47,6 +55,7 @@ export function ScheduleList(): ReactNode {
   const t = useTranslations("settings.alerts.schedules");
   const tt = useTranslations("settings.alerts.schedules.templates");
   const tc = useTranslations("settings.common");
+  const cadenceText = useScheduleCadence();
   const format = useFormatter();
   const queryClient = useQueryClient();
 
@@ -99,7 +108,9 @@ export function ScheduleList(): ReactNode {
 
   const cadenceOf = (job: ScheduleJob): string => {
     const template = templateOfJob(job);
-    return template ? tt(`${template.id}.cadence`) : `${job.trigger.type} — ${job.trigger.spec}`;
+    return template
+      ? cadenceText(template, job.trigger)
+      : `${job.trigger.type} — ${job.trigger.spec}`;
   };
 
   const statusLine = (job: ScheduleJob): string => {
@@ -256,6 +267,7 @@ function initialFormState(job: ScheduleJob | undefined): {
   targetsText: string;
   followList: boolean;
   watchlistId: string;
+  when: WeeklyWhen;
 } {
   const jobTemplate = job ? templateOfJob(job) : null;
   const watchlist = job ? watchlistOfJob(job) : null;
@@ -264,6 +276,7 @@ function initialFormState(job: ScheduleJob | undefined): {
     targetsText: job && jobTemplate ? targetsOfJob(job, jobTemplate).join(", ") : "",
     followList: watchlist !== null,
     watchlistId: watchlist ?? "",
+    when: job ? weeklyWhenOfTrigger(job.trigger) : DEFAULT_WEEKLY_WHEN,
   };
 }
 
@@ -274,24 +287,28 @@ function saveSchedule({
   following,
   watchlistId,
   targets,
+  when,
 }: Readonly<{
   job: ScheduleJob | undefined;
   template: ScheduleTemplate;
   following: boolean;
   watchlistId: string;
   targets: string[];
+  when: WeeklyWhen;
 }>): Promise<ScheduleJob> {
   const action = following
     ? buildWatchlistAction(template, watchlistId)
     : buildScheduleAction(template, targets);
+  // The weekly review runs when the user says; every other template has its catalogue trigger.
+  const trigger = template.takesTargets ? template.trigger : buildWeeklyTrigger(when);
   if (job) {
-    return updateSchedule(job.id, { action, expected_version: job.version });
+    return updateSchedule(job.id, {
+      action,
+      ...(template.takesTargets ? {} : { trigger }),
+      expected_version: job.version,
+    });
   }
-  return createSchedule({
-    trigger: template.trigger,
-    action,
-    delivery_channels: ["in_app"],
-  });
+  return createSchedule({ trigger, action, delivery_channels: ["in_app"] });
 }
 
 function isStaleVersion(error: unknown): boolean {
@@ -328,6 +345,8 @@ function ScheduleForm({
   // time, so the briefing tracks the list as it changes.
   const [followList, setFollowList] = useState(initial.followList);
   const [watchlistId, setWatchlistId] = useState(initial.watchlistId);
+  const [weekday, setWeekday] = useState<Weekday>(initial.when.weekday);
+  const [time, setTime] = useState(initial.when.time);
   const canFollow = supportsWatchlist(template);
   const following = canFollow && followList;
   const groups = useQuery({
@@ -339,7 +358,7 @@ function ScheduleForm({
 
   const mutation = useMutation({
     mutationFn: (targets: string[]) =>
-      saveSchedule({ job, template, following, watchlistId, targets }),
+      saveSchedule({ job, template, following, watchlistId, targets, when: { weekday, time } }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.settings("schedules") });
       onDone();
@@ -352,14 +371,16 @@ function ScheduleForm({
   });
 
   const check = checkTargets(template, targetsText);
-  const targetError = submitted && !following && !check.ok ? check.reason : null;
+  const takesTargets = template.takesTargets;
+  const targetError = submitted && takesTargets && !following && !check.ok ? check.reason : null;
   const watchlistError = submitted && following && watchlistId === "";
+  const timeError = submitted && !takesTargets && !isTimeOfDay(time);
 
   const onSubmit = (e: FormEvent<HTMLFormElement>): void => {
     e.preventDefault();
     setSubmitted(true);
-    const targets = targetsToSave(following, watchlistId, check);
-    if (targets !== null) mutation.mutate(targets);
+    const targets = takesTargets ? targetsToSave(following, watchlistId, check) : [];
+    if (targets !== null && (takesTargets || isTimeOfDay(time))) mutation.mutate(targets);
   };
 
   return (
@@ -376,22 +397,33 @@ function ScheduleForm({
     >
       <fieldset className="grid gap-3 sm:grid-cols-2">
         <TemplateField templateId={templateId} disabled={editing} onChange={setTemplateId} />
+        {takesTargets ? null : <TemplateDescription templateId={templateId} />}
         {canFollow ? <ScopeField followList={followList} onChange={setFollowList} /> : null}
-        {following ? (
+        {takesTargets ? null : (
+          <WhenFields
+            weekday={weekday}
+            time={time}
+            onWeekday={setWeekday}
+            onTime={setTime}
+            showTimeError={timeError}
+          />
+        )}
+        {following && takesTargets ? (
           <WatchlistField
             watchlistId={watchlistId}
             onChange={setWatchlistId}
             groups={groups.data ?? []}
             showError={watchlistError}
           />
-        ) : (
+        ) : null}
+        {!following && takesTargets ? (
           <TargetsField
             template={template}
             value={targetsText}
             onChange={setTargetsText}
             error={targetError}
           />
-        )}
+        ) : null}
       </fieldset>
       <p className="text-[12px] text-[var(--text-muted)]">{t("note")}</p>
       {mutation.isError ? (
@@ -422,6 +454,7 @@ function TemplateField({
 }>): ReactNode {
   const t = useTranslations("settings.alerts.schedules.form");
   const tt = useTranslations("settings.alerts.schedules.templates");
+  const cadenceText = useScheduleCadence();
   return (
     <div>
       <label
@@ -442,8 +475,84 @@ function TemplateField({
           </option>
         ))}
       </Select>
-      <p className="mt-1 text-[12px] text-[var(--text-muted)]">{tt(`${templateId}.cadence`)}</p>
+      <p className="mt-1 text-[12px] text-[var(--text-muted)]">
+        {cadenceText(SCHEDULE_TEMPLATES[templateId])}
+      </p>
     </div>
+  );
+}
+
+/** What an account-wide briefing covers - it has no stocks to type, so the form says what it reads. */
+function TemplateDescription({
+  templateId,
+}: Readonly<{ templateId: ScheduleTemplateId }>): ReactNode {
+  const tt = useTranslations("settings.alerts.schedules.templates");
+  return (
+    <p className="text-[13px] text-[var(--text-muted)] leading-relaxed sm:col-span-2">
+      {tt(`${templateId}.description`)}
+    </p>
+  );
+}
+
+/** Weekday and time (Taipei) for the weekly review. Two cells on a wide form, stacked at 390px. */
+function WhenFields({
+  weekday,
+  time,
+  onWeekday,
+  onTime,
+  showTimeError,
+}: Readonly<{
+  weekday: Weekday;
+  time: string;
+  onWeekday: (day: Weekday) => void;
+  onTime: (time: string) => void;
+  showTimeError: boolean;
+}>): ReactNode {
+  const t = useTranslations("settings.alerts.schedules.form");
+  const weekdays = useTranslations("settings.alerts.schedules.weekdays");
+  return (
+    <>
+      <div>
+        <label
+          className="mb-1 block text-[13px] text-[var(--text-muted)]"
+          htmlFor="schedule-weekday"
+        >
+          {t("weekday")}
+        </label>
+        <Select
+          id="schedule-weekday"
+          value={String(weekday)}
+          onChange={(e) => {
+            const next = WEEKDAY_ORDER.find((day) => String(day) === e.target.value);
+            if (next !== undefined) onWeekday(next);
+          }}
+        >
+          {WEEKDAY_ORDER.map((day) => (
+            <option key={day} value={String(day)}>
+              {weekdays(String(day))}
+            </option>
+          ))}
+        </Select>
+      </div>
+      <div>
+        <label className="mb-1 block text-[13px] text-[var(--text-muted)]" htmlFor="schedule-time">
+          {t("time")}
+        </label>
+        <TextInput
+          id="schedule-time"
+          type="time"
+          value={time}
+          onChange={(e) => onTime(e.target.value)}
+          aria-invalid={showTimeError}
+          className="min-w-0"
+        />
+        {showTimeError ? (
+          <p role="alert" className="mt-1 text-[12px] text-[var(--warn)]">
+            {t("errorTimeRequired")}
+          </p>
+        ) : null}
+      </div>
+    </>
   );
 }
 

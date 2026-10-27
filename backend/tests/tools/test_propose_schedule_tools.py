@@ -77,6 +77,58 @@ def test_every_template_names_a_registered_skill() -> None:
         registry.get(template.skill_ref)  # raises if unknown
 
 
+async def test_the_weekly_watchlist_review_takes_no_tickers_and_defaults_to_saturday_morning() -> (
+    None
+):
+    out = await _run(template="weekly_watchlist_review")
+
+    assert out.targets == []
+    assert out.market is Market.TW
+    assert out.cadence == "每週六 09:00"
+    assert out.trigger == {"type": "cron", "spec": "0 9 * * 6", "market": "TW"}
+    assert out.action == {"skill_ref": "watchlist-review", "inputs": {"review": "weekly"}}
+    assert out.summary == "每週六 09:00：我的自選股"
+    assert out.requires_user_confirmation is True
+
+
+async def test_the_weekly_watchlist_review_honours_the_users_day_and_time() -> None:
+    out = await _run(template="weekly_watchlist_review", weekday="sun", time="20:30")
+    assert out.trigger["spec"] == "30 20 * * 0"
+    assert out.cadence == "每週日 20:30"
+    morning = await _run(template="weekly_watchlist_review", weekday="mon", time="7:05")
+    assert morning.trigger["spec"] == "5 7 * * 1"
+    assert morning.cadence == "每週一 07:05"
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"targets": ["2330"]},  # no tickers for the account-wide review
+        {"time": "25:00"},
+        {"time": "9am"},
+        {"weekday": "someday"},
+    ],
+)
+def test_the_weekly_watchlist_review_rejects_bad_arguments(bad: dict[str, object]) -> None:
+    with pytest.raises(ValidationError):
+        ProposeScheduleInput.model_validate({"template": "weekly_watchlist_review", **bad})
+
+
+@pytest.mark.parametrize("extra", [{"weekday": "sat"}, {"time": "09:00"}])
+def test_day_and_time_belong_to_the_weekly_review_only(extra: dict[str, object]) -> None:
+    with pytest.raises(ValidationError):
+        ProposeScheduleInput.model_validate(
+            {"template": "pre_open_brief", "targets": ["2330"], **extra}
+        )
+
+
+async def test_the_weekly_review_card_carries_what_the_create_endpoint_takes() -> None:
+    card = _build_card("schedule_proposal", await _run(template="weekly_watchlist_review"))
+    assert card.data["template"] == "weekly_watchlist_review"
+    assert card.data["targets"] == []
+    assert card.data["trigger"] == {"type": "cron", "spec": "0 9 * * 6", "market": "TW"}
+
+
 def test_every_catalogue_id_has_a_template() -> None:
     assert set(SCHEDULE_TEMPLATES) == set(ScheduleTemplateId)
 
