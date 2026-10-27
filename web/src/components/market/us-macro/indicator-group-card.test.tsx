@@ -110,4 +110,12 @@ describe("IndicatorGroupCard equal height", () => {
     fireEvent.keyDown(document, { key: "Escape" });
     expect(document.activeElement).toBe(expand);
   });
+
+  it("wraps the row title on phones, keeps the qualifier on its own line and the full text in title", () => {
+    const container = renderCard(2);
+    const title = container.querySelector("li button span[title]");
+    expect(title?.getAttribute("title")).toContain("Series 0");
+    expect(title?.className).toContain("sm:truncate");
+    expect(title?.querySelector(".line-clamp-2")).not.toBeNull();
+  });
 });

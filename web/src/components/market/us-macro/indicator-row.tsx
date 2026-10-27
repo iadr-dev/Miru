@@ -52,9 +52,12 @@ export function IndicatorRow({
         )}
       >
         <span className="flex items-center gap-2">
-          <span className="min-w-0 flex-1 truncate text-[13px] text-[var(--text)]">
-            {name}
-            <span className="text-[var(--text-muted)]">{unitsSuffix}</span>
+          <span
+            title={`${name}${unitsSuffix}`}
+            className="min-w-0 flex-1 text-[13px] text-[var(--text)] sm:truncate"
+          >
+            <span className="line-clamp-2 break-words sm:line-clamp-none">{name}</span>
+            <span className="block text-[var(--text-muted)] sm:inline">{unitsSuffix}</span>
           </span>
           <span className="h-6 w-14 shrink-0">
             <Sparkline values={sparkValues} color={color} />
