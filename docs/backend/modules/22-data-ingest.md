@@ -134,8 +134,26 @@ statements) are asked of
 the same chain (`config/whole_market_source_priority.yaml`). They are keyed by a reporting period, so
 the adapter also decides which run dates it owns:
 
+- **Where a period is stored.** The partition of a period is the **first trading day on or after its
+  nominal date** (`ingest/jobs/period_dates.py`, `WholeMarketJobSpec.period_anchor`): monthly revenue
+  of month M is filed under the 1st of M+1 (`trade_date`), a statement under its quarter end
+  (`period_end`). When that date is a trading day (two months in three) the partition is that date,
+  as it always was; when it is not (a weekend or holiday 1st, a Sunday quarter end), the partition is
+  the next trading day. The runner still asks every source for the nominal date, and the ROWS keep
+  FinMind's own fields (`trade_date` = the 1st), so FinMind-era partitions, row models and the
+  FinMind fallback are unchanged; readers walk trading-day partitions (or list the stored dates), so
+  they find the shifted partition without a change. Before this, a non-trading nominal date was
+  skipped by the calendar gate and its period was never ingested: 15 of the 38 months from 2023-09 to
+  2026-10 (2023-10, 2024-01, 2024-06, 2024-09, 2024-12, 2025-01, 2025-02, 2025-03, 2025-06, 2025-11,
+  2026-01, 2026-02, 2026-03, 2026-05, 2026-08 by the calendar rules; the dev volume was not
+  readable when this was written) and the quarters ending 2023-09-30, 2023-12-31, 2024-03-31 and
+  2024-06-30. The gap-fill needs no change: the partition is an ordinary trading day with no rows, so
+  `detect_missing_trading_days` lists it and a run fills it (`only_missing` backfill, the daily
+  catch-up).
 - **A date that holds no rows by definition** is answered `HealthStatus.OK` with no rows and costs no
-  request (monthly revenue: any day but the 1st; statements: any day but a quarter end). The
+  request (monthly revenue: every date that is not a month's partition; statements: every date that
+  is not a quarter's partition; the adapter sees such a date as itself, never as a 1st or a quarter
+  end, so its own rule gives the same answer). The
   runner reads an `OK` answer without rows as "nothing here, by definition" and stops:
   the empty partition is written (SUCCESS, 0 rows) and FinMind is not asked. (`STALE` stays "not
   published yet": the next source is asked.) Before this, every such date was a FinMind request and,
@@ -152,8 +170,8 @@ the adapter also decides which run dates it owns:
 
 | Capability (job) | Source | History | Partition / row key (identical to FinMind) |
 |---|---|---|---|
-| `financials`, `balance_sheet`, `cash_flow_statement` | MOPS summary reports `mopsov.twse.com.tw/mops/web/ajax_{t163sb04,t163sb05,t163sb20}` (form POST: `TYPEK` sii/otc/rotc, ROC `year`, `season`; UTF-8; thousands of TWD; every industry template on the page; 3 markets x 1-4 pages, 3 s apart) | any quarter back to the IFRS years (checked 2025Q1-2026Q2) | the quarter end (`period_end` = `run_date` = 03-31, 06-30, 09-30, 12-31, FinMind's partition); served after the last statutory deadline (Q1 5/30, Q2 8/31, Q3 11/29, annual 3/31 of the next year) |
-| `month_revenue` | MOPS static report pages `mopsov.twse.com.tw/nas/t21/{sii,otc,rotc}/t21sc03_<ROC year>_<month>.html` (Big5, thousands of TWD; listed + OTC + emerging, 3 requests, 3 s apart) | any month, verified back to 2006-01 (two page layouts, both parsed) | the revenue of month M is filed under `run_date` = the 1st of M+1 (`trade_date` = that day); any other day holds none. Served from the 11th of that month (due by the 10th) |
+| `financials`, `balance_sheet`, `cash_flow_statement` | MOPS summary reports `mopsov.twse.com.tw/mops/web/ajax_{t163sb04,t163sb05,t163sb20}` (form POST: `TYPEK` sii/otc/rotc, ROC `year`, `season`; UTF-8; thousands of TWD; every industry template on the page; 3 markets x 1-4 pages, 3 s apart) | any quarter back to the IFRS years (checked 2025Q1-2026Q2) | the quarter end (`period_end` = 03-31, 06-30, 09-30, 12-31, FinMind's partition when it is a trading day, else the next trading day's); served after the last statutory deadline (Q1 5/30, Q2 8/31, Q3 11/29, annual 3/31 of the next year) |
+| `month_revenue` | MOPS static report pages `mopsov.twse.com.tw/nas/t21/{sii,otc,rotc}/t21sc03_<ROC year>_<month>.html` (Big5, thousands of TWD; listed + OTC + emerging, 3 requests, 3 s apart) | any month, verified back to 2006-01 (two page layouts, both parsed) | the revenue of month M is filed under the 1st of M+1 (`trade_date` = that day), stored in the partition of the first trading day on or after it; any other day holds none. Served from the 11th of that month (due by the 10th) |
 
 `month_revenue` mapping: `revenue` = page figure x 1000 (TWD, as FinMind), `revenue_month`/
 `revenue_year` of the revenue month, `country` "Taiwan", `market` "TW". `create_time` (the day FinMind
@@ -205,10 +223,41 @@ covers 1,970-2,342 companies per quarter (FinMind 2,025-2,643): it adds 22-579 t
 snapshots had not captured yet (the stored 2026-06-30 partitions hold only the early filers), and
 lacks 30-300 (public non-trading companies and some emerging ones).
 
-Known cadence limits, inherited from the dated-partition design and not changed here: the first of a
-month that is not a trading day is calendar-gated, so that month never gets a partition (FinMind-era
-gaps: 2026-02 and 2026-03); and the 1st's partition is filled by the gap-fill/backfill after the 11th,
-not by the daily 21:30 run on the 1st itself (which finds the month not complete yet).
+Known cadence limit: the 1st's partition is filled by the gap-fill/backfill after the 11th, not by
+the daily 21:30 run on the 1st itself (which finds the month not complete yet).
+
+**Filling a partial partition (`--fill-missing-companies`).** A partition that already holds rows is
+never re-fetched, so one written early in a filing season (2026-06-30 before every company filed)
+stays partial, and re-running the job would REPLACE it: the official reports carry only the
+aggregate lines (about 15 income / 15 balance sheet / 7 cash flow per company) where FinMind-era
+rows carry the full statement (about 60 / 30 detail lines). The operator-run additive refresh
+(`ingest/refresh.py`) fetches the official source and ADDS the rows of every company absent from the
+stored partition. It never replaces, edits or deletes a stored row, so FinMind-era detail survives.
+
+- A company is its `symbol` within the dataset. Each statement is its own dataset (income, balance
+  sheet, cash flow), so "absent" is per company per statement type; `statement_type` is not part of
+  the key because FinMind and the official mapping may spell it differently, which would make every
+  stored company look absent and duplicate it. A stored company is never topped up line by line.
+- Leader-gated (the CLI takes the writer lease; a follower journals SKIPPED), journaled
+  (`added N companies (M rows), B -> A; served by filings_official: ...`, `rows_written` = rows
+  added), published once as `data.updated`, and written with the same atomic partition swap. If the
+  official source fails or has nothing, the partition is left as it was (FAILED / SKIPPED). It is
+  idempotent: a second run adds 0, writes nothing and signals nothing. A date that is not the
+  partition of a period of that dataset is SKIPPED without a request.
+- Run it with the daemon stopped (the CLI exits 3 while it holds the lease), one dataset and one or
+  more partition dates (the stored partition dates: for the example, 2026-06-30 holds 2026Q2 and
+  2026-02-02 holds the revenue of January 2026). It prints one line per date with the company counts
+  before and after:
+
+```
+docker compose run --rm --no-deps --entrypoint python ingest -m ingest.backfill_cli --yes   --fill-missing-companies TaiwanStockFinancialStatements --dates 2026-06-30
+# TaiwanStockFinancialStatements 2026-06-30: companies <before> -> <after> (+<n>) [success] ...
+```
+
+  `DATASET` is one of `TaiwanStockMonthRevenue`, `TaiwanStockFinancialStatements`,
+  `TaiwanStockBalanceSheet`, `TaiwanStockCashFlowsStatement`; repeat the command per dataset. The
+  same flags work with `python -m ingest.backfill_cli` outside Docker. They replace the backfill
+  (nothing else runs), still require `--yes` and still hard-stop in production.
 
 Not covered by an official first source, and why: **dividends** (`TaiwanStockDividend`): FinMind's
 `announced_date` is the announcement date of the ex-dividend notice and its partition date is the
@@ -511,6 +560,9 @@ process shapes.
   whenever `Settings.env == "production"`, checked before touching any spec and **regardless of
   `--yes`**, so a mis-set override can never become an accidental prod backfill.
 - **Optional supply-chain research step.** After the derived catch-up, one `sc_research` pass runs when `SUPPLY_CHAIN_RESEARCH_ENABLED=true` (the job re-checks the leader, search key and LLM gates and journals SKIPPED otherwise). Its operator-run counterpart is `python -m analytics.supply_chain discover|verify [--dry-run]` (module 20 §5b).
+- **`--fill-missing-companies DATASET --dates YYYY-MM-DD ...`** replaces the backfill with the
+  additive refresh of a partial period-keyed partition (§1c): it adds the companies the official
+  source has and the stored partition lacks, and prints the company count before and after.
 - **Exit code** is `1` if any `JobRun` has `status=RunStatus.FAILED`, else `0`.
 
 **FinMind quota.** Ingest shares the FinMind token with the API, and every call it makes is
@@ -731,7 +783,7 @@ DuckDB/Parquet is correct; ClickHouse would be premature ops + cost.
 
 `backend/src/ingest/jobs/` is a package; `ingest.jobs` re-exports every public name, so
 `from ingest.jobs import job_price_eod, ALL_WHOLE_MARKET_JOBS` is unchanged. `specs` holds
-`WholeMarketJobSpec` and the dataset table; `source_chain` the ordered source list (§1b);
+`WholeMarketJobSpec` and the dataset table; `period_dates` the partition rule of the period-keyed ones (§1c), `ingest/refresh.py` their additive refresh; `source_chain` the ordered source list (§1b);
 `whole_market` the shared runner and the one-line whole-market job functions; `shareholding`, `etf`, `disclosures` (MOPS) and `risk_lists` (attention
 stocks, disposition events) the jobs with their own fetch logic. Modules import only downward
 (`specs` <- `whole_market` <- the rest). A test that stubs a fetcher patches it on the module that

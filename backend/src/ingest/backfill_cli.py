@@ -47,7 +47,7 @@ import asyncio
 import dataclasses
 import sys
 from collections.abc import Sequence
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import structlog
 
@@ -79,6 +79,7 @@ from ingest.preflight import (
     run_preflight_if_enabled,
     snapshot_day,
 )
+from ingest.refresh import fill_missing_companies, period_keyed_specs
 from ingest.us_jobs import backfill_us_price_range
 from ingest.us_universe import job_us_symbol_universe
 from sources.finmind import FinMindQuotaRefusedError
@@ -131,7 +132,31 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "ingest/us_jobs.py — requires the US symbol universe, refreshed first if stale)."
         ),
     )
-    return parser.parse_args(argv)
+    parser.add_argument(
+        "--fill-missing-companies",
+        metavar="DATASET",
+        choices=[spec.dataset for spec in period_keyed_specs()],
+        default=None,
+        help=(
+            "Instead of a backfill, ADD to the stored partition(s) named by --dates the companies "
+            "the official filings source has and the partition lacks (never replacing or deleting "
+            "a stored row). DATASET: " + ", ".join(spec.dataset for spec in period_keyed_specs())
+        ),
+    )
+    parser.add_argument(
+        "--dates",
+        nargs="+",
+        type=date.fromisoformat,
+        metavar="YYYY-MM-DD",
+        default=None,
+        help="Partition date(s) for --fill-missing-companies (the stored partition dates).",
+    )
+    args = parser.parse_args(argv)
+    if (args.fill_missing_companies is None) != (args.dates is None):
+        parser.error("--fill-missing-companies and --dates must be given together")
+    if args.fill_missing_companies is not None and args.market != "tw":
+        parser.error("--fill-missing-companies is a TW refresh (--market tw)")
+    return args
 
 
 def _validate_years(years: int | None, settings: Settings) -> int:
@@ -486,10 +511,46 @@ async def _run_with_lease(
     return await _run_backfill(args, settings, ctx, years)
 
 
+async def run_fill_missing_companies(
+    settings: Settings,
+    ctx: IngestContext,
+    *,
+    override: bool,
+    dataset: str,
+    dates: Sequence[date],
+) -> tuple[JobRun, ...]:
+    """`--fill-missing-companies`: the additive refresh of one period-keyed dataset for each date
+    (`ingest/refresh.py`), one before/after company line per date on stdout. Same gates as the
+    backfill: never in production, and only with the explicit `--yes` (or `INGEST_ON_STARTUP`)."""
+    _check_not_production(settings)
+    if not (override or settings.ingest_on_startup):
+        logger.warning("ingest_backfill_cli_refused", reason=_NEEDS_YES_REASON)
+        return ()
+    spec = next(s for s in period_keyed_specs() if s.dataset == dataset)
+    runs: list[JobRun] = []
+    for run_date in dates:
+        outcome = await fill_missing_companies(spec, run_date, ctx)
+        sys.stdout.write(
+            f"{dataset} {run_date.isoformat()}: companies {outcome.companies_before} -> "
+            f"{outcome.companies_after} (+{outcome.companies_added}) "
+            f"[{outcome.run.status.value}] {outcome.run.detail}\n"
+        )
+        runs.append(outcome.run)
+    return tuple(runs)
+
+
 async def _run_backfill(
     args: argparse.Namespace, settings: Settings, ctx: IngestContext, years: int
 ) -> int:
-    if args.market == "us":
+    if args.fill_missing_companies is not None:
+        runs = await run_fill_missing_companies(
+            settings,
+            ctx,
+            override=args.yes,
+            dataset=args.fill_missing_companies,
+            dates=args.dates,
+        )
+    elif args.market == "us":
         runs = await run_us_backfill_cli(settings, ctx, override=args.yes, years=years)
     else:
         runs = await run_backfill_cli(settings, ctx, override=args.yes, years=years)
@@ -529,5 +590,6 @@ __all__ = [
     "parse_args",
     "run_backfill_cli",
     "run_derived_compute_catchup",
+    "run_fill_missing_companies",
     "run_us_backfill_cli",
 ]
