@@ -49,6 +49,16 @@ class Endpoint:
     parse: Callable[[JsonObject, date_], list[Row]]
 
 
+@dataclass(frozen=True)
+class Supplement:
+    """A second report of the same exchange that completes the rows of `Endpoint`'s answer (TPEx
+    price: the all-session volume). `merge(rows, supplement_rows)` returns the completed rows or
+    raises `ExchangeFetchError` when the supplement cannot complete every one of them."""
+
+    report: Endpoint
+    merge: Callable[[list[Row], list[Row]], list[Row]]
+
+
 def clean_cell(value: object) -> str:
     """A table cell as text: HTML tags and surrounding (incl. full-width) blanks removed."""
     return _TAG.sub("", str(value)).strip()
@@ -261,6 +271,7 @@ __all__ = [
     "ExchangeFetchError",
     "JsonObject",
     "Row",
+    "Supplement",
     "ValuationColumns",
     "as_list",
     "as_object",

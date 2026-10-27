@@ -67,7 +67,7 @@ FinMind only when they fail or return nothing. The order is data, in
 
 | Capability (job) | 1st: `exchange_official` (`sources/exchange_whole_market/`) | 2nd |
 |---|---|---|
-| `price_eod` | TWSE `afterTrading/MI_INDEX` (`ALLBUT0999`, the `每日收盤行情` table) + TPEx `afterTrading/otc` (`EW`) | `finmind` |
+| `price_eod` | TWSE `afterTrading/MI_INDEX` (`ALLBUT0999`, the `每日收盤行情` table) + TPEx `afterTrading/otc` (`EW`, prices) completed by TPEx `afterTrading/dailyQuotes` (`EW`, volume/turnover; below) | `finmind` |
 | `institutional_flow` | TWSE `fund/T86` (`ALLBUT0999`) + TPEx `insti/dailyTrade` (`EW`) | `finmind` |
 | `margin_short` | TWSE `marginTrading/MI_MARGN` (`ALL`: stocks + ETFs) + TPEx `margin/balance` | `finmind` |
 | `valuation_ratios` | TWSE `afterTrading/BWIBBU_d` (`ALL`) + TPEx `afterTrading/peQryDate` | `finmind` |
@@ -113,18 +113,44 @@ symbol's date range.
   the other has rows, makes the whole answer UNREACHABLE (so FinMind is tried) instead of
   overwriting a date partition with one exchange only. A response dated differently from the
   request, an unexpected `stat`, or a changed column layout is an error, never an empty day.
+- **Volume and turnover are the all-session totals.** FinMind's `Trading_Volume`/`Trading_money`
+  are the exchange's full-day totals: regular-session round lots + 盤後定價 (fixed-price after-hours)
+  + 盤中零股 (intraday odd lots) + 盤後零股 (after-close odd lots); block trades (鉅額) are NOT in
+  them. TWSE's `MI_INDEX` already reports exactly that (1364/1364 symbols equal FinMind on
+  2026-09-24; adding the separate `BFT41U`/`TWT53U` reports on top double counts). TPEx's
+  `afterTrading/otc` ("不含定價") reports round lots only (OTC median -1.5% to -1.8%, worst -40% to
+  -99.7% for illiquid names, 4% exact), so the TPEx price assembly also reads `afterTrading/dailyQuotes`
+  (上櫃股票行情; the same day, warrants included, 1.5-2 MB) and takes volume and turnover from it:
+  `otc` stays the universe and the OHLC source (warrants never enter), `dailyQuotes` only
+  supplies the two figures per symbol. Measured on 2026-06-16, 07-15, 08-13 and 09-24 against stored
+  FinMind rows: volume and turnover exact on 100% of the 991-998 OTC symbols each day (before: 4-5%
+  exact); the decomposition on 09-24 is `dailyQuotes = otc + fixPricing(張x1000) + oddQuote + a
+  non-negative remainder (after-close odd lots)`. FinMind's separate trade count (`Trading_turnover`)
+  is not part of the stored row, so `成交筆數` is not read. One extra request per day to the same
+  throttled client (2 s gap).
+- **Never partial volume.** If the `dailyQuotes` supplement cannot complete EVERY `otc` symbol (HTTP
+  error, a Cloudflare challenge or any non-JSON page after the client's bounded retries, a changed
+  layout, a wrong date, a missing symbol, a total below its own round-lot figure) the TPEx outcome is
+  *incomplete*: the exchange answer is UNREACHABLE with detail
+  `TWSE n + TPEx m rows, volume=round-lot (TPEx: <why>)` (`sources.base.ROUND_LOT_VOLUME`) but still
+  carries its rows. The chain therefore asks FinMind next (complete volume) and uses it if it serves.
+  Only when no later source serves (FinMind failed or empty) does `walk_chain` serve the round-lot rows,
+  and the journal detail says so:
+  `served by exchange_official: TWSE n + TPEx m rows, volume=round-lot (TPEx: ...) (no complete source: finmind: ...)`.
+  The partition then holds round-lot TPEx volume for that date until a later run overwrites it
+  (the tag in the journal is how to find such dates). A failing `otc` itself is unchanged (UNREACHABLE,
+  no rows). No schema change: the tag lives in the existing journal detail.
 - **Politeness.** TWSE bans an IP above about 3 requests / 5 s: each host has a minimum gap
   between request starts (TWSE 2.5 s, TPEx 2.0 s; `asyncio.Lock` + monotonic clock, never
   blocking the loop), a hard 20 s timeout, at most 3 tries with a doubling backoff on 429 / 5xx /
   timeout / non-JSON (the block page), a descriptive `User-Agent`, TLS strict. A dataset-date
-  costs one request per exchange.
+  costs one request per exchange (two for TPEx price: `otc` + `dailyQuotes`).
 - **Known differences from FinMind** (accepted, measured on 2026-06-16 and 2026-09-24 against
-  stored FinMind rows: open/high/low/close, every margin column, institutional buy/sell and
+  stored FinMind rows: open/high/low/close, volume/turnover, every margin column, institutional buy/sell and
   PER/PBR/yield match 100% on the symbols both have): warrants and CBBC are not ingested (about 21k
   rows/day; every reader already filters them, `analytics/symbol_universe.py`); 興櫃 (emerging)
   stocks (~350 price rows, ~140 institutional symbols) are not in the exchanges' bulk reports;
-  TPEx volume/turnover are round-lot only (FinMind adds odd lots: median -2%, up to -40% for
-  illiquid names; TWSE matches exactly); margin `note` is whitespace-trimmed.
+  margin `note` is whitespace-trimmed.
 
 ## 1c. Period-keyed datasets — official filings first (`filings_official`)
 

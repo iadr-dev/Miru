@@ -23,7 +23,7 @@ import yaml
 from ingest.context import IngestContext
 from schemas.enums import Capability, Market
 from schemas.source import HealthStatus, SourceResult
-from sources.base import NO_DATA_PUBLISHED, WholeMarketSource
+from sources.base import NO_DATA_PUBLISHED, ROUND_LOT_VOLUME, WholeMarketSource
 
 logger = structlog.get_logger(__name__)
 
@@ -127,6 +127,33 @@ class ChainOutcome:
     # Both exchanges explicitly published no data for a date before today: a market closure, so
     # the chain stopped without asking the remaining sources.
     market_closed: bool = False
+    # A source whose rows are all there but marked incomplete (`ROUND_LOT_VOLUME` in its failed
+    # detail): kept aside, and served only if no later source does.
+    incomplete: tuple[str, SourceResult] | None = None
+
+    def keep_if_incomplete(self, source_id: str, result: SourceResult) -> None:
+        """Set a failed answer aside if it carries complete rows tagged `ROUND_LOT_VOLUME`."""
+        if ROUND_LOT_VOLUME in result.health.detail and result_rows(result):
+            self.incomplete = self.incomplete or (source_id, result)
+
+    def serve_incomplete_if_nothing_else(self, capability: Capability, run_date: date_) -> None:
+        """Nothing complete served: the tagged answer beats no data at all (its tag stays in the
+        detail). A market closure is never overridden."""
+        if self.winner is not None or self.incomplete is None or self.market_closed:
+            return
+        self.winner_id, self.winner = self.incomplete
+        logger.warning(
+            "ingest_whole_market_served_incomplete",
+            capability=capability.value,
+            run_date=run_date.isoformat(),
+            source=self.winner_id,
+            detail=self.winner.health.detail,
+        )
+
+    @property
+    def served_incomplete(self) -> bool:
+        """The winner is the tagged round-lot-volume answer, served because nothing better was."""
+        return self.incomplete is not None and self.winner_id == self.incomplete[0]
 
     @property
     def fell_back(self) -> bool:
@@ -134,8 +161,13 @@ class ChainOutcome:
         return self.winner_id is not None and self.winner_id != self.chain_ids[0]
 
     def attempts_note(self) -> str:
-        """Why the sources asked before the winner (or all of them) did not serve."""
-        parts = [f"{source_id}: {reason}" for source_id, reason in self.failures]
+        """Why the sources asked before the winner (or all of them) did not serve. An incomplete
+        winner's own reason is already in its detail, so it is left out."""
+        parts = [
+            f"{source_id}: {reason}"
+            for source_id, reason in self.failures
+            if not (self.served_incomplete and source_id == self.winner_id)
+        ]
         parts += [f"{source_id}: no rows" for source_id, _ in self.empties]
         return "; ".join(parts)
 
@@ -177,6 +209,7 @@ async def walk_chain(
                 source=link.source_id,
                 detail=result.health.detail,
             )
+            outcome.keep_if_incomplete(link.source_id, result)
         elif result_rows(result) or result.health.status is HealthStatus.OK:
             # Rows, or a healthy answer of `OK` with none: the source states the date holds no
             # rows by definition (a period dataset on a date no period is filed under), so the
@@ -186,6 +219,7 @@ async def walk_chain(
             break
         else:
             outcome.empties.append((link.source_id, result))
+    outcome.serve_incomplete_if_nothing_else(capability, run_date)
     return outcome
 
 

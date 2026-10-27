@@ -60,6 +60,12 @@ class SourceAdapter(Protocol):
 # from a transport or parse failure; no other detail may equal it.
 NO_DATA_PUBLISHED: Final = "no rows published (TWSE and TPEx explicitly report no data)"
 
+# Tag in the `SourceHealth.detail` of a whole-market answer whose rows are complete except that the
+# TPEx volume/turnover are the round-lot figures (the all-inclusive report could not be read). Such
+# an answer is UNREACHABLE (so the chain asks the next source) but still carries its rows: the chain
+# serves them, tagged, only when no later source does.
+ROUND_LOT_VOLUME: Final = "volume=round-lot"
+
 
 class WholeMarketSource(Protocol):
     """An ingest-only whole-market-by-date source (`FinMindAdapter`, the exchange reports).
