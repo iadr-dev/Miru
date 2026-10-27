@@ -13,7 +13,7 @@ from __future__ import annotations
 from bisect import bisect_left
 from collections import Counter
 from collections.abc import Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import date as date_
 from math import isfinite
 
@@ -96,41 +96,49 @@ class _Run:
     min_volume: int | None
 
 
-def _measure_event(event: StudyEvent, run: _Run) -> EventOutcome:
-    panel, col_of, proxy = run.panel, run.col_of, run.proxy
-    horizons, min_volume = run.horizons, run.min_volume
-    dates = panel.dates
-    if not dates or event.event_date < dates[0]:
-        return _unmeasured(event, "outside_price_window")
-    row0 = bisect_left(dates, event.event_date)
-    if row0 >= len(dates):
-        return _unmeasured(event, "not_yet_effective")
-    col = col_of.get(event.symbol)
-    if col is None or _price(panel.close, row0, col) is None:
-        return _unmeasured(event, "missing_price", dates[row0])
-    if min_volume is not None:
-        volume = float(panel.volume[row0, col])
-        if not (isfinite(volume) and volume >= min_volume):
-            return _unmeasured(event, "low_volume", dates[row0])
-
+def _forward_windows(
+    run: _Run, col: int, row0: int
+) -> tuple[dict[int, float], dict[int, float], dict[int, Reason]]:
+    """(returns, excess returns, why a horizon was skipped) for one event's day-0 row."""
     returns: dict[int, float] = {}
     excess: dict[int, float] = {}
     skipped: dict[int, Reason] = {}
-    for horizon in horizons:
+    for horizon in run.horizons:
         row_n = row0 + horizon
-        if row_n >= len(dates):
+        if row_n >= len(run.panel.dates):
             skipped[horizon] = "censored"
             continue
-        ret, over = _window_return(panel.close, col, row0, row_n, proxy)
+        ret, over = _window_return(run.panel.close, col, row0, row_n, run.proxy)
         if ret is None:
             skipped[horizon] = "missing_price"
             continue
         returns[horizon] = ret
         if over is not None:
             excess[horizon] = over
+    return returns, excess, skipped
+
+
+def _measure_event(event: StudyEvent, run: _Run) -> EventOutcome:
+    dates = run.panel.dates
+    if not dates or event.event_date < dates[0]:
+        return _unmeasured(event, "outside_price_window")
+    row0 = bisect_left(dates, event.event_date)
+    if row0 >= len(dates):
+        return _unmeasured(event, "not_yet_effective")
+    col = run.col_of.get(event.symbol)
+    if col is None or _price(run.panel.close, row0, col) is None:
+        return _unmeasured(event, "missing_price", dates[row0])
+    if run.min_volume is not None:
+        volume = float(run.panel.volume[row0, col])
+        if not (isfinite(volume) and volume >= run.min_volume):
+            return _unmeasured(event, "low_volume", dates[row0])
+
+    returns, excess, skipped = _forward_windows(run, col, row0)
     pre, pre_excess = (None, None)
     if row0 - PRE_EVENT_DAYS >= 0:
-        pre, pre_excess = _window_return(panel.close, col, row0 - PRE_EVENT_DAYS, row0, proxy)
+        pre, pre_excess = _window_return(
+            run.panel.close, col, row0 - PRE_EVENT_DAYS, row0, run.proxy
+        )
     return EventOutcome(
         event=event,
         status="measured",
@@ -177,7 +185,9 @@ def _horizon_summary(
     days = Counter(o.day0 for o, _, _ in observations)
     n_events = len(observations)
     insufficient = n_events < min_sample
-    base = HorizonSummary(
+    excess = [] if insufficient else [e for _, _, e in observations if e is not None]
+    excess_mean, excess_median = _mean_median(excess)
+    return HorizonSummary(
         horizon_days=horizon,
         n_events=n_events,
         n_symbols=len({o.event.symbol for o, _, _ in observations}),
@@ -186,15 +196,7 @@ def _horizon_summary(
         n_censored=censored,
         n_missing_price=missing,
         insufficient_sample=insufficient,
-    )
-    if insufficient:
-        return base
-    excess = [e for _, _, e in observations if e is not None]
-    excess_mean, excess_median = _mean_median(excess)
-    return replace(
-        base,
-        insufficient_sample=False,
-        stats=summarize_sample([r for _, r, _ in observations]),
+        stats=None if insufficient else summarize_sample([r for _, r, _ in observations]),
         excess_mean=excess_mean,
         excess_median=excess_median,
         n_with_proxy=len(excess),

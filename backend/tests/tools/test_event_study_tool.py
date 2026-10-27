@@ -127,8 +127,11 @@ async def test_disposition_start_reports_counts_statistics_and_the_chart(tmp_pat
     )  # the warrant is excluded, repeated snapshots collapse
     assert out.counts.excluded_non_equity == 2
     five = next(h for h in out.horizons if h.horizon_days == 5)
-    assert five.status == "ok" and five.n_events == _N_STOCKS and five.n_symbols == _N_STOCKS
-    assert five.n_event_days == 1 and five.max_events_on_one_day == _N_STOCKS
+    assert five.status == "ok"
+    assert five.n_events == _N_STOCKS
+    assert five.n_symbols == _N_STOCKS
+    assert five.n_event_days == 1
+    assert five.max_events_on_one_day == _N_STOCKS
     assert five.mean_pct == pytest.approx(18.0)  # mean of 1..35 percent
     assert five.median_pct == pytest.approx(18.0)
     assert five.share_positive_pct == pytest.approx(100.0)
@@ -137,8 +140,10 @@ async def test_disposition_start_reports_counts_statistics_and_the_chart(tmp_pat
     assert twenty.status == "ok"
     sixty = next(h for h in out.horizons if h.horizon_days == 60)
     assert sixty.status == "insufficient_sample"
-    assert sixty.n_events == 0 and sixty.n_censored == _N_STOCKS
-    assert sixty.mean_pct is None and sixty.median_excess_pct is None
+    assert sixty.n_events == 0
+    assert sixty.n_censored == _N_STOCKS
+    assert sixty.mean_pct is None
+    assert sixty.median_excess_pct is None
     assert out.data_window.latest_price_date == days[-1]
     assert out.data_window.price_window_start == days[0]  # the store's history, not the read window
     assert out.data_window.event_feed_snapshots == 2
@@ -151,10 +156,15 @@ async def test_the_chart_plots_excess_return_by_horizon_with_n_in_the_label(tmp_
     out = await _run(_tool(store), event_type="disposition_start")
 
     hint = out.chart_hint
-    assert hint is not None and hint.mark is Mark.BAR and hint.data_key == "chart_rows"
-    assert hint.x is not None and hint.x.field == "label"
-    assert hint.y is not None and hint.y.field == "excess_return_pct"
-    assert hint.color is not None and hint.color.field == "statistic"
+    assert hint is not None
+    assert hint.mark is Mark.BAR
+    assert hint.data_key == "chart_rows"
+    assert hint.x is not None
+    assert hint.x.field == "label"
+    assert hint.y is not None
+    assert hint.y.field == "excess_return_pct"
+    assert hint.color is not None
+    assert hint.color.field == "statistic"
     labels = {row.label for row in out.chart_rows}
     assert labels == {f"D+5 (n={_N_STOCKS})", f"D+20 (n={_N_STOCKS})"}  # no bar for D+60
     assert {row.statistic for row in out.chart_rows} == {"mean", "median"}
@@ -194,7 +204,8 @@ async def test_the_static_texts_pass_the_scan_for_every_event_type_and_the_capit
     for event_type in ("capital_reduction_resume", "buyback_end"):
         out = await _run(tool, event_type=event_type)  # unavailable shapes carry the same texts
         cleaned, redacted = scan_structured_payload(out.model_dump(mode="json"))
-        assert redacted is False and cleaned == out.model_dump(mode="json")
+        assert redacted is False
+        assert cleaned == out.model_dump(mode="json")
 
 
 async def test_limitations_are_typed_and_say_what_the_sample_cannot_support(tmp_path: Path) -> None:
@@ -226,7 +237,8 @@ async def test_a_symbol_lists_its_own_events_with_their_outcomes(tmp_path: Path)
     out = await _run(_tool(store), event_type="disposition_start", symbol="1105")
 
     assert out.counts.candidates == 1
-    assert out.horizons[0].status == "insufficient_sample" and out.horizons[0].n_events == 1
+    assert out.horizons[0].status == "insufficient_sample"
+    assert out.horizons[0].n_events == 1
     assert len(out.events) == 1
     event = out.events[0]
     assert (event.symbol, event.event_date, event.day0_date) == (
@@ -236,7 +248,8 @@ async def test_a_symbol_lists_its_own_events_with_their_outcomes(tmp_path: Path)
     )
     by_horizon = {r.horizon_days: r for r in event.returns}
     assert by_horizon[5].return_pct == pytest.approx(5.0)
-    assert by_horizon[60].not_measured == "censored" and by_horizon[60].return_pct is None
+    assert by_horizon[60].not_measured == "censored"
+    assert by_horizon[60].return_pct is None
     assert event.name == "公司1105"
 
 
@@ -295,7 +308,8 @@ async def test_no_stored_event_feed_is_reported_not_invented(tmp_path: Path) -> 
     out = await _run(_tool(store), event_type="disposition_start")
 
     assert out.data_available is False
-    assert out.horizons == () and out.chart_hint is None
+    assert out.horizons == ()
+    assert out.chart_hint is None
     assert out.health_status is HealthStatus.UNAVAILABLE
     assert "disposition_events" in (out.unavailable_reason or "")
 
@@ -371,7 +385,8 @@ async def test_capital_reduction_for_one_symbol_lists_its_own_events(tmp_path: P
     out = await _run(tool, event_type="capital_reduction_resume", symbol="1105")
 
     assert out.data_available is True
-    assert adapter.calls and adapter.calls[0][1].id == "1105"
+    assert adapter.calls
+    assert adapter.calls[0][1].id == "1105"
     assert adapter.calls[0][2]["start_date"] == days[0].isoformat()
     assert out.counts.candidates == 2
     assert all(h.status == "insufficient_sample" for h in out.horizons)  # two events cannot fill 30

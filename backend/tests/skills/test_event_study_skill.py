@@ -44,7 +44,8 @@ def test_the_skills_keep_the_descriptive_only_boundary() -> None:
     study = registry.get("event-study")
     assert study is not None
     boundaries = " ".join(study.frontmatter.boundaries)
-    assert "樣本數 n" in boundaries and "insufficient_sample" in boundaries
+    assert "樣本數 n" in boundaries
+    assert "insufficient_sample" in boundaries
     assert "不得說成訊號" in boundaries
 
 

@@ -10,7 +10,6 @@ from __future__ import annotations
 import re
 from bisect import bisect_left
 from collections.abc import Sequence
-from dataclasses import replace
 from datetime import date as date_
 from datetime import timedelta
 from typing import Final
@@ -94,7 +93,14 @@ def _finish(
         else:
             outside += 1
     kept.sort(key=lambda e: (e.event_date, e.symbol))
-    return replace(tally, events=tuple(kept), excluded_outside_filter=outside)
+    return ExtractionResult(
+        events=tuple(kept),
+        rows_seen=tally.rows_seen,
+        excluded_non_equity=tally.excluded_non_equity,
+        excluded_extended=tally.excluded_extended,
+        excluded_unparsed=tally.excluded_unparsed,
+        excluded_outside_filter=outside,
+    )
 
 
 def disposition_events(
@@ -121,20 +127,23 @@ def disposition_events(
         }
         return _finish(starts, flt, ExtractionResult((), len(rows), non_equity))
 
-    starts_by_symbol: dict[str, list[date_]] = {}
-    for symbol, start in periods:
-        starts_by_symbol.setdefault(symbol, []).append(start)
+    periods_by_symbol: dict[str, list[DispositionEventRow]] = {}
+    for period in periods.values():
+        periods_by_symbol.setdefault(period.symbol, []).append(period)
     releases: dict[tuple[str, date_], StudyEvent] = {}
     extended = 0
-    for (symbol, start), row in periods.items():
+    for row in periods.values():
         release_from = row.period_end + timedelta(days=1)
         idx = bisect_left(calendar, release_from)
         first_free_day = calendar[idx] if idx < len(calendar) else release_from
-        if any(s > start and s <= first_free_day for s in starts_by_symbol[symbol]):
+        if any(
+            other.period_start > row.period_start and other.period_start <= first_free_day
+            for other in periods_by_symbol[row.symbol]
+        ):
             extended += 1
             continue
-        releases[(symbol, release_from)] = StudyEvent(
-            symbol, row.company_name or None, release_from
+        releases[(row.symbol, release_from)] = StudyEvent(
+            row.symbol, row.company_name or None, release_from
         )
     return _finish(
         releases, flt, ExtractionResult((), len(rows), non_equity, excluded_extended=extended)

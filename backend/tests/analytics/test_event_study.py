@@ -96,7 +96,8 @@ def test_nothing_before_day_zero_enters_a_forward_return() -> None:
         min_sample=1,
     )
 
-    assert flat.outcomes[0].returns[5] == with_spike.outcomes[0].returns[5] == 0.0
+    assert flat.outcomes[0].returns[5] == 0.0
+    assert with_spike.outcomes[0].returns[5] == 0.0
 
 
 def test_pre_event_drift_uses_the_five_trading_days_before_day_zero() -> None:
@@ -206,7 +207,8 @@ def test_a_sample_below_the_minimum_reports_counts_and_no_statistics() -> None:
     assert horizon.n_events == 5
     assert horizon.insufficient_sample is True
     assert horizon.stats is None
-    assert horizon.excess_mean is None and horizon.excess_median is None
+    assert horizon.excess_mean is None
+    assert horizon.excess_median is None
     assert result.pre_event.insufficient_sample is True
     assert MIN_SAMPLE_SIZE == 30
 
@@ -222,7 +224,8 @@ def test_a_sample_at_the_minimum_reports_every_statistic() -> None:
 
     horizon = result.horizons[0]
     assert horizon.insufficient_sample is False
-    assert horizon.n_events == 30 and horizon.n_symbols == 30
+    assert horizon.n_events == 30
+    assert horizon.n_symbols == 30
     stats = horizon.stats
     assert stats is not None
     assert stats.mean == pytest.approx(0.145)  # mean of 0..29 percent
@@ -244,7 +247,8 @@ def test_excess_return_subtracts_the_median_stock_return_of_the_same_window() ->
 
     market_5d = (1.0 + growth) ** 5 - 1.0
     horizon = result.horizons[0]
-    assert horizon.stats is not None and horizon.stats.mean == pytest.approx(0.0)
+    assert horizon.stats is not None
+    assert horizon.stats.mean == pytest.approx(0.0)
     assert horizon.excess_mean == pytest.approx(-market_5d)
     assert horizon.excess_median == pytest.approx(-market_5d)
     assert horizon.n_with_proxy == 30
@@ -280,9 +284,11 @@ def test_by_year_groups_by_day_zero_year_and_applies_the_minimum_per_year() -> N
     result = run_event_study(events, panel, horizons=(5,))
 
     rows = {row.year: row for row in result.by_year}
-    assert rows[year_one].n_events == 35 and rows[year_one].insufficient_sample is False
+    assert rows[year_one].n_events == 35
+    assert rows[year_one].insufficient_sample is False
     assert rows[year_one].mean == pytest.approx(0.0)
-    assert rows[year_two].n_events == 3 and rows[year_two].insufficient_sample is True
+    assert rows[year_two].n_events == 3
+    assert rows[year_two].insufficient_sample is True
     assert rows[year_two].mean is None
 
 
