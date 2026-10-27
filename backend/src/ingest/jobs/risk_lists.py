@@ -77,8 +77,9 @@ async def job_attention_stocks(run_date: date_, ctx: IngestContext) -> JobRun:
     `SCHEDULED_JOBS`). Not FinMind-sourced — both fetch functions are ingest-only whole-market
     carve-outs, same shape `job_material_announcements` uses for its own non-FinMind upstream.
 
-    **Forward-only — no backfill is possible**, same MOPS caveat: neither upstream takes a date
-    parameter, so this job's daily runs are themselves the only history that ever accumulates.
+    **Forward-only from this upstream**, same MOPS caveat: the daily feed takes no date parameter,
+    so this job's daily runs are the history it accumulates. The days before the first run are
+    rebuilt from the exchanges' range reports by `ingest/event_history.py` (`--event-history`).
     Both exchanges' rows land in ONE partition per day (`security_type` distinguishes them) —
     the 處置王 board's rolling-window attention-flag count reads this partition series back, so a
     day missed at the scheduled cron fire time is permanently lost, same reasoning

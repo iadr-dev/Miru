@@ -296,3 +296,34 @@ def test_read_range_frame_where_filters_inside_duckdb(tmp_path: object) -> None:
     )
 
     assert sorted(frame["symbol"].tolist()) == ["0050", "2330"]
+
+
+def test_read_range_batched_matches_read_range_oldest_first(tmp_path: object) -> None:
+    """One query over many small partitions gives what the per-date `read_range` gives: the same
+    rows, oldest partition first whatever order the dates are asked in, a gap or an empty day
+    adding nothing."""
+    store = ParquetStore(root=tmp_path)  # type: ignore[arg-type]
+    days = [date(2024, 1, d) for d in (2, 3, 4, 5, 8)]
+    store.write_partition("attention_stocks", "TW", days[0], [{"symbol": "1101", "n": 1}])
+    store.write_partition("attention_stocks", "TW", days[1], [])  # an empty day
+    store.write_partition(
+        "attention_stocks", "TW", days[3], [{"symbol": "2330", "n": 2}, {"symbol": "2317", "n": 3}]
+    )
+    # days[2] was never written; days[4] neither
+
+    batched = store.read_range_batched("attention_stocks", "TW", list(reversed(days)))
+    one_by_one = store.read_range("attention_stocks", "TW", days)
+
+    def stripped(rows: list[dict[str, object]]) -> list[tuple[object, ...]]:
+        return [(r["date"], r["symbol"], r["n"]) for r in rows]
+
+    assert stripped(batched) == stripped(one_by_one)
+    assert [r["symbol"] for r in batched] == ["1101", "2330", "2317"]
+    assert all(r["market"] == "TW" for r in batched)
+
+
+def test_read_range_batched_of_nothing_is_empty(tmp_path: object) -> None:
+    store = ParquetStore(root=tmp_path)  # type: ignore[arg-type]
+
+    assert store.read_range_batched("attention_stocks", "TW", [date(2024, 1, 2)]) == []
+    assert store.read_range_batched("attention_stocks", "TW", []) == []
