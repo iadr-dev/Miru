@@ -22,11 +22,11 @@ from __future__ import annotations
 
 import asyncio
 from calendar.events import fetch_feed_events
+from calendar.holidays import is_market_open_day
 from calendar.models import CalendarEvent, EventType
-from calendar.trading_days import TradingDayCalendar
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, time
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Final, Literal
 from zoneinfo import ZoneInfo
 
@@ -86,7 +86,6 @@ from tools.base import BaseTool, Tool, ToolContext, parse_args, require_user_id
 from tools.market._common import (
     names_by_symbol_for,
     price_eod_dataset_for,
-    real_calendar,
 )
 
 logger = structlog.get_logger(__name__)
@@ -101,6 +100,8 @@ _FEED_TIMEOUT_SECONDS: Final = 12.0
 _RISK_LIST_MAX_AGE_DAYS: Final = 7
 # Daily bars land after the close; a run before this local hour expects the previous trading day.
 _DATA_READY_HOUR: Final = 18
+# The longest run of closed days looked back over (a Lunar New Year closure is about nine).
+_MAX_CLOSED_RUN_DAYS: Final = 14
 _TAIPEI: Final = ZoneInfo("Asia/Taipei")
 _MARKET_TZ: Final[dict[Market, ZoneInfo]] = {
     Market.TW: _TAIPEI,
@@ -165,14 +166,21 @@ class _MarketInputs(BaseModel):
 
 
 def expected_trading_day(
-    calendar: TradingDayCalendar, local_now: datetime, *, ready_hour: int = _DATA_READY_HOUR
+    is_open: Callable[[date], bool], local_now: datetime, *, ready_hour: int = _DATA_READY_HOUR
 ) -> date:
-    """The trading day whose close the run should already have: today's if it is a trading day and
-    the data has had time to land, else the last trading day before today."""
+    """The latest day whose close the run should already have: today's if the market is open
+    today and the data has had time to land, else the last open day before today. `is_open` is
+    the scheduled calendar minus the closures ingest confirmed, NOT the days that happen to have
+    a stored partition - a day the store is missing must read as stale, not as a holiday."""
     today = local_now.date()
-    if local_now.time() >= time(ready_hour) and calendar.is_trading_day_extrapolating(today):
+    if local_now.time() >= time(ready_hour) and is_open(today):
         return today
-    return calendar.previous_trading_day(today)
+    day = today - timedelta(days=1)
+    for _ in range(_MAX_CLOSED_RUN_DAYS):
+        if is_open(day):
+            break
+        day -= timedelta(days=1)
+    return day
 
 
 def _bars_by_symbol(
@@ -193,9 +201,12 @@ def _price_section(
     dates = store.list_partition_dates(dataset, market.value)
     run_day = now.astimezone(_TAIPEI).date()
     base, end = week_bounds(dates, run_day)
-    calendar = real_calendar(store, market.value)
     local_now = now.astimezone(_MARKET_TZ[market])
-    expected = expected_trading_day(calendar, local_now) if dates else None
+
+    def is_open(day: date) -> bool:
+        return is_market_open_day(day, market) and not store.is_closed(dataset, market.value, day)
+
+    expected = expected_trading_day(is_open, local_now) if dates else None
     freshness = freshness_of(market, end, expected, base)
     if end is None:
         moves = tuple(weekly_move(s, market, [], base_date=None, end_date=None) for s in symbols)
@@ -342,7 +353,7 @@ def _disposition_inputs(
                     detail=span,
                 )
             )
-        if row.period_start <= as_of <= row.period_end:
+        if row.period_start <= as_of <= row.period_end and row.period_end >= scope.run_day:
             statuses.append(
                 ReviewStatus(
                     symbol=row.symbol,
@@ -368,17 +379,20 @@ def _attention_inputs(
     issues = _stale_issue(SOURCE_ATTENTION, market, latest, scope.run_day)
     wanted = set(scope.symbols)
     raw = store.read_partition(ATTENTION_STOCKS_DATASET, market.value, latest)
+    newest: dict[str, date] = {}
+    for flag in rows_from_store(AttentionStockRow, raw):
+        if flag.symbol in wanted:
+            newest[flag.symbol] = max(flag.flagged_date, newest.get(flag.symbol, flag.flagged_date))
     statuses = [
         ReviewStatus(
-            symbol=flag.symbol,
+            symbol=symbol,
             market=market,
-            name=scope.names.get(flag.symbol),
+            name=scope.names.get(symbol),
             kind="attention_listed",
-            since=flag.flagged_date,
+            since=since,
             source=SOURCE_ATTENTION,
         )
-        for flag in rows_from_store(AttentionStockRow, raw)
-        if flag.symbol in wanted
+        for symbol, since in sorted(newest.items())
     ]
     return statuses, issues
 
@@ -505,13 +519,20 @@ def _distinct(groups: tuple[WatchlistGroupSummary, ...]) -> dict[Market, list[st
 
 
 def _cap(distinct: dict[Market, list[str]], limit: int) -> dict[Market, list[str]]:
-    """The first `limit` symbols across markets, Taiwan first, in watchlist order."""
-    kept: dict[Market, list[str]] = {}
-    room = limit
-    for market in (Market.TW, Market.US):
-        kept[market] = distinct[market][:room]
-        room -= len(kept[market])
-    return kept
+    """At most `limit` symbols, shared fairly: each market gets an equal share, a market that
+    needs less hands its unused room to the other. Within a market, watchlist order is kept."""
+    present = [m for m in (Market.TW, Market.US) if distinct[m]]
+    quota = dict.fromkeys(present, limit // len(present)) if present else {}
+    spare = limit - sum(quota.values())
+    for market in present:
+        if len(distinct[market]) < quota[market]:
+            spare += quota[market] - len(distinct[market])
+            quota[market] = len(distinct[market])
+    for market in present:
+        extra = min(spare, len(distinct[market]) - quota[market])
+        quota[market] += extra
+        spare -= extra
+    return {m: distinct[m][: quota.get(m, 0)] for m in (Market.TW, Market.US)}
 
 
 def _caveats(review: WeeklyReview) -> tuple[str, ...]:

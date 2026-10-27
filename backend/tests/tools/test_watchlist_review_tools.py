@@ -5,7 +5,6 @@ that records the user id it was asked for; the exchange calendar feed is stubbed
 from __future__ import annotations
 
 from calendar.models import CalendarEvent, EventState, EventType
-from calendar.trading_days import TradingDayCalendar
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -470,13 +469,104 @@ async def test_top_n_limits_the_lists(tmp_path: Path) -> None:
 
 
 def test_expected_trading_day_waits_for_the_data_to_land() -> None:
-    cal = TradingDayCalendar()
+    def weekdays(day: date) -> bool:
+        return day.weekday() < 5
+
     wed_morning = datetime(2026, 10, 21, 9, 0, tzinfo=UTC)
     wed_evening = datetime(2026, 10, 21, 19, 0, tzinfo=UTC)
     sat = datetime(2026, 10, 24, 9, 0, tzinfo=UTC)
-    assert expected_trading_day(cal, wed_morning) == date(2026, 10, 20)
-    assert expected_trading_day(cal, wed_evening) == date(2026, 10, 21)
-    assert expected_trading_day(cal, sat) == FRIDAY
+    assert expected_trading_day(weekdays, wed_morning) == date(2026, 10, 20)
+    assert expected_trading_day(weekdays, wed_evening) == date(2026, 10, 21)
+    assert expected_trading_day(weekdays, sat) == FRIDAY
+    # A closed Friday (holiday or a confirmed closure) moves the expectation back to Thursday.
+    assert expected_trading_day(lambda d: weekdays(d) and d != FRIDAY, sat) == date(2026, 10, 22)
+
+
+async def test_a_confirmed_closure_is_not_stale_but_a_missing_day_is(tmp_path: Path) -> None:
+    store = ParquetStore(root=tmp_path)
+    _seed_week(store, last=date(2026, 10, 22))  # Friday 23rd has no partition
+    reader = FakeReader(_snapshot(_group("g", Market.TW, ["2330"])))
+    assert (await _run(_tool(tmp_path, reader))).review.markets[0].freshness.stale is True
+    store.mark_closed(PRICE_EOD_JOB.dataset, "TW", FRIDAY, "typhoon closure")
+    fresh = (await _run(_tool(tmp_path, reader))).review.markets[0].freshness
+    assert fresh.stale is False
+    assert fresh.expected_as_of == date(2026, 10, 22)
+
+
+async def test_the_cap_is_shared_between_the_markets(tmp_path: Path) -> None:
+    tw = [str(1100 + n) for n in range(59)]
+    us = [f"US{n}" for n in range(40)]
+    reader = FakeReader(_snapshot(_group("tw", Market.TW, tw), _group("us", Market.US, us)))
+    out = await _run(_tool(tmp_path, reader))
+    assert out.review.symbols_total == 99
+    assert [(s.market, s.symbols_covered) for s in out.review.markets] == [
+        (Market.TW, 30),
+        (Market.US, 30),
+    ]
+
+
+async def test_a_small_market_hands_its_room_to_the_other(tmp_path: Path) -> None:
+    tw = [str(1100 + n) for n in range(80)]
+    reader = FakeReader(_snapshot(_group("tw", Market.TW, tw), _group("us", Market.US, ["AAPL"])))
+    out = await _run(_tool(tmp_path, reader))
+    assert [(s.market, s.symbols_covered) for s in out.review.markets] == [
+        (Market.TW, 59),
+        (Market.US, 1),
+    ]
+
+
+async def test_an_attention_listing_seen_twice_is_shown_once_with_the_newest_date(
+    tmp_path: Path,
+) -> None:
+    store = ParquetStore(root=tmp_path)
+    _seed_week(store)
+    _seed_events(store)
+    flag = {
+        "symbol": "6999",
+        "market": "TW",
+        "company_name": "新股",
+        "reason": "x",
+        "close": 50.0,
+        "pe": None,
+        "security_type": "tpex",
+    }
+    store.write_partition(
+        ATTENTION_STOCKS_DATASET,
+        "TW",
+        FRIDAY,
+        [{**flag, "flagged_date": "2026-10-22"}, {**flag, "flagged_date": "2026-10-23"}],
+    )
+    out = await _run(_tool(tmp_path, FakeReader(_snapshot(_group("g", Market.TW, ["6999"])))))
+    assert out.report.count("6999 近期列入注意股") == 1
+    assert "公告日 2026-10-23" in out.report
+
+
+async def test_a_disposition_that_ended_before_the_run_is_not_reported_as_current(
+    tmp_path: Path,
+) -> None:
+    store = ParquetStore(root=tmp_path)
+    _seed_week(store)
+    store.write_partition(
+        DISPOSITION_EVENTS_DATASET,
+        "TW",
+        FRIDAY,
+        [
+            {
+                "symbol": "2317",
+                "market": "TW",
+                "company_name": "鴻海",
+                "announced_date": "2026-10-14",
+                "reason": "x",
+                "period_start": "2026-10-15",
+                "period_end": "2026-10-23",
+                "measure": "m",
+                "detail": None,
+                "security_type": "twse",
+            }
+        ],
+    )
+    out = await _run(_tool(tmp_path, FakeReader(_snapshot(_group("g", Market.TW, ["2317"])))))
+    assert "處置期間中" not in out.report
 
 
 def test_feed_events_without_a_date_or_symbol_are_skipped() -> None:
