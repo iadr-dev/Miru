@@ -66,6 +66,13 @@ from tools.market.etf_report import (
     GetActiveEtfReportOutput,
     GetActiveEtfReportTool,
 )
+from tools.market.event_study import (
+    EventChartRow,
+    EventRow,
+    GetEventStudyInput,
+    GetEventStudyOutput,
+    GetEventStudyTool,
+)
 from tools.market.heatmaps import (
     GetSectorConstituentsInput,
     GetSectorConstituentsOutput,
@@ -185,6 +192,7 @@ def build_registration_table(router: DataAccessRouter) -> list[tuple[Tool, bool]
         (GetEtfListTool(store), False),
         (GetDividendCalendarTool(store), False),
         (GetStrategyWatchTool(store), False),
+        (GetEventStudyTool(store, router), False),
     ]
     return tools
 
@@ -201,6 +209,8 @@ __all__ = [
     "EtfMoneyFlowRow",
     "EtfPositionEvent",
     "EtfWeightRankRow",
+    "EventChartRow",
+    "EventRow",
     "GetActiveEtfReportInput",
     "GetActiveEtfReportOutput",
     "GetActiveEtfReportTool",
@@ -228,6 +238,9 @@ __all__ = [
     "GetEtfsHoldingStockInput",
     "GetEtfsHoldingStockOutput",
     "GetEtfsHoldingStockTool",
+    "GetEventStudyInput",
+    "GetEventStudyOutput",
+    "GetEventStudyTool",
     "GetHolderAccumulationInput",
     "GetHolderAccumulationOutput",
     "GetHolderAccumulationTool",

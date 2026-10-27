@@ -14,16 +14,18 @@ inputs:
   end_date:
     type: string
     required: false
-tools: [get_canonical_context, get_source_health, get_disposition_securities, get_disposition_board]
+tools: [get_canonical_context, get_source_health, get_disposition_securities, get_disposition_board, get_event_study]
 output_structure:
   - '處置公告紀錄: 區間內處置有價證券公告事件列表'
   - '處置看板 (使用者問全市場或「哪些股票快進處置/快出關」時): 風險股/處置中/即將出關 三個分組，逐檔列價格、法人買賣、融資比與「距下次處置天數」規則推估'
+  - '處置/注意股之後的歷史統計 (使用者問「處置後/出關後/列注意股後股價通常如何」時): 呼叫 get_event_study，逐一給出樣本數 n、觀察期與限制'
   - '單股路徑尚無法提供的部分: 注意股狀態與推估 (單股公告事件流本身沒有，需改用處置看板；看板推估須附 projection_caveat)'
 freshness_rule: 每筆處置公告須標明公告/處置起訖日期；若查詢區間內沒有公告，明確說明"此區間無處置公告"而非留白。
 boundaries:
   - 單股公告事件流 (get_disposition_securities) 不含注意股狀態與進入處置推估；這些只存在於處置看板 (get_disposition_board)，不得用公告流臆測或外推。
   - 看板的「距下次處置天數」是依「滾動視窗內重複被列注意股」規則做的推估，並非交易所公布的數字，必須附上 projection_caveat，不得說成預測或保證，更不得推論股價走勢。
   - 僅描述已公告的處置事件，不對股價後續走勢做任何推測或建議。
+  - 使用者問處置、出關或列入注意股「之後的歷史表現」時，只能以 get_event_study 的歷史統計回答 (必附樣本數與限制，樣本不足的觀察期不給數字)，不得自行推估，更不得說成訊號。
   - get_disposition_securities 為 Sponsor 資料，未取得授權時針對遭遮蔽區塊誠實說明。
   - 所有判斷僅為資訊參考，不構成投資建議。
 resources: []
@@ -47,5 +49,9 @@ outputs: markdown
    documented rule of thumb, not an exchange figure and not a price forecast.
 4. For a single stock the announcement stream (step 2) has no 注意股 status or projection; say so
    and point to the board if the caller needs that view.
-5. Synthesize using `output_structure`, in order. If the window returns no rows, state that
+5. For "what has historically happened after a disposition / release / attention listing", call
+   `get_event_study(event_type, symbol?)` with `disposition_start`, `disposition_end` or
+   `attention_listed`. Report n and the window for every figure, say when the event feed is short or a
+   window has too few events, and never present the statistics as a signal or forecast.
+6. Synthesize using `output_structure`, in order. If the window returns no rows, state that
    explicitly rather than presenting an empty section with no explanation.

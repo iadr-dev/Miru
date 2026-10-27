@@ -71,12 +71,52 @@ wall of code:
 | `advance_decline.py`, `momentum.py`, `holder_accumulation.py`, `index_contribution.py` | breadth and ranking tools |
 | `heatmaps.py` | `get_sector_heatmap`, `get_sector_constituents`, `get_stock_heatmap` |
 | `sector_rotation.py` | `get_sector_rotation`, `get_sector_rotation_rrg` |
+| `event_study.py` | `get_event_study` (historical statistics after a dated event; engine in `analytics/event_study/`) |
 | `_common.py` | store-read helpers and models used by more than one of the above |
 
 Each tool class sits next to its input/output models and private helpers. A helper or model used by
 two or more modules lives in `_common.py` and has a public name; modules import only from
 `_common`, never from each other. `tools/market/__init__.py` re-exports the public names and
 builds the registration table. New category-sized tool groups should follow the same shape.
+
+#### `get_event_study` - historical statistics after a dated event
+
+A descriptive tool: what stocks did over the next N trading days after an event, never a signal.
+The engine is pure functions in `analytics/event_study/` (events, statistics, store loader); the
+tool validates the request and shapes the typed output. `DataClass.PUBLIC`: every input is public
+(exchange announcements, end-of-day prices, the public tier of the capital-reduction dataset), so
+Free and paid callers get the same full result (no teaser, no preview; see
+[12](12-multi-user-tiers.md): market data stays free).
+
+| `event_type` | Event date used (day 0 = first stored trading day on or after it) | Source |
+|---|---|---|
+| `disposition_start` | `period_start` of the disposition | `disposition_events` snapshots |
+| `disposition_end` | day after `period_end` (extensions followed by a new period are dropped) | `disposition_events` snapshots |
+| `attention_listed` | `flagged_date` | `attention_stocks` snapshots |
+| `capital_reduction_resume` | `trade_date` of the reference-price row | per-symbol router fetch (no stored history; `symbol` required) |
+| `buyback_start` | start of 預定買回期間 in a board-resolution filing | `material_announcements` snapshots |
+| `buyback_end` | end of 本次實際買回期間 in a completion / period-expiry filing | `material_announcements` snapshots |
+
+- **Returns.** Forward return for horizon N = `close(day N) / close(day 0) - 1`, N counted on the
+  stored price calendar; nothing before day 0's close enters. The 5 trading days before day 0 are
+  reported separately as context (left out for capital reductions: the share basis changes).
+- **Proxy.** Excess return = stock return minus the median return of every plain-equity stock
+  (code of at most 4 characters) priced at both ends of the same window (`median_all_tw_stocks`).
+  The stored TAIEX series stops months before the latest prices, and the 0050 ETF is one
+  cap-weighted name, so the typical-stock median is the proxy that exists for every window.
+- **Censoring and exclusions.** An event whose horizon passes the latest stored price is dropped
+  from that horizon only; events with no day-0 price, warrants, and (optionally) day-0 volume below
+  `min_volume` are dropped and counted. Per horizon: n, distinct stocks, distinct event days.
+- **Minimum sample.** A horizon (and a by-year cell) with fewer than 30 events returns counts and
+  `status = insufficient_sample` with no statistic.
+- **Honest history.** The disposition, attention and announcement feeds are forward-only daily
+  snapshots, so their history starts the day the daily job first ran (`data_window.
+  event_feed_first_snapshot`), not at the 2023 start of the price history; the typed
+  `limitations` say so, with clustering (events share market moves), survivorship, unadjusted
+  closes and no costs.
+- **Card.** `card_type = event_study` with a `chart_hint` bar chart of mean / median excess return
+  per horizon (label carries n); the generic chart renderer draws it, and its data sheet holds the
+  plotted values. The recent-events table (`events`) is in the payload for the model's answer.
 
 **Real count.** `tools/__init__.py::build_default_tool_registry(router)` assembles every domain
 tool-group module (one `*_tools.py` per domain plus the `tools/market/` package) into one

@@ -142,6 +142,7 @@ skill still runs and reports around the masked section).
 | `derivatives-positioning` | 期權 OI / P-C ratio (self-computed from raw volume) / 大額交易人 context / VIX | 大額交易人 OI + VIX (sponsor); rest public |
 | `daily-context-brief` | Assemble conversation brief for a watchlist | no (public) |
 | `disposition-watch` | 處置有價證券 announcement stream for one stock, plus the whole-market 處置/注意股 board with a rule-based, caveated "days until next disposition" projection | disposition stream (sponsor); board public |
+| `event-study` | 事件後歷史統計: what stocks historically did over the next 5/20/60 trading days after a disposition start / release, attention listing, capital-reduction restart or buy-back start / end (`get_event_study`): counts, mean / median, return relative to the market median, by-year table and typed limitations; descriptive only, never a signal | no (public) |
 | `catalyst-scan` | MOPS 重大訊息 (today only) + 董監事持股/質押 for a stock (董事會決議/庫藏股/法說會/自結 not covered — no adapter) | no (public) |
 | `governance-risk` | 質押比 (董監事持股) + 資金貸與/質押 collateral balance (背書保證/訴訟裁罰 not covered — no adapter) | collateral balance (sponsor); rest public |
 | `active-etf-flow` | 主動式ETF 操作日報 + cross-ETF 資金流向 (流入/流出, 加碼/減碼, 多空共識) | active-ETF holdings (sponsor) |
@@ -219,6 +220,7 @@ The chat agent only gets a skill's allowlist, so every registered tool must be l
 | `news-and-sentiment` (new) | `get_news_feed`, `get_ptt_board`, `get_ptt_stock_search` | no (public); third-party content, forum posts are unverified data, never advice |
 | `market-rankings` (new) | `get_tw_market_rankings`, `get_us_market_rankings`, `get_price_momentum`, `get_holder_accumulation`, `get_stock_heatmap`, `get_strategy_watch` | holder accumulation (sponsor) |
 | `sector-rotation` (new) | `get_sector_heatmap`, `get_sector_constituents`, `get_sector_rotation`, `get_sector_rotation_rrg` | no (public) |
+| `event-study` (new) | `get_event_study`; also listed by `disposition-watch` and `corporate-actions-and-market-value`, so a disposition or capital-reduction question that routes there can reach it | no (public) |
 | `us-macro-data` (new) | `get_us_macro_dashboard`, `get_us_macro_series`, `get_us_economic_releases`, `get_series_revisions`, `get_macro_calendar` | no (public) |
 | `technical-trend-read` (new) | `get_technical_indicators`, `get_trend_score` | no (public) |
 | `etf-market-overview` (new) | `get_etf_list`, `get_dividend_calendar` | no (public) |
