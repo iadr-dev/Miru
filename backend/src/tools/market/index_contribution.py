@@ -24,8 +24,11 @@ _INDEX_CONTRIBUTION_TOP_N = 10
 
 
 _CONTRIBUTION_CAVEAT = (
-    "Estimated from market-cap weight x price change; not TWSE's official float-adjusted "
-    "index-contribution figure — this codebase has no float-adjusted-divisor data."
+    "Estimated: each stock's market-value weight x its close-to-close price change. The weight is "
+    "close x issued common shares as a share of the listed + OTC companies priced that day, not "
+    "free-float adjusted; ETFs and emerging-board stocks are not in it. Not TWSE's official "
+    "float-adjusted index-contribution points. Days stored before 2026-09-25 carry weights that "
+    "covered the OTC board only."
 )
 
 
@@ -86,7 +89,7 @@ class IndexContributionRow(BaseModel):
     rank: int = 0  # 1-based position within its own side (positive/negative) — real when locked
     symbol: str | None
     stock_name: str | None
-    weight_per: float | None  # 市值比重 (%) on trade_date, from MarketValueWeightRow
+    weight_per: float | None  # 市值比重 (%): market-value share, not free-float adjusted
     pct_change: float | None  # (close - prior_close) / prior_close, a fraction not a percent
     contribution_estimate: float | None  # weight_per * pct_change — see contribution_caveat
     locked: bool = False
@@ -113,9 +116,12 @@ class GetIndexContributionTool(SyncStoreTool):
     two-day window `GetAdvanceDeclineTool` resolves (`two_day_window`) — never a per-symbol
     live fan-out, for the same whole-market-aggregate reasoning as that tool.
 
-    This is **not** TWSE's real index-contribution methodology, which uses a float-adjusted
-    divisor this codebase has no data for (`MarketValueWeightRow`'s own `weight_per` is a raw
-    market-cap-weight ranking, not a float-adjusted one) — `contribution_caveat` is therefore
+    The weights are written by ingest (`ingest/jobs/market_weight.py`): close x issued common
+    shares from the free TWSE/TPEx company-basics dumps, as a percent of the listed + OTC
+    companies priced that day (the partitions stored while the paid table was served covered the
+    OTC board only). This is **not** TWSE's real index-contribution methodology, which uses a
+    float-adjusted divisor this codebase has no data for (`weight_per` is a plain market-value
+    share, not a float-adjusted one) — `contribution_caveat` is therefore
     always populated (never empty, `Field(min_length=1)`) with that disclosure rather than
     only living in this docstring, mirroring how `currentness_caveat` is enforced elsewhere.
 
@@ -129,9 +135,10 @@ class GetIndexContributionTool(SyncStoreTool):
 
     name = "get_index_contribution"
     description = (
-        "Get an APPROXIMATE per-symbol estimate of contribution to a market-cap-weighted "
-        "index's move for one trading day (market-cap weight x price change) — not TWSE's "
-        "official float-adjusted contribution figure; see `contribution_caveat` (Sponsor-tier)."
+        "Get an APPROXIMATE per-symbol estimate of contribution to the market's move for one "
+        "trading day (market-value weight, close x issued shares and not free-float adjusted, x "
+        "price change) — not TWSE's official float-adjusted contribution figure; see "
+        "`contribution_caveat` (Sponsor-tier)."
     )
     input_model: type[BaseModel] = GetIndexContributionInput
     output_model: type[BaseModel] = GetIndexContributionOutput

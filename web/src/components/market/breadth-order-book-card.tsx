@@ -294,7 +294,7 @@ function IndexContributionColumns({
   negativeLabel: string;
 }>): ReactNode {
   return (
-    <div className="grid grid-cols-2 gap-4">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
       <IndexContributionColumn
         label={positiveLabel}
         rows={positiveContributors}
@@ -382,7 +382,10 @@ function IndexContributionRowItem({
       style={{ backgroundColor: `color-mix(in srgb, ${color} 15%, transparent)` }}
     >
       <span className="w-4 shrink-0 text-[12px] text-[var(--text-muted)]">{row.rank}</span>
-      <span className="flex-1 truncate text-[13px] text-[var(--text)]">
+      <span
+        className="flex-1 truncate text-[13px] text-[var(--text)]"
+        title={`${row.stock_name ?? ""} ${row.symbol ?? ""}`.trim()}
+      >
         {row.stock_name}
         <span className="ml-1.5 text-[11px] text-[var(--text-muted)]">{row.symbol}</span>
       </span>

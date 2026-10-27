@@ -685,7 +685,7 @@
         "negative": "Top negative",
         "unavailable": "No contribution data for today.",
         "updatedAt": "As of {date}",
-        "estimateNote": "Estimated from each stock's market value and price change. It is not the exchange's official float-adjusted contribution figure."
+        "estimateNote": "Estimated from each stock's share of listed and OTC market value (close × issued shares, not free-float adjusted) and its price change. Not the exchange's official contribution points."
       },
       "etfList": {
         "title": "ETF List",

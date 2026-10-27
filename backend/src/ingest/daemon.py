@@ -86,6 +86,7 @@ from ingest.jobs import (
     job_valuation_ratios,
 )
 from ingest.jobs.fred import job_fred_macro
+from ingest.jobs.market_weight import DerivedMarketValueSource
 from ingest.jobs.strategy_intraday import job_strategy_close_check, job_strategy_intraday
 from ingest.journal import JobRun
 from ingest.leader import build_leader_election, refresh_leadership, release_leadership
@@ -96,6 +97,7 @@ from ingest.us_jobs import US_PRICE_EOD_DATASET, job_us_fundamentals, job_us_pri
 from ingest.us_universe import job_us_symbol_universe
 from schemas.enums import Market
 from sources.company_filings import CompanyFilingsAdapter
+from sources.company_shares import CompanySharesAdapter
 from sources.exchange_roster import ExchangeRosterAdapter
 from sources.exchange_whole_market import ExchangeWholeMarketAdapter
 from sources.finmind import FinMindAdapter, FinMindQuotaRefusedError, build_finmind_quota
@@ -749,6 +751,7 @@ async def build_ingest_context_from_settings(settings: Settings | None = None) -
         exchange=ExchangeWholeMarketAdapter(),
         filings=CompanyFilingsAdapter(),
         roster=ExchangeRosterAdapter(),
+        derived=DerivedMarketValueSource(store, CompanySharesAdapter()),
         data_update_publisher=resolve_data_update_publisher(resolved),
     )
 

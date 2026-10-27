@@ -34,6 +34,7 @@ FINMIND_ID: Final = "finmind"
 EXCHANGE_ID: Final = "exchange_official"
 FILINGS_ID: Final = "filings_official"
 ROSTER_ID: Final = "roster_official"
+DERIVED_ID: Final = "market_value_derived"
 _DEFAULT_CHAIN: Final = (FINMIND_ID,)
 _TAIPEI: Final = ZoneInfo("Asia/Taipei")
 # The journal detail of a day both exchanges said they published nothing for.
@@ -60,6 +61,7 @@ def _sources(ctx: IngestContext) -> dict[str, WholeMarketSource | None]:
         EXCHANGE_ID: ctx.exchange,
         FILINGS_ID: ctx.filings,
         ROSTER_ID: ctx.roster,
+        DERIVED_ID: ctx.derived,
     }
 
 
@@ -309,6 +311,7 @@ async def fetch_whole_market_chained(
 
 
 __all__ = [
+    "DERIVED_ID",
     "EXCHANGE_ID",
     "FILINGS_ID",
     "FINMIND_ID",
