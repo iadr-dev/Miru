@@ -20,6 +20,7 @@ from db.base import Base
 from db.models import UserRow
 from db.sqlite_pragma import enable_sqlite_foreign_keys
 from schemas.enums import Tier
+from tests.scheduler import clock
 
 
 @pytest.fixture
@@ -66,7 +67,17 @@ async def insert_user(session_factory: async_sessionmaker[AsyncSession], *, tier
 
 @pytest.fixture(autouse=True)
 def _no_default_quiet_window(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Most worker tests run against the real clock. The default preset (quiet 00:00-08:00 Taipei)
-    would make them pass or fail by time of day, so they run without it; the tests that are about
-    the default put it back explicitly."""
+    """The default preset (quiet 00:00-08:00 Taipei) would make the worker tests pass or fail by
+    the pinned time of day, so they run without it; the tests that are about the default put it
+    back explicitly."""
     monkeypatch.setattr("scheduler.store.DEFAULT_QUIET_HOURS", None)
+
+
+@pytest.fixture(autouse=True)
+def pinned_clock(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every `datetime.now(...)` in the scheduler and event code and in these tests reads one pinned
+    instant (`tests/scheduler/clock.py`), so the Taipei-calendar constants in the tests can never
+    disagree with the timestamps the code stamps, whatever time of day the suite runs."""
+    for name in clock.patched_modules():
+        monkeypatch.setattr(f"{name}.datetime", clock.PinnedDateTime)
+    clock.set_now(clock.initial())
