@@ -273,37 +273,47 @@ def _no_data(source: str, market: Market) -> SourceIssue:
     return SourceIssue(source=source, market=market, detail="尚無已儲存的資料")
 
 
+def _dividend_rows(scope: _Scope, store: ParquetStore, dataset: str) -> list[DividendEvent]:
+    """The watchlist's dividend rows: every announcement for a Taiwan symbol, the latest
+    snapshot for a US one (its dataset is rewritten whole each run)."""
+    wanted = set(scope.symbols)
+    market = scope.market.value
+    if scope.market is Market.TW:
+        dates = store.list_partition_dates(dataset, market)
+        raw = store.read_range(dataset, market, dates, symbols=list(scope.symbols))
+    else:
+        latest = store.read_partition(
+            dataset, market, max(store.list_partition_dates(dataset, market))
+        )
+        raw = [r for r in latest if r.get("symbol") in wanted]
+    return [row for row in rows_from_store(DividendEvent, raw) if row.symbol in wanted]
+
+
+def _dividend_row_events(scope: _Scope, row: DividendEvent, source: str) -> list[ReviewEvent]:
+    cash_day, stock_day = row.cash_ex_dividend_date, row.stock_ex_dividend_date
+    cash = f"現金股利每股 {row.cash_dividend:g}" if row.cash_dividend else None
+    stock = f"股票股利每股 {row.stock_dividend:g}" if row.stock_dividend else None
+    dated: list[tuple[EventKind, date | None, str | None]] = [
+        ("ex_dividend", cash_day, cash),
+        ("ex_rights", stock_day, stock),
+    ]
+    return [
+        _event(scope, row.symbol, kind, day, source=source, detail=detail)
+        for kind, day, detail in dated
+        if day is not None and scope.in_window(day)
+    ]
+
+
 def _dividend_events(
     scope: _Scope, store: ParquetStore
 ) -> tuple[list[ReviewEvent], list[SourceIssue]]:
     tw = scope.market is Market.TW
     dataset = DIVIDENDS_JOB.dataset if tw else US_DIVIDENDS_DATASET
     source = SOURCE_DIVIDEND if tw else SOURCE_US_DIVIDEND
-    dates = store.list_partition_dates(dataset, scope.market.value)
-    if not dates:
+    if not store.list_partition_dates(dataset, scope.market.value):
         return [], [_no_data(source, scope.market)]
-    wanted = set(scope.symbols)
-    if tw:
-        raw = store.read_range(dataset, scope.market.value, dates, symbols=list(scope.symbols))
-    else:
-        latest = store.read_partition(dataset, scope.market.value, max(dates))
-        raw = [r for r in latest if r.get("symbol") in wanted]
-    events: list[ReviewEvent] = []
-    for row in rows_from_store(DividendEvent, raw):
-        if row.symbol not in wanted:
-            continue
-        cash_day, stock_day = row.cash_ex_dividend_date, row.stock_ex_dividend_date
-        if cash_day is not None and scope.in_window(cash_day):
-            cash = f"現金股利每股 {row.cash_dividend:g}" if row.cash_dividend else None
-            events.append(
-                _event(scope, row.symbol, "ex_dividend", cash_day, source=source, detail=cash)
-            )
-        if stock_day is not None and scope.in_window(stock_day):
-            stock = f"股票股利每股 {row.stock_dividend:g}" if row.stock_dividend else None
-            events.append(
-                _event(scope, row.symbol, "ex_rights", stock_day, source=source, detail=stock)
-            )
-    return events, []
+    rows = _dividend_rows(scope, store, dataset)
+    return [event for row in rows for event in _dividend_row_events(scope, row, source)], []
 
 
 def _stale_issue(source: str, market: Market, latest: date, run_day: date) -> list[SourceIssue]:
