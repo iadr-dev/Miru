@@ -685,7 +685,7 @@
         "negative": "負貢獻前幾名",
         "unavailable": "今日查無指數貢獻資料。",
         "updatedAt": "資料日期：{date}",
-        "estimateNote": "依各股市值與漲跌幅估算，並非證交所公布的流通調整後貢獻點數。"
+        "estimateNote": "以收盤價×已發行股數計算的上市櫃市值占比（未做流通調整）乘以漲跌幅估算，並非證交所公布的貢獻點數。"
       },
       "etfList": {
         "title": "ETF 列表",

@@ -9760,7 +9760,7 @@
     "additionalProperties": false,
     "properties": {
      "contribution_caveat": {
-      "default": "Estimated from market-cap weight x price change; not TWSE's official float-adjusted index-contribution figure — this codebase has no float-adjusted-divisor data.",
+      "default": "Estimated: each stock's market-value weight x its close-to-close price change. The weight is close x issued common shares as a share of the listed + OTC companies priced that day, not free-float adjusted; ETFs and emerging-board stocks are not in it. Not TWSE's official float-adjusted index-contribution points. Days stored before 2026-09-25 carry weights that covered the OTC board only.",
       "minLength": 1,
       "title": "Contribution Caveat",
       "type": "string"
