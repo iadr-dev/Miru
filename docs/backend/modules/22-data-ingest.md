@@ -188,8 +188,14 @@ the adapter also decides which run dates it owns:
   no new version and sends no `data.updated` signal (nothing changed), so the backfill sweep over the
   many dates of a period dataset does not rewrite thousands of empty partitions on every run.
 - **A period that is not complete yet** (before the statutory filing deadline) is `STALE` without a
-  request: a partition with rows is never re-fetched, so serving a half-filed period would freeze it
-  half-filed. The next source is asked and the date stays a gap for the next gap-fill.
+  request, with the detail `period not yet due: filing deadline YYYY-MM-DD` (2026-09-30's quarter:
+  2026-11-29; October's revenue: 2026-11-10): a partition with rows is never re-fetched, so serving a
+  half-filed period would freeze it half-filed. The next source is asked, and when none serves it
+  (FinMind's free tier refuses) the day is journaled `SKIPPED` with that detail, not `FAILED`. Unlike
+  an exchange-confirmed closure (§1b) it leaves NO marker and no placeholder: the date stays a gap,
+  every `only_missing` backfill asks again, and the period is picked up the first run after the
+  deadline. (This was the one stray failure per statement dataset in the 2026-10-27 backfill: the
+  2026-09-30 quarter, 1 of ~743 runs.)
 - **Never half a market**, as §1b: every required page must answer.
 - **Provenance**: the journal detail names the source and the page counts, e.g.
   `served by filings_official: MOPS t21sc03 2026-06: listed 1089 + OTC 895 + emerging 339 rows`.
@@ -294,6 +300,56 @@ statement endpoints (`t187ap06/07_*`) were not used: they hold the latest quarte
 aggregate form, and have no cash-flow report; the MOPS reports above carry the same lines with
 history.
 
+## 1d. The stock roster — official ISIN lists first (`roster_official`)
+
+`TaiwanStockInfo` (`stock_info`, the symbol universe and each symbol's `industry_category`) was
+FinMind-only and failed on the free tier, so a new listing never got a category. The chain is now
+`[roster_official, finmind]` (`sources/exchange_roster/`, `EXCHANGE_ROSTER`), same runner, same row
+model (`StockInfoRow`), same partition.
+
+- **Source**: the three TWSE ISIN lists, `https://isin.twse.com.tw/isin/C_public.jsp?strMode=2`
+  (listed), `4` (OTC) and `5` (emerging): Big5/MS950 HTML tables of `code name | ISIN | listing date |
+  board | industry | CFI code`, sectioned (`股票`, `ETF`, `ETN`, `特別股`, `創新板`, warrants, ...).
+  Free, keyless, the current roster only (no history to ask for), about 13 MB for the three, 3 s
+  apart. Chosen over the TWSE/TPEx OpenAPI company tables (`t187ap03_L`, `mopsfin_t187ap03_O`): those
+  carry industry CODES for operating companies only, with no ETFs, ETNs, preferred shares or emerging
+  stocks, so the code-to-name table and a second source for the funds would have been needed.
+- **Never half a market**: the listed, OTC AND emerging list must all answer and each hold a
+  plausible number of securities (800 / 500 / 150 at least; today 1,374 / 1,022 / 366); one failing,
+  or a block page, or a layout that parses to far fewer rows, is `UNREACHABLE` and the runner falls
+  back to FinMind.
+- **Row shape** (matched to the FinMind-era roster): `symbol`, `market` "TW", `name`, `security_type`
+  `twse` / `tpex` / `emerging` (the list a security is on), `as_of` = the list's own `最近更新日期`.
+  The partition is the day of the snapshot, as it was with FinMind (`snapshot_only`: a gap-fill
+  fetches only today); a roster partition is a full snapshot, readers take the latest.
+  Kept: stocks, preferred shares, ETFs, ETNs, the innovation board. Left out, as FinMind left them
+  out: warrants (about 52,000 series), depositary receipts, REITs, asset-backed securities.
+- **`industry_category`** is FinMind's spelling of the exchange's category, which differs by board.
+  Identical for most names; renamed: `其他業` -> `其他`, `建材營造業` -> `建材營造`, `貿易百貨業` ->
+  `貿易百貨` (all boards); `金融保險業` -> `金融保險` (listed) / `金融業` (OTC, emerging); OTC only
+  `其他電子業` -> `其他電子類`, `居家生活`, `數位雲端`, `綠能環保`, `運動休閒` -> the same with `類`;
+  emerging only `農業科技業` -> `農業科技`. ETFs and ETNs have no exchange category and take FinMind's
+  labels: `ETF` / `上櫃ETF`, `ETN` / `指數投資證券(ETN)`. A preferred share without a category takes its
+  common share's. One category per symbol: FinMind also repeated a stock under a composite parent
+  (`電子工業`, `化學生技醫療`, 562 symbols) and the innovation-board marker (`創新板股票`), rows that
+  made the readers' `symbol -> category` map depend on row order; they are not rebuilt (the specific
+  category is the one every reader wants). A category outside the known set is logged
+  (`isin_industry_unmapped`) and passed through; a security with none is logged
+  (`isin_industry_missing`) and keeps `""`. Nothing is unmapped today.
+- **Fresh roster, no pointless fetch**: the cadence is unchanged (06:00, once a day), but a run for a
+  date that already holds roster rows (the daily job, then the evening backfill; a restart) returns
+  `SUCCESS` with `already fetched for <date>: not asked again today` and asks no source
+  (`WholeMarketJobSpec.fetch_once_per_day`). A failed attempt leaves no rows and is retried.
+- **Provenance**: `served by roster_official: TWSE ISIN lists updated 2026-10-27: listed 1374 + OTC
+  1022 + emerging 366 securities`.
+
+Measured against the FinMind-era roster stored on 2026-10-01 (live fetch on 2026-10-27, written to
+a throwaway store; 2,736 symbols in both): name 99.56% equal (12 differ: abbreviations, a renamed
+company), `industry_category` 99.96% (the one miss is a company FinMind still files under `其他`),
+`security_type` 99.71% (8 symbols that moved from emerging to OTC/listed since). Only the official
+roster has 26 symbols (new ETFs and listings, emerging stocks added since); only FinMind has 5
+(`00847B`, `020039`, `1522A`, `2733`, `6618`, delisted or no longer on a list).
+
 ## 2. Cadence — what is scheduled today
 
 The scheduler is `ingest/daemon.py`'s `IngestDaemon`: a **leader-gated, wall-clock poll loop**. One
@@ -319,7 +375,7 @@ retried in a tight loop; the next window's pass or an explicit backfill retries)
 
 | Job (`SCHEDULED_JOBS` name) | Fires (Taipei) | Cadence | What it lands |
 |---|---|---|---|
-| `stock_info` | 06:00 | daily | FinMind `TaiwanStockInfo` roster (industry classification) |
+| `stock_info` | 06:00 | daily | `TaiwanStockInfo` roster (symbol universe, industry classification): TWSE ISIN lists first, FinMind fallback (§1d); not re-fetched on a date that already holds it |
 | `strategy_watchlist` | 08:00 | daily | derived: 策略盯盤 pre-market watchlist with trigger levels (module 20) |
 | `strategy_intraday` | 09:00–13:30, every 10 min | intraday | 策略盯盤 check: one whole-market `taiwan_stock_tick_snapshot` (FinMind Sponsor) per slot vs the watchlist → `strategy_hits` (module 20) |
 | `shareholding_distribution` | 06:05 | weekly | 集保股權分散/分級 `TaiwanStockHoldingSharesPer` |

@@ -80,9 +80,14 @@ def period_for(run_date: date_) -> RevenuePeriod | None:
     return RevenuePeriod(year, month, run_date)
 
 
+def deadline(period: RevenuePeriod) -> date_:
+    """The last day a company may file the month's revenue (the 10th of the following month)."""
+    return period.run_date.replace(day=_FILING_DEADLINE_DAY)
+
+
 def is_complete(period: RevenuePeriod, today: date_) -> bool:
     """Whether every company has had until the deadline (the 10th of the following month)."""
-    return today > period.run_date.replace(day=_FILING_DEADLINE_DAY)
+    return today > deadline(period)
 
 
 def page_url(market_dir: str, period: RevenuePeriod) -> str:

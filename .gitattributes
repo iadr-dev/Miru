@@ -4,3 +4,4 @@
 Dockerfile text eol=lf
 
 backend/tests/fixtures/mops_month_revenue/*.html -text
+backend/tests/fixtures/isin_roster/*.html -text

@@ -96,6 +96,7 @@ from ingest.us_jobs import US_PRICE_EOD_DATASET, job_us_fundamentals, job_us_pri
 from ingest.us_universe import job_us_symbol_universe
 from schemas.enums import Market
 from sources.company_filings import CompanyFilingsAdapter
+from sources.exchange_roster import ExchangeRosterAdapter
 from sources.exchange_whole_market import ExchangeWholeMarketAdapter
 from sources.finmind import FinMindAdapter, FinMindQuotaRefusedError, build_finmind_quota
 from sources.fred import FredAdapter
@@ -747,6 +748,7 @@ async def build_ingest_context_from_settings(settings: Settings | None = None) -
         # One instance per process: it owns the per-host request spacing the exchanges require.
         exchange=ExchangeWholeMarketAdapter(),
         filings=CompanyFilingsAdapter(),
+        roster=ExchangeRosterAdapter(),
         data_update_publisher=resolve_data_update_publisher(resolved),
     )
 

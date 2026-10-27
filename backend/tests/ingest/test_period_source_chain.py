@@ -7,6 +7,7 @@ from __future__ import annotations
 from calendar.trading_days import TradingDayCalendar
 from datetime import UTC, date, datetime
 
+from ingest.backfill import detect_missing_trading_days
 from ingest.context import IngestContext
 from ingest.jobs import (
     BALANCE_SHEET_JOB,
@@ -26,6 +27,8 @@ from ingest.leader import AlwaysLeader
 from ingest.store import ParquetStore
 from schemas.enums import Capability, DataClass, TimingClass, TLSPolicy
 from schemas.source import HealthStatus, SourceHealth, SourceResult
+from sources.base import is_period_not_due
+from sources.company_filings.adapter import CompanyFilingsAdapter
 from tests.ingest.test_whole_market_runner import RecordingPublisher, StubSource
 
 FIRST = date(2024, 1, 1)  # a Monday, the 1st: carries December 2023
@@ -253,3 +256,73 @@ async def test_a_statement_job_on_a_date_that_is_not_a_quarter_end_asks_nobody_e
         assert run.detail == f"served by {FILINGS_ID}: 2024-01-02 is not a quarter end"
         assert filings.calls[0][0] is job.capability
         assert finmind.calls == []
+
+
+# --- a period that is not due yet, through the REAL filings adapter (no request is made: the
+# adapter answers from the deadline calendar alone) -------------------------------------------
+
+_Q3_END = date(2026, 9, 30)  # a Wednesday; its last statutory deadline is 2026-11-29
+_TODAY = datetime(2026, 10, 27, 12, 0, tzinfo=UTC)
+
+
+def _real_filings() -> CompanyFilingsAdapter:
+    return CompanyFilingsAdapter(clock=lambda: _TODAY)
+
+
+async def test_q3_statements_before_the_deadline_are_skipped_not_failed(tmp_path: object) -> None:
+    """The stray failure of a backfill: the quarter that ended a month ago is not complete (MOPS
+    says so without a request) and FinMind's free tier refuses. Nothing is wrong, so the day is
+    SKIPPED with the deadline, and no marker keeps it from being retried."""
+    for job in (FINANCIALS_JOB, BALANCE_SHEET_JOB, CASH_FLOW_JOB):
+        finmind = _finmind([], HealthStatus.UNREACHABLE, "FinMind HTTP 403")
+        ctx = _ctx(tmp_path, finmind, _real_filings())
+
+        run = await run_whole_market_job(job, _Q3_END, ctx)
+
+        assert run.status is RunStatus.SKIPPED
+        assert run.detail == "period not yet due: filing deadline 2026-11-29"
+        assert run.rows_written == 0
+        assert not ctx.store.is_closed(job.dataset, "TW", _Q3_END)  # no sticky closure marker
+        assert not ctx.store.has_partition(job.dataset, "TW", _Q3_END)
+        assert detect_missing_trading_days(job, ctx, start=_Q3_END, end=_Q3_END) == (_Q3_END,)
+
+
+async def test_monthly_revenue_before_the_11th_is_skipped_not_failed(tmp_path: object) -> None:
+    first = date(2026, 11, 2)  # October's revenue is due on 2026-11-10; the 1st is a Sunday
+    finmind = _finmind([], HealthStatus.UNREACHABLE, "FinMind HTTP 403")
+    clock = datetime(2026, 11, 5, 12, 0, tzinfo=UTC)
+    ctx = _ctx(tmp_path, finmind, CompanyFilingsAdapter(clock=lambda: clock))
+
+    run = await run_whole_market_job(MONTH_REVENUE_JOB, first, ctx)
+
+    assert run.status is RunStatus.SKIPPED
+    assert run.detail == "period not yet due: filing deadline 2026-11-10"
+    assert not ctx.store.is_closed(MONTH_REVENUE_JOB.dataset, "TW", first)
+
+
+async def test_a_period_not_due_is_still_served_by_a_later_source_that_has_it(
+    tmp_path: object,
+) -> None:
+    ctx = _ctx(tmp_path, _finmind(), _real_filings())
+
+    run = await run_whole_market_job(MONTH_REVENUE_JOB, date(2026, 11, 2), ctx)
+
+    assert run.status is RunStatus.SUCCESS  # a paid FinMind that has early filings still wins
+    assert run.detail.startswith(f"served by {FINMIND_ID}")
+
+
+async def test_a_skipped_period_stays_a_gap_for_the_next_backfill(
+    tmp_path: object,
+) -> None:
+    refused = _finmind([], HealthStatus.UNREACHABLE, "FinMind HTTP 403")
+    skipped = await run_whole_market_job(
+        FINANCIALS_JOB, _Q3_END, _ctx(tmp_path, refused, _real_filings())
+    )
+    assert skipped.status is RunStatus.SKIPPED
+    assert is_period_not_due(skipped.detail)
+
+    # no marker and no placeholder: the gap is still listed, so the next backfill asks again
+    ctx = _ctx(tmp_path, refused, _real_filings())
+    assert detect_missing_trading_days(FINANCIALS_JOB, ctx, start=_Q3_END, end=_Q3_END) == (
+        _Q3_END,
+    )

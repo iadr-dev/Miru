@@ -13,7 +13,9 @@ stored under the next one (`ingest/jobs/period_dates.py`); any other date it pas
   request: the runner reads that as "the source knows there is nothing" and does not ask the next
   source;
 - a date whose period is not complete yet (before the filing deadline) is `HealthStatus.STALE`
-  with no rows, again without a request: the next source is asked and the date stays a gap;
+  with no rows, again without a request, and the detail `period not yet due: filing deadline
+  YYYY-MM-DD`: the next source is asked and the date stays a gap, journaled SKIPPED (not FAILED)
+  when no later source serves it, and retried once the deadline has passed;
 - otherwise the pages are fetched. **Never half a market**: every required page must answer,
   and a failure or a missing required market makes the whole answer UNREACHABLE, so a partition
   is never overwritten with one market's companies.
@@ -31,6 +33,7 @@ import structlog
 
 from schemas.enums import Capability, DataClass, TimingClass, TLSPolicy
 from schemas.source import HealthStatus, SourceHealth, SourceResult
+from sources.base import period_not_due_detail
 from sources.exchange_whole_market._client import ThrottledJsonClient
 from sources.exchange_whole_market._common import ExchangeFetchError, Row
 
@@ -137,8 +140,7 @@ class CompanyFilingsAdapter:
                 cap,
                 [],
                 HealthStatus.STALE,
-                f"revenue for {period.year}-{period.month:02d} is due by the 10th: "
-                "not complete yet",
+                period_not_due_detail(revenue.deadline(period)),
             )
         parts = [
             await self._revenue_part(market_dir, label, period, tls_policy)
@@ -187,7 +189,7 @@ class CompanyFilingsAdapter:
                 cap,
                 [],
                 HealthStatus.STALE,
-                f"statements for {period.label} are not complete before the last filing deadline",
+                period_not_due_detail(statements.deadline(period)),
             )
         report = statements.REPORTS[cap]
         parts = [
