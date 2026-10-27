@@ -12,7 +12,6 @@ from schemas.source import HealthStatus
 from sources.twse_openapi import (
     TwseOpenApiAdapter,
     _split_slash_roc_date_range,
-    fetch_whole_market_attention_stocks,
     fetch_whole_market_disposition_events,
 )
 from tests.sources.conftest import load_fixture, make_json_client_factory
@@ -103,55 +102,6 @@ def test_split_slash_roc_date_range_rejects_malformed_input() -> None:
     assert _split_slash_roc_date_range("not-a-range") == (None, None)
     assert _split_slash_roc_date_range(None) == (None, None)
     assert _split_slash_roc_date_range("115/09/03~115/09/09") == (None, None)  # ASCII tilde
-
-
-async def test_fetch_whole_market_attention_stocks_drops_sentinel_row(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A day with zero attention-stock flags returns one all-blank/all-zero sentinel row
-    (confirmed live) — the fixture's real rows must survive, and a sentinel-style blank-`Code`
-    row appended to them must be dropped, never mapped as a stock."""
-    body = load_fixture("twse_openapi", "announcement_notice.json")
-    sentinel = {
-        "Number": "0",
-        "Code": "",
-        "Name": "",
-        "NumberOfAnnouncement": "0",
-        "TradingInfoForAttention": "",
-        "Date": "",
-        "ClosingPrice": "0",
-        "PE": "0",
-    }
-    _patch_client(monkeypatch, [*body, sentinel])
-
-    result = await fetch_whole_market_attention_stocks(tls_policy=TLSPolicy.STRICT)
-
-    assert result.data_class is DataClass.PUBLIC
-    assert result.health.status is HealthStatus.OK
-    rows = result.payload["rows"]
-    assert isinstance(rows, list)
-    assert len(rows) == 2
-    by_symbol = {row["symbol"]: row for row in rows}  # type: ignore[index]
-    assert by_symbol["3081"]["flagged_date"] == "2026-09-04"  # type: ignore[index]
-    assert by_symbol["3081"]["security_type"] == "twse"  # type: ignore[index]
-    assert by_symbol["30371"]["pe"] is None  # "N/A" -> None, not a fabricated value
-
-
-async def test_fetch_whole_market_attention_stocks_transport_error(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    def handler(_request: httpx.Request) -> httpx.Response:
-        raise httpx.ConnectError("boom")
-
-    def factory(**_kwargs: object) -> httpx.AsyncClient:
-        return httpx.AsyncClient(transport=httpx.MockTransport(handler))
-
-    monkeypatch.setattr(twse_module, "build_async_client", factory)
-
-    result = await fetch_whole_market_attention_stocks(tls_policy=TLSPolicy.STRICT)
-
-    assert result.health.status is HealthStatus.UNREACHABLE
-    assert result.payload == {"rows": []}
 
 
 async def test_fetch_whole_market_disposition_events_maps_every_row(

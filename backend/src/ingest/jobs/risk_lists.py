@@ -8,6 +8,7 @@ from typing import cast
 import structlog
 
 from ingest.context import IngestContext
+from ingest.event_snapshots import EXCHANGES, attention_snapshot, newest_by_exchange
 from ingest.jobs.whole_market import fetch_error_status as _fetch_error_status
 from ingest.jobs.whole_market import validate_rows_against as _validate_rows_against
 from ingest.journal import JobRun, RunStatus, journal_run
@@ -17,14 +18,10 @@ from schemas.capabilities import (
     DispositionEventRow,
 )
 from schemas.enums import Capability
-from sources.tpex_openapi import (
-    fetch_whole_market_attention_stocks_tpex,
-    fetch_whole_market_disposition_events_tpex,
-)
-from sources.twse_openapi import (
-    fetch_whole_market_attention_stocks,
-    fetch_whole_market_disposition_events,
-)
+from sources.exchange_event_history import ExchangeEventHistoryAdapter
+from sources.exchange_whole_market._common import ExchangeFetchError
+from sources.tpex_openapi import fetch_whole_market_disposition_events_tpex
+from sources.twse_openapi import fetch_whole_market_disposition_events
 
 logger = structlog.get_logger(__name__)
 
@@ -70,21 +67,27 @@ def _kept_run(dataset: str, run_date: date_) -> JobRun:
     )
 
 
-async def job_attention_stocks(run_date: date_, ctx: IngestContext) -> JobRun:
-    """`ingest-daily` — 注意股 (attention-stock) whole-market feed, TWSE `announcement/notice`
-    plus TPEX `tpex_trading_warning_information` (`sources/twse_openapi.py`/
-    `sources/tpex_openapi.py`), cron **daily, off-peak** (see `ingest/daemon.py`'s
-    `SCHEDULED_JOBS`). Not FinMind-sourced — both fetch functions are ingest-only whole-market
-    carve-outs, same shape `job_material_announcements` uses for its own non-FinMind upstream.
+def new_event_history_adapter() -> ExchangeEventHistoryAdapter:
+    """The throttled client pair behind one attention run (one request per exchange)."""
+    return ExchangeEventHistoryAdapter()
 
-    **Forward-only from this upstream**, same MOPS caveat: the daily feed takes no date parameter,
-    so this job's daily runs are the history it accumulates. The days before the first run are
-    rebuilt from the exchanges' range reports by `ingest/event_history.py` (`--event-history`).
-    Both exchanges' rows land in ONE partition per day (`security_type` distinguishes them) —
-    the 處置王 board's rolling-window attention-flag count reads this partition series back, so a
-    day missed at the scheduled cron fire time is permanently lost, same reasoning
-    `ingest/__main__.py`'s `_tw_gap_fill` already gives for the two MOPS jobs — this job is
-    called directly from that startup gap-fill path too, not only its own daily cron slot."""
+
+async def job_attention_stocks(run_date: date_, ctx: IngestContext) -> JobRun:
+    """`ingest-daily` — 注意股 (attention-stock) whole-market snapshot of `run_date`.
+
+    Both exchanges come from their date-range history reports (`sources/exchange_event_history`,
+    the reports `ingest/event_history.py` rebuilds the past from), not from the current-day
+    OpenAPI dumps: TWSE's `announcement/notice` dump answers only its empty placeholder, so a job
+    reading it stored no listed-market flag at all. The day's rows are cut with the same rule the
+    rebuild uses (`attention_snapshot`: the flags announced on `run_date` and on the trading day
+    before it), so the live and the rebuilt snapshots are one series.
+
+    **Never half a market.** If either exchange cannot be read (`ExchangeFetchError`) or has not
+    posted `run_date` yet, NOTHING is written and the run is FAILED / SKIPPED: the day stays a gap
+    that the next run (also called from `ingest/__main__.py`'s startup gap-fill) or the
+    `--event-history` rebuild fills, instead of becoming a stored snapshot of one exchange.
+
+    Cron **daily, off-peak** (see `ingest/daemon.py`'s `SCHEDULED_JOBS`)."""
     if not ctx.calendar.is_trading_day_extrapolating(run_date):
         return journal_run(
             ATTENTION_STOCKS_DATASET,
@@ -102,35 +105,39 @@ async def job_attention_stocks(run_date: date_, ctx: IngestContext) -> JobRun:
             detail="not the leader — write skipped",
         )
 
-    twse_result = await fetch_whole_market_attention_stocks(tls_policy=ctx.tls_policy)
-    tpex_result = await fetch_whole_market_attention_stocks_tpex(tls_policy=ctx.tls_policy)
-    twse_failed = _fetch_error_status(twse_result) is RunStatus.FAILED
-    tpex_failed = _fetch_error_status(tpex_result) is RunStatus.FAILED
-    if twse_failed and tpex_failed:
+    previous = ctx.calendar.previous_trading_day(run_date)
+    try:
+        history = await new_event_history_adapter().fetch_attention(
+            previous, run_date, tls_policy=ctx.tls_policy
+        )
+    except ExchangeFetchError as exc:
+        logger.warning("attention_stocks_fetch_failed", day=run_date.isoformat(), reason=exc.detail)
         return journal_run(
             ATTENTION_STOCKS_DATASET,
             run_date,
             rows_written=0,
             status=RunStatus.FAILED,
-            detail=f"twse={twse_result.health.detail}; tpex={tpex_result.health.detail}",
+            detail=f"nothing written, the day stays a gap: {exc.detail}",
         )
-
-    raw_rows: list[dict[str, object]] = []
-    for result, failed in ((twse_result, twse_failed), (tpex_result, tpex_failed)):
-        if failed:
-            continue
-        rows_obj = result.payload.get("rows", [])
-        if isinstance(rows_obj, list):
-            raw_rows.extend(cast("list[dict[str, object]]", rows_obj))
-
-    rows = _validate_rows_against(AttentionStockRow, ATTENTION_STOCKS_DATASET, raw_rows, run_date)
-    settled = _settled_rows(
-        ctx, ATTENTION_STOCKS_DATASET, run_date, rows, _failed_kinds(twse_failed, tpex_failed)
+    valid = _validate_rows_against(
+        AttentionStockRow, ATTENTION_STOCKS_DATASET, history.rows, run_date
     )
-    if settled is None:
-        return _kept_run(ATTENTION_STOCKS_DATASET, run_date)
+    reached = newest_by_exchange(valid, "flagged_date")
+    behind = sorted(kind for kind in EXCHANGES if reached.get(kind, date_.min) < run_date)
+    if behind:
+        return journal_run(
+            ATTENTION_STOCKS_DATASET,
+            run_date,
+            rows_written=0,
+            status=RunStatus.SKIPPED,
+            detail=(
+                f"not posted yet by {'/'.join(behind)}, nothing written, the day stays a gap "
+                "for the next run"
+            ),
+        )
+    rows = attention_snapshot(valid, run_date, previous)
     rows_written = ctx.store.write_partition(
-        ATTENTION_STOCKS_DATASET, ctx.market.value, run_date, settled
+        ATTENTION_STOCKS_DATASET, ctx.market.value, run_date, rows
     )
     await ctx.data_update_publisher.publish_data_updated(
         capability=Capability.ATTENTION_STOCKS,
@@ -138,14 +145,12 @@ async def job_attention_stocks(run_date: date_, ctx: IngestContext) -> JobRun:
         as_of=run_date.isoformat(),
         scope="whole-market",
     )
-    status = RunStatus.PARTIAL if (twse_failed or tpex_failed) else RunStatus.SUCCESS
-    detail = (
-        f"twse={twse_result.health.detail}; tpex={tpex_result.health.detail}"
-        if (twse_failed or tpex_failed)
-        else "ok"
-    )
     return journal_run(
-        ATTENTION_STOCKS_DATASET, run_date, rows_written=rows_written, status=status, detail=detail
+        ATTENTION_STOCKS_DATASET,
+        run_date,
+        rows_written=rows_written,
+        status=RunStatus.SUCCESS,
+        detail="ok",
     )
 
 

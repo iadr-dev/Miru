@@ -20,7 +20,6 @@ from schemas.market import Symbol
 from schemas.source import HealthStatus
 from sources.tpex_openapi import (
     TpexOpenApiAdapter,
-    fetch_whole_market_attention_stocks_tpex,
     fetch_whole_market_disposition_events_tpex,
 )
 
@@ -34,12 +33,6 @@ async def test_live_mainboard_daily_close_quotes() -> None:
     result = await adapter.fetch(Capability.PRICE_EOD, sym, tls_policy=TLSPolicy.STRICT)
 
     assert result.health.status in (HealthStatus.OK, HealthStatus.STALE)
-
-
-async def test_live_attention_stocks_tpex() -> None:
-    result = await fetch_whole_market_attention_stocks_tpex(tls_policy=TLSPolicy.STRICT)
-
-    assert result.health.status is HealthStatus.OK
 
 
 async def test_live_disposition_events_tpex() -> None:

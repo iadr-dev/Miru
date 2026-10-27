@@ -29,14 +29,13 @@ import structlog
 from schemas.enums import Capability, DataClass, Market, TimingClass, TLSPolicy
 from schemas.market import Symbol
 from schemas.source import HealthStatus, SourceHealth, SourceResult
-from sources.parse import optional_float, to_float
+from sources.parse import to_float
 from sources.tls import build_async_client
 
 logger = structlog.get_logger(__name__)
 
 _BASE_URL = "https://www.tpex.org.tw/openapi/v1"
 _MAINBOARD_DAILY_CLOSE_QUOTES = f"{_BASE_URL}/tpex_mainboard_daily_close_quotes"
-_ATTENTION_STOCKS = f"{_BASE_URL}/tpex_trading_warning_information"
 _DISPOSITION_EVENTS = f"{_BASE_URL}/tpex_disposal_information"
 
 # Upstream rejects requests with no User-Agent (the "needs UA header" quirk this family is
@@ -48,15 +47,9 @@ _CAVEAT = (
     "parameters, no backfill; it reflects the most recent published trading day, not a live "
     "quote."
 )
-_ATTENTION_STOCKS_CAVEAT = (
-    "TPEX 注意股 (attention-stock) announcement dump is the current whole-market feed as "
-    "published today — no date parameter, not a historical archive; a day's flags roll off "
-    "the upstream dataset over time, so absence here is not evidence a stock was never flagged."
-)
 _DISPOSITION_EVENTS_CAVEAT = (
     "TPEX 處置 (disposition) announcement dump is the current whole-market feed as published "
-    "today — no date parameter, not a historical archive; same forward-only shape as the "
-    "attention-stock feed above."
+    "today — no date parameter, not a historical archive; forward-only, no history."
 )
 
 _ROC_DATE_LEN = 7
@@ -199,27 +192,6 @@ def _split_roc_date_range(raw: object) -> tuple[date | None, date | None]:
     return _roc_to_iso_date(parts[0]), _roc_to_iso_date(parts[1])
 
 
-def _map_attention_stock_row(row: dict[str, object]) -> dict[str, object] | None:
-    """One raw `tpex_trading_warning_information` row -> the mapped dict for `AttentionStockRow`,
-    or `None` when the row is missing its symbol/date (both required fields on that model)."""
-    symbol = str(row.get("SecuritiesCompanyCode", "")).strip()
-    if not symbol:
-        return None
-    flagged_date = _roc_to_iso_date(str(row.get("Date", "")))
-    if flagged_date is None:
-        return None
-    return {
-        "symbol": symbol,
-        "market": Market.TW.value,
-        "company_name": str(row.get("CompanyName", "")),
-        "flagged_date": flagged_date.isoformat(),
-        "reason": str(row.get("TradingInformation", "")),
-        "close": optional_float(row.get("ClosePrice")),
-        "pe": optional_float(row.get("PriceEarningRatio")),
-        "security_type": "tpex",
-    }
-
-
 def _map_disposition_event_row(row: dict[str, object]) -> dict[str, object] | None:
     """One raw `tpex_disposal_information` row -> the mapped dict for `DispositionEventRow`, or
     `None` when the row's `DispositionPeriod` doesn't parse (both halves required on the model).
@@ -274,38 +246,9 @@ async def _fetch_whole_market_rows(
     return cast("list[dict[str, object]]", untyped_rows), None
 
 
-async def fetch_whole_market_attention_stocks_tpex(*, tls_policy: TLSPolicy) -> SourceResult:
-    """One whole-market call, every 注意股 (attention-stock) flag in today's TPEX dump — the
-    ingest layer's sole legitimate caller. Distinct symbol namespace/field shape from
-    `sources/twse_openapi.py::fetch_whole_market_attention_stocks`; the ingest job that calls both
-    concatenates their rows into one `attention_stocks` partition, distinguished by
-    `security_type`."""
-    rows, error = await _fetch_whole_market_rows(_ATTENTION_STOCKS, tls_policy=tls_policy)
-    if error is not None:
-        return SourceResult(
-            source_id=TpexOpenApiAdapter.source_id,
-            data_class=DataClass.PUBLIC,
-            timing_class=TimingClass.EVENT_DRIVEN,
-            fetched_at=datetime.now(UTC),
-            currentness_caveat=_ATTENTION_STOCKS_CAVEAT,
-            payload={"rows": []},
-            health=error,
-        )
-    mapped_rows = [mapped for row in rows if (mapped := _map_attention_stock_row(row)) is not None]
-    return SourceResult(
-        source_id=TpexOpenApiAdapter.source_id,
-        data_class=DataClass.PUBLIC,
-        timing_class=TimingClass.EVENT_DRIVEN,
-        fetched_at=datetime.now(UTC),
-        currentness_caveat=_ATTENTION_STOCKS_CAVEAT,
-        payload={"rows": mapped_rows},
-        health=SourceHealth(status=HealthStatus.OK, detail="ok"),
-    )
-
-
 async def fetch_whole_market_disposition_events_tpex(*, tls_policy: TLSPolicy) -> SourceResult:
-    """One whole-market call, every 處置 (disposition) announcement in today's TPEX dump — same
-    ingest-layer whole-market shape as `fetch_whole_market_attention_stocks_tpex` above."""
+    """One whole-market call, every 處置 (disposition) announcement in today's TPEX dump —
+    whole-market, ingest-only."""
     rows, error = await _fetch_whole_market_rows(_DISPOSITION_EVENTS, tls_policy=tls_policy)
     if error is not None:
         return SourceResult(
@@ -333,6 +276,5 @@ async def fetch_whole_market_disposition_events_tpex(*, tls_policy: TLSPolicy) -
 
 __all__ = [
     "TpexOpenApiAdapter",
-    "fetch_whole_market_attention_stocks_tpex",
     "fetch_whole_market_disposition_events_tpex",
 ]

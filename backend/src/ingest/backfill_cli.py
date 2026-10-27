@@ -63,7 +63,11 @@ from ingest.context import IngestContext
 from ingest.daemon import build_ingest_context_from_settings, close_ingest_context
 from ingest.data_updates import CoalescingDataUpdatePublisher
 from ingest.derived_catchup import catch_up_tw, catch_up_us
-from ingest.event_history import backfill_event_history
+from ingest.event_history import (
+    backfill_event_history,
+    find_half_snapshots,
+    repair_half_snapshots,
+)
 from ingest.jobs import (
     DAILY_WHOLE_MARKET_JOBS,
     ETF_EXPENSE_RATIO_DATASET,
@@ -175,7 +179,19 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "pair per month and dataset). Never replaces a stored snapshot; safe to re-run."
         ),
     )
+    parser.add_argument(
+        "--repair-half-snapshots",
+        action="store_true",
+        help=(
+            "With --event-history: instead of filling the missing days, rebuild the STORED "
+            "attention_stocks / disposition_events snapshots that lack one exchange's rows (a "
+            "forward day written while that exchange's live feed failed or was empty). A complete "
+            "snapshot is never touched; safe to re-run."
+        ),
+    )
     args = parser.parse_args(argv)
+    if args.repair_half_snapshots and not args.event_history:
+        parser.error("--repair-half-snapshots is a mode of --event-history")
     if args.event_history and (args.fill_missing_companies is not None or args.market != "tw"):
         parser.error("--event-history is a TW refresh on its own (--market tw, no other mode)")
     if (args.fill_missing_companies is None) != (args.dates is None):
@@ -566,7 +582,7 @@ async def run_fill_missing_companies(
 
 
 async def run_event_history_backfill(
-    settings: Settings, ctx: IngestContext, *, override: bool, years: int
+    settings: Settings, ctx: IngestContext, *, override: bool, years: int, repair: bool = False
 ) -> tuple[JobRun, ...]:
     """`--event-history`: write the missing past daily snapshots of the two 處置王-board feeds
     (`ingest/event_history.py`) over `[target - years*250 trading days, target]`. Same gates as the
@@ -583,12 +599,33 @@ async def run_event_history_backfill(
         start=start.isoformat(),
         target=target.isoformat(),
     )
+    if repair:
+        return await _repair_half_snapshots(ctx, start=start, end=target)
     runs = await backfill_event_history(ctx, start=start, end=target, only_missing=True)
     written = sum(r.rows_written for r in runs)
     failed = sum(r.status is RunStatus.FAILED for r in runs)
     sys.stdout.write(
         f"event history {start.isoformat()}..{target.isoformat()}: {len(runs)} runs, "
         f"{written} rows written, {failed} failed\n"
+    )
+    return runs
+
+
+async def _repair_half_snapshots(
+    ctx: IngestContext, *, start: date, end: date
+) -> tuple[JobRun, ...]:
+    """`--event-history --repair-half-snapshots`: list the stored snapshots that lack one exchange's
+    rows, then rebuild them from the history reports (a complete snapshot is never touched)."""
+    half = find_half_snapshots(ctx, start=start, end=end)
+    for item in half:
+        lacks = "/".join(sorted(item.missing))
+        sys.stdout.write(f"half snapshot {item.dataset} {item.day.isoformat()}: no {lacks}\n")
+    runs = await repair_half_snapshots(ctx, start=start, end=end)
+    repaired = sum(r.status is RunStatus.SUCCESS for r in runs)
+    failed = sum(r.status is RunStatus.FAILED for r in runs)
+    sys.stdout.write(
+        f"half snapshots {start.isoformat()}..{end.isoformat()}: {len(half)} found, "
+        f"{repaired} repaired, {failed} failed\n"
     )
     return runs
 
@@ -600,7 +637,9 @@ async def _run_backfill(
         forgotten = ctx.store.clear_plan_denials()
         logger.info("ingest_backfill_cli_plan_denials_cleared", cleared=forgotten)
     if args.event_history:
-        runs = await run_event_history_backfill(settings, ctx, override=args.yes, years=years)
+        runs = await run_event_history_backfill(
+            settings, ctx, override=args.yes, years=years, repair=args.repair_half_snapshots
+        )
     elif args.fill_missing_companies is not None:
         runs = await run_fill_missing_companies(
             settings,
