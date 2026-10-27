@@ -128,8 +128,9 @@ def test_thousands_separators_are_read() -> None:
 
 
 def test_a_dump_far_below_a_real_board_is_rejected() -> None:
+    six_companies = _load("t187ap03_L.json")  # not a board
     with pytest.raises(ExchangeFetchError, match="expected at least"):
-        parse_module.parse_listed(_load("t187ap03_L.json"))  # six companies is not a board
+        parse_module.parse_listed(six_companies)
 
 
 def test_a_changed_layout_is_an_error_not_an_empty_board() -> None:
@@ -186,5 +187,6 @@ async def test_one_dump_failing_is_an_error_and_is_not_cached(dumps: FakeDumps) 
 async def test_a_block_page_instead_of_the_array_is_an_error(dumps: FakeDumps) -> None:
     dumps.bodies["openapi.twse.com.tw"] = {"message": "blocked"}
 
+    adapter = _adapter()
     with pytest.raises(ExchangeFetchError, match="JSON array"):
-        await _adapter().fetch_snapshot(tls_policy=TLSPolicy.STRICT)
+        await adapter.fetch_snapshot(tls_policy=TLSPolicy.STRICT)
