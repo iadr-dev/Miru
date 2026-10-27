@@ -202,31 +202,32 @@ class ChainOutcome:
         return "; ".join(parts)
 
 
-def _denial_remembered(
-    ctx: IngestContext, source_id: str, capability: Capability, market_id: str
-) -> bool:
-    """FinMind was refused this capability by the plan less than `PLAN_DENIAL_TTL` ago."""
-    return source_id == FINMIND_ID and ctx.store.is_plan_denied(
-        market_id, capability.value, ttl=PLAN_DENIAL_TTL
-    )
+def _without_remembered_denial(
+    ctx: IngestContext, outcome: ChainOutcome, chain: list[ChainLink], plan_key: tuple[str, str]
+) -> list[ChainLink]:
+    """`chain` without FinMind while a plan denial for the capability is younger than
+    `PLAN_DENIAL_TTL`: it is not asked, and the outcome records why."""
+    if not ctx.store.is_plan_denied(*plan_key, ttl=PLAN_DENIAL_TTL):
+        return chain
+    outcome.failures.append((FINMIND_ID, "not in the FinMind plan (remembered)"))
+    outcome.tier_denied.append(FINMIND_ID)
+    return [link for link in chain if link.source_id != FINMIND_ID]
 
 
-def _note_tier_denial(  # noqa: PLR0913 - the walk's own state, passed through unchanged
+def _note_tier_denial(
     ctx: IngestContext,
     outcome: ChainOutcome,
-    source_id: str,
-    *,
+    link: ChainLink,
     result: SourceResult,
-    capability: Capability,
-    market_id: str,
+    plan_key: tuple[str, str],
 ) -> None:
     """Record a source's plan denial on the outcome, and FinMind's in the store so the rest of
     the run (and the next ones, until the TTL) do not ask it again."""
     if result.health.status is not HealthStatus.UNAVAILABLE_TIER:
         return
-    outcome.tier_denied.append(source_id)
-    if source_id == FINMIND_ID:
-        ctx.store.mark_plan_denied(market_id, capability.value)
+    outcome.tier_denied.append(link.source_id)
+    if link.source_id == FINMIND_ID:
+        ctx.store.mark_plan_denied(*plan_key)
 
 
 async def walk_chain(  # noqa: PLR0913 - the optional knobs are keyword-only by design
@@ -245,12 +246,10 @@ async def walk_chain(  # noqa: PLR0913 - the optional knobs are keyword-only by 
     FinMind a request while a plan denial for the capability is remembered."""
     chain = resolve_chain(ctx, capability, market)
     outcome = ChainOutcome(chain_ids=[link.source_id for link in chain])
-    market_id = (market or ctx.market).value
+    plan_key = ((market or ctx.market).value, capability.value)
+    if skip_plan_denied and FINMIND_ID in outcome.chain_ids:
+        chain = _without_remembered_denial(ctx, outcome, chain, plan_key)
     for link in chain:
-        if skip_plan_denied and _denial_remembered(ctx, link.source_id, capability, market_id):
-            outcome.failures.append((link.source_id, "not in the FinMind plan (remembered)"))
-            outcome.tier_denied.append(link.source_id)
-            continue
         result = await link.source.fetch_whole_market(
             capability, tls_policy=ctx.tls_policy, start_date=(source_date or run_date).isoformat()
         )
@@ -266,14 +265,7 @@ async def walk_chain(  # noqa: PLR0913 - the optional knobs are keyword-only by 
             break
         if _failed(result):
             outcome.failures.append((link.source_id, result.health.detail))
-            _note_tier_denial(
-                ctx,
-                outcome,
-                link.source_id,
-                result=result,
-                capability=capability,
-                market_id=market_id,
-            )
+            _note_tier_denial(ctx, outcome, link, result, plan_key)
             logger.warning(
                 "ingest_whole_market_source_failed",
                 capability=capability.value,
