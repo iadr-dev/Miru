@@ -4,6 +4,7 @@
  */
 
 import { z } from "zod";
+import { healthStatusSchema } from "@/types/market/shared";
 
 // ---------------------------------------------------------------------------
 // 7. GET /macro — get_macro_indicators (whole tool Sponsor-tier)
@@ -69,6 +70,7 @@ export type FearGreedIndexRow = z.infer<typeof fearGreedIndexRowSchema>;
 
 export const macroIndicatorsDataSchema = z.object({
   currentness_caveat: z.string(),
+  health_status: healthStatusSchema,
   exchange_rate: z.array(exchangeRateRowSchema).default([]),
   central_bank_rate: z.array(centralBankRateRowSchema).default([]),
   gold_price: z.array(goldPriceRowSchema).default([]),
@@ -112,7 +114,9 @@ export const macroReleaseEventRowSchema = z.object({
 export type MacroReleaseEventRow = z.infer<typeof macroReleaseEventRowSchema>;
 
 export const macroCalendarResponseSchema = z.object({
+  source_id: z.string(),
   currentness_caveat: z.string(),
+  health_status: healthStatusSchema,
   events: z.array(macroReleaseEventRowSchema).default([]),
 });
 

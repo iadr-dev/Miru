@@ -531,6 +531,7 @@
       "macroCalendar": {
         "title": "經濟數據公布",
         "empty": "此區間查無經濟數據公布資料。",
+        "unavailable": "經濟數據暫時無法連線，稍後再試",
         "expandTo": "展開完整 {count} 筆",
         "monthHeading": "{year}年{month}月",
         "impactHigh": "高",
@@ -795,7 +796,7 @@
       "newsFeed": {
         "title": "新聞",
         "empty": "目前沒有新聞。",
-        "unavailable": "新聞來源目前無法取得。",
+        "unavailable": "新聞暫時無法連線，稍後再試",
         "expandTo": "展開完整 {count} 筆",
         "collapse": "收合"
       },
@@ -3863,6 +3864,7 @@
       "news": "新聞",
       "filings": "SEC文件",
       "newsEmpty": "尚無相關新聞。",
+      "newsUnavailable": "新聞暫時無法連線，稍後再試",
       "filingsEmpty": "尚無SEC文件。"
     },
     "etfTabs": {

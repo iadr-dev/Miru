@@ -531,6 +531,7 @@
       "macroCalendar": {
         "title": "Economic Releases",
         "empty": "No economic release data in this window.",
+        "unavailable": "Economic releases are temporarily unreachable. Please try again later.",
         "expandTo": "Show all {count}",
         "monthHeading": "{month}/{year}",
         "impactHigh": "High",
@@ -795,7 +796,7 @@
       "newsFeed": {
         "title": "News",
         "empty": "No news items right now.",
-        "unavailable": "News feed unavailable right now.",
+        "unavailable": "News is temporarily unreachable. Please try again later.",
         "expandTo": "Show all {count}",
         "collapse": "Collapse"
       },
@@ -3863,6 +3864,7 @@
       "news": "News",
       "filings": "SEC Filings",
       "newsEmpty": "No related news.",
+      "newsUnavailable": "News is temporarily unreachable. Please try again later.",
       "filingsEmpty": "No SEC filings."
     },
     "etfTabs": {

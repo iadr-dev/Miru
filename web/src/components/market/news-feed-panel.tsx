@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { QueryState } from "@/components/ui/query-state";
 import { getNewsFeed } from "@/lib/api/market";
@@ -13,7 +14,8 @@ import { cn } from "@/lib/cn";
 import { formatNewsTime } from "@/lib/format-news-time";
 import { safeHttpUrl } from "@/lib/safe-url";
 import { sourceLogoUrl } from "@/lib/source-logo";
-import type { NewsFeedItem } from "@/types/market/news";
+import type { NewsFeedItem, NewsFeedResponse } from "@/types/market/news";
+import { isSourceDown } from "@/types/market/shared";
 import type { Market } from "@/types/settings";
 
 const NEWS_QUERY_BY_MARKET: Record<Market, string> = {
@@ -55,41 +57,61 @@ export function NewsFeedPanel({ market }: { readonly market: Market }): ReactNod
     <section className="surface-card flex min-h-[70vh] w-full flex-col p-4 sm:p-5">
       <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
       <QueryState query={query} skeleton={<CardSkeletonBody height={600} />}>
-        {(data) => {
-          if (data.items.length === 0) {
-            return <p className="text-[13px] text-[var(--text-muted)]">{t("empty")}</p>;
-          }
-
-          return (
-            <>
-              <NewsFeedList items={data.items.slice(0, NEWS_FEED_COLLAPSED_ROW_COUNT)} />
-
-              {data.items.length > NEWS_FEED_COLLAPSED_ROW_COUNT ? (
-                <button
-                  type="button"
-                  onClick={() => setExpanded(true)}
-                  className={cn(
-                    "mt-2.5 flex min-h-11 w-full items-center justify-center gap-1.5 rounded-[var(--radius-input)]",
-                    "bg-[var(--surface-2)] text-[12.5px] text-[var(--text-muted)] hover:bg-[var(--surface-3)] hover:text-[var(--text)]",
-                  )}
-                >
-                  <span>{t("expandTo", { count: data.items.length })}</span>
-                </button>
-              ) : null}
-
-              <ExpandModal
-                open={expanded}
-                title={t("title")}
-                closeLabel={t("collapse")}
-                onClose={() => setExpanded(false)}
-              >
-                <NewsFeedList items={data.items} />
-              </ExpandModal>
-            </>
-          );
-        }}
+        {(data) => (
+          <NewsFeedContent data={data} expanded={expanded} onExpandedChange={setExpanded} />
+        )}
       </QueryState>
     </section>
+  );
+}
+
+/** The three states of the feed: items present (always shown, even when a refresh partly
+ * failed), source down (an outage is NOT "no news" - an empty list from an unreachable source
+ * says so), or genuinely no items. */
+export function NewsFeedContent({
+  data,
+  expanded,
+  onExpandedChange,
+}: {
+  readonly data: NewsFeedResponse;
+  readonly expanded: boolean;
+  readonly onExpandedChange: (next: boolean) => void;
+}): ReactNode {
+  const t = useTranslations("market.cards.newsFeed");
+
+  if (data.items.length === 0) {
+    if (isSourceDown(data.health_status)) {
+      return <EmptyState compact title={t("unavailable")} />;
+    }
+    return <p className="text-[13px] text-[var(--text-muted)]">{t("empty")}</p>;
+  }
+
+  return (
+    <>
+      <NewsFeedList items={data.items.slice(0, NEWS_FEED_COLLAPSED_ROW_COUNT)} />
+
+      {data.items.length > NEWS_FEED_COLLAPSED_ROW_COUNT ? (
+        <button
+          type="button"
+          onClick={() => onExpandedChange(true)}
+          className={cn(
+            "mt-2.5 flex min-h-11 w-full items-center justify-center gap-1.5 rounded-[var(--radius-input)]",
+            "bg-[var(--surface-2)] text-[12.5px] text-[var(--text-muted)] hover:bg-[var(--surface-3)] hover:text-[var(--text)]",
+          )}
+        >
+          <span>{t("expandTo", { count: data.items.length })}</span>
+        </button>
+      ) : null}
+
+      <ExpandModal
+        open={expanded}
+        title={t("title")}
+        closeLabel={t("collapse")}
+        onClose={() => onExpandedChange(false)}
+      >
+        <NewsFeedList items={data.items} />
+      </ExpandModal>
+    </>
   );
 }
 

@@ -37,6 +37,13 @@ export const HEALTH_STATUSES = [
 
 export const healthStatusSchema = z.enum(HEALTH_STATUSES);
 
+/** True when a tool's source could not be served (an outage or an unavailable tier), as opposed
+ * to `ok` or `stale` (it answered, possibly with nothing). An empty list next to a down status
+ * is an outage, never "nothing here". */
+export function isSourceDown(status: z.infer<typeof healthStatusSchema>): boolean {
+  return status !== "ok" && status !== "stale";
+}
+
 /** The `_RowsOutput` shape every non-bundled tool output subclasses (`source_id` +
  * `currentness_caveat` + `health_status` + `rows`). */
 export function rowsOutputSchema<RowSchema extends z.ZodTypeAny>(rowSchema: RowSchema) {
