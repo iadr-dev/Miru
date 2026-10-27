@@ -31,6 +31,14 @@ import structlog
 from pydantic import BaseModel
 
 from ingest.context import IngestContext
+from ingest.event_snapshots import (
+    EXCHANGES,
+    Row,
+    attention_snapshot,
+    disposition_snapshot,
+    exchanges_of,
+    published_through,
+)
 from ingest.jobs.risk_lists import ATTENTION_STOCKS_DATASET, DISPOSITION_EVENTS_DATASET
 from ingest.jobs.whole_market import validate_rows_against
 from ingest.journal import JobRun, RunStatus, journal_run
@@ -41,45 +49,10 @@ from sources.exchange_whole_market._common import ExchangeFetchError
 
 logger = structlog.get_logger(__name__)
 
-type Row = dict[str, object]
-
 _DETAIL = "reconstructed from the exchange history reports"
 # Days this close to today are written only as far as the reports prove them published: the
 # reports trail the day, and an empty answer for a day not yet posted is not an empty list.
 _SETTLE_DAYS = 10
-
-
-def disposition_snapshot(history: Iterable[Row], day: date_) -> list[Row]:
-    """The rows of the disposition list on `day`: announced on or before it, period not over."""
-    day_iso = day.isoformat()
-    current = {
-        (str(row["security_type"]), str(row["symbol"]), str(row["period_start"])): row
-        for row in history
-        if str(row["announced_date"]) <= day_iso <= str(row["period_end"])
-    }
-    return [current[key] for key in sorted(current)]
-
-
-def attention_snapshot(history: Iterable[Row], day: date_, previous_day: date_) -> list[Row]:
-    """The rows of the attention list on `day`: the flags announced on `day` and on the trading
-    day before it, one per security and announcement day."""
-    wanted = {day.isoformat(), previous_day.isoformat()}
-    current = {
-        (str(row["flagged_date"]), str(row["security_type"]), str(row["symbol"])): row
-        for row in history
-        if str(row["flagged_date"]) in wanted
-    }
-    return [current[key] for key in sorted(current)]
-
-
-def published_through(history: Iterable[Row], date_key: str) -> date_ | None:
-    """The last announcement day BOTH exchanges' rows reach (the older of the two newest days), or
-    None without any row: past that day the reports may simply not have been posted yet."""
-    newest: dict[str, str] = {}
-    for row in history:
-        kind, day = str(row["security_type"]), str(row[date_key])
-        newest[kind] = max(newest.get(kind, day), day)
-    return date_.fromisoformat(min(newest.values())) if newest else None
 
 
 def month_chunks(days: Sequence[date_]) -> list[list[date_]]:
@@ -151,17 +124,9 @@ async def backfill_event_history(  # noqa: PLR0913 - one keyword per run dimensi
     `_SETTLE_DAYS` of `today`) are written only up to the last day the reports reach on both
     exchanges, so a day the exchanges have not posted yet is left for the next run."""
     if not ctx.leader.is_leader():
-        return (
-            journal_run(
-                DISPOSITION_EVENTS_DATASET,
-                end,
-                rows_written=0,
-                status=RunStatus.SKIPPED,
-                detail="not the leader - write skipped",
-            ),
-        )
+        return _not_leader(end)
     trading_days = ctx.calendar.business_days_between(start, end)
-    settle_from = (today or datetime.now(UTC).date()) - timedelta(days=_SETTLE_DAYS)
+    settle_from = _settle_from(today)
     runs: list[JobRun] = []
     for feed in _feeds(adapter or ExchangeEventHistoryAdapter()):
         missing = [
@@ -174,8 +139,80 @@ async def backfill_event_history(  # noqa: PLR0913 - one keyword per run dimensi
     return tuple(runs)
 
 
+@dataclass(frozen=True)
+class HalfSnapshot:
+    """A stored snapshot that holds rows of only one exchange (or none): `missing` is the
+    exchanges (`twse` / `tpex`) with no row in it."""
+
+    dataset: str
+    day: date_
+    missing: frozenset[str]
+
+
+def find_half_snapshots(ctx: IngestContext, *, start: date_, end: date_) -> list[HalfSnapshot]:
+    """The stored snapshots of `start..end` that lack one exchange's rows, per dataset oldest day
+    first. A day without a partition is not listed (that is a gap, `backfill_event_history`)."""
+    market = ctx.market.value
+    found: list[HalfSnapshot] = []
+    for dataset in (ATTENTION_STOCKS_DATASET, DISPOSITION_EVENTS_DATASET):
+        for day in ctx.calendar.business_days_between(start, end):
+            if not ctx.store.has_partition(dataset, market, day):
+                continue
+            missing = EXCHANGES - exchanges_of(ctx.store.read_partition(dataset, market, day))
+            if missing:
+                found.append(HalfSnapshot(dataset, day, missing))
+    return found
+
+
+async def repair_half_snapshots(
+    ctx: IngestContext,
+    *,
+    start: date_,
+    end: date_,
+    adapter: ExchangeEventHistoryAdapter | None = None,
+    today: date_ | None = None,
+) -> tuple[JobRun, ...]:
+    """Rebuild the stored snapshots of `start..end` that lack one exchange's rows (a forward day
+    written while that exchange's live feed failed or was empty).
+
+    A snapshot is replaced only if the rebuilt one holds every exchange the stored one does AND
+    more: a complete snapshot is never touched, a half one the reports cannot complete either
+    (an exchange that really had no row that day) is kept as it is, and a second run therefore
+    writes nothing. Months are fetched, journaled and settled like `backfill_event_history`."""
+    if not ctx.leader.is_leader():
+        return _not_leader(end)
+    settle_from = _settle_from(today)
+    half = find_half_snapshots(ctx, start=start, end=end)
+    runs: list[JobRun] = []
+    for feed in _feeds(adapter or ExchangeEventHistoryAdapter()):
+        days = [h.day for h in half if h.dataset == feed.dataset]
+        for chunk in month_chunks(days):
+            runs.extend(await _write_month(ctx, feed, chunk, settle_from, repair=True))
+    return tuple(runs)
+
+
+def _not_leader(end: date_) -> tuple[JobRun, ...]:
+    return (
+        journal_run(
+            DISPOSITION_EVENTS_DATASET,
+            end,
+            rows_written=0,
+            status=RunStatus.SKIPPED,
+            detail="not the leader - write skipped",
+        ),
+    )
+
+
+def _settle_from(today: date_ | None) -> date_:
+    return (today or datetime.now(UTC).date()) - timedelta(days=_SETTLE_DAYS)
+
+
+def _names(exchanges: Iterable[str]) -> str:
+    return "/".join(sorted(exchanges))
+
+
 async def _write_month(
-    ctx: IngestContext, feed: _Feed, days: list[date_], settle_from: date_
+    ctx: IngestContext, feed: _Feed, days: list[date_], settle_from: date_, *, repair: bool = False
 ) -> list[JobRun]:
     first = ctx.calendar.previous_trading_day(days[0]) if feed.reaches_back_a_day else days[0]
     try:
@@ -214,28 +251,48 @@ async def _write_month(
                     ),
                 )
             )
+    written_days: list[date_] = []
     for day in days:
         rows = feed.snapshot(valid, day, ctx.calendar.previous_trading_day(day))
+        day_detail = detail
+        if repair:
+            stored = exchanges_of(ctx.store.read_partition(feed.dataset, ctx.market.value, day))
+            if not stored < exchanges_of(rows):
+                runs.append(
+                    journal_run(
+                        feed.dataset,
+                        day,
+                        rows_written=0,
+                        status=RunStatus.SKIPPED,
+                        detail="the reports do not complete it either; stored snapshot kept",
+                    )
+                )
+                continue
+            day_detail = f"{detail}; repaired, the stored one lacked {_names(EXCHANGES - stored)}"
         written = ctx.store.write_partition(feed.dataset, ctx.market.value, day, rows)
+        written_days.append(day)
         runs.append(
             journal_run(
-                feed.dataset, day, rows_written=written, status=RunStatus.SUCCESS, detail=detail
+                feed.dataset, day, rows_written=written, status=RunStatus.SUCCESS, detail=day_detail
             )
         )
-    if days:
+    if written_days:
         await ctx.data_update_publisher.publish_data_updated(
             capability=feed.capability,
             market=ctx.market,
-            as_of=days[-1].isoformat(),
+            as_of=written_days[-1].isoformat(),
             scope="whole-market",
         )
     return runs
 
 
 __all__ = [
+    "HalfSnapshot",
     "attention_snapshot",
     "backfill_event_history",
     "disposition_snapshot",
+    "find_half_snapshots",
     "month_chunks",
     "published_through",
+    "repair_half_snapshots",
 ]
