@@ -21,22 +21,29 @@ from analytics.models import SupportResistanceLevel, SupportResistanceResult
 _PIVOT_SPAN = 3
 
 
-def support_resistance_levels(bars: Sequence[PriceBar]) -> SupportResistanceResult:
+def support_resistance_levels(
+    bars: Sequence[PriceBar], span: int = _PIVOT_SPAN
+) -> SupportResistanceResult:
     """A swing-low pivot (strict local minimum of `low` over the centered window) becomes a
     support level at that bar's `low`; a swing-high pivot (strict local maximum of `high`)
     becomes a resistance level at that bar's `high`. Returns every such pivot found, oldest
     first — never a fabricated "the" support/resistance level when the window is too short to
-    have one."""
+    have one.
+
+    `span` is the number of bars judged on each side of a pivot (default `_PIVOT_SPAN`, which the
+    chart's 支撐/壓力 lines use). `analytics/chart_patterns.py` passes a wider span so its multi-bar
+    shapes are built on swing-scale pivots - the same definition, a different scale, not a second
+    pivot rule."""
     n = len(bars)
     levels: list[SupportResistanceLevel] = []
-    if n < 2 * _PIVOT_SPAN + 1:
+    if span < 1 or n < 2 * span + 1:
         return SupportResistanceResult(levels=())
 
-    for i in range(_PIVOT_SPAN, n - _PIVOT_SPAN):
-        window = bars[i - _PIVOT_SPAN : i + _PIVOT_SPAN + 1]
+    for i in range(span, n - span):
+        window = bars[i - span : i + span + 1]
         pivot = bars[i]
-        others_low = [b.low for j, b in enumerate(window) if j != _PIVOT_SPAN]
-        others_high = [b.high for j, b in enumerate(window) if j != _PIVOT_SPAN]
+        others_low = [b.low for j, b in enumerate(window) if j != span]
+        others_high = [b.high for j, b in enumerate(window) if j != span]
         if all(pivot.low < low for low in others_low):
             levels.append(SupportResistanceLevel(kind="support", price=pivot.low, bar_index=i))
         if all(pivot.high > high for high in others_high):

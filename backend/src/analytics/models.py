@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import date as date_
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -154,6 +155,93 @@ class CandlestickPatternHit(BaseModel):
     bar_index: int = Field(ge=0)
     pattern: str
     direction: int = Field(ge=-1, le=1)
+
+
+# -- multi-bar chart patterns -----------------------------------------------------------------
+
+type ChartPatternId = Literal[
+    "double_top",
+    "double_bottom",
+    "head_shoulders_top",
+    "head_shoulders_bottom",
+    "ascending_triangle",
+    "descending_triangle",
+    "symmetrical_triangle",
+    "rectangle",
+]
+
+# Purely descriptive geometry — where the shape sits relative to the price path, never a direction
+# to act in (governance non-trading rule).
+type ChartPatternFamily = Literal["reversal_top", "reversal_bottom", "consolidation"]
+
+type ChartPatternStatus = Literal["forming", "confirmed", "failed"]
+
+type ChartPatternPivotRole = Literal[
+    "peak",
+    "trough",
+    "left_shoulder",
+    "head",
+    "right_shoulder",
+    "neckline_point",
+    "upper_touch",
+    "lower_touch",
+]
+
+
+class ChartPatternAnchor(BaseModel):
+    """A (bar, date, price) coordinate - one end of a drawn line, or a confirmation bar."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    bar_index: int = Field(ge=0)
+    trade_date: date_
+    price: float
+
+
+class ChartPatternPivot(BaseModel):
+    """One structural point the pattern was built from, with its descriptive `role`."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    bar_index: int = Field(ge=0)
+    trade_date: date_
+    price: float
+    role: ChartPatternPivotRole
+
+
+class ChartPatternLine(BaseModel):
+    """A straight line to draw: `neckline` (reversal shapes) or `upper`/`lower` boundaries
+    (consolidation shapes), as two endpoints."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: Literal["neckline", "upper", "lower"]
+    start: ChartPatternAnchor
+    end: ChartPatternAnchor
+
+
+class ChartPatternHit(BaseModel):
+    """One multi-bar chart-pattern detection (`analytics/chart_patterns.py`). Descriptive
+    structure only: `status` says how far the shape has resolved, `breakout_level` is the line
+    value a close is judged against. There is no target, stop, bias or probability."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    pattern: ChartPatternId
+    family: ChartPatternFamily
+    status: ChartPatternStatus
+    pivots: tuple[ChartPatternPivot, ...]
+    lines: tuple[ChartPatternLine, ...]
+    # Reversal shapes: the neckline value at the last scanned bar. Consolidation shapes: the
+    # broken boundary's value at the confirmation bar; None while no boundary has been broken.
+    breakout_level: float | None = None
+    # Which side of the shape the confirming close landed on; None while forming.
+    broken_side: Literal["above", "below"] | None = None
+    height: float = Field(gt=0)
+    window_start: ChartPatternAnchor
+    window_end: ChartPatternAnchor
+    confirmed_at: ChartPatternAnchor | None = None
+    failed_at: ChartPatternAnchor | None = None
 
 
 # -- multi-factor descriptive score ----------------------------------------------------------
@@ -381,6 +469,14 @@ __all__ = [
     "AtrResult",
     "BollingerResult",
     "CandlestickPatternHit",
+    "ChartPatternAnchor",
+    "ChartPatternFamily",
+    "ChartPatternHit",
+    "ChartPatternId",
+    "ChartPatternLine",
+    "ChartPatternPivot",
+    "ChartPatternPivotRole",
+    "ChartPatternStatus",
     "EmaResult",
     "EtfScoreBreakdown",
     "FactorScore",
