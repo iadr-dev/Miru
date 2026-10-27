@@ -36,17 +36,57 @@ score and tag screener also consume them directly.
 | Volatility | `bollinger` (20/2σ), `atr` | 布林通道 |
 | Volume | `obv`, `vwap` | `vwap` is a same-day `turnover/volume` proxy, not textbook intraday-cumulative VWAP |
 | Patterns (`patterns.py`) | doji, bullish/bearish engulfing, 多方炮/空方炮 (bullish/bearish cannon), V/倒V reversal, 紅三兵/黑三兵 — **9 patterns** | each a plain boolean ("completes as of the most recent bar?"); `scan_patterns` returns the hits |
-| Structure (`structure.py`) | `support_resistance_levels` — swing-high/low pivots (strict extremum over a ±3-bar window) | every pivot found, oldest first; no ranking |
+| Structure (`structure.py`) | `support_resistance_levels` — swing-high/low pivots (strict extremum over a ±3-bar window; `span=` widens it) | every pivot found, oldest first; no ranking |
+| Chart patterns (`chart_patterns.py`) | double top (M) / double bottom (W), head-and-shoulders top / inverse, ascending / descending / symmetrical triangle, rectangle — **8 shapes** | multi-bar geometry with a `forming → confirmed → failed` status; `scan_chart_patterns(bars, dates)` returns the hits (see §1a) |
 
 - Series-returning indicators **left-pad with `None`** for the warm-up window — never a fabricated
   number standing in for "not computable yet". Bars must be supplied ascending by `trade_date`;
   this module never re-sorts.
 - **No back-adjustment (還原股價) pipeline exists.** Indicators run on the ingested
   `close`/`high`/`low` series as-is.
-- Not built: 量能 (均量/爆量/量價背離) as a structure read, 突破/假突破 detection, and N 波回檔
-  detection. A 爆量 boolean exists only as a screener tag (`volume_surge`, §5a).
+- Not built: 量能 (均量/爆量/量價背離) as a structure read, 假突破 detection beyond the chart-pattern
+  status machine (§1a), and N 波回檔 detection. A 爆量 boolean exists only as a screener tag (`volume_surge`, §5a).
 - **Framing:** a KD golden cross or a bullish engulfing is reported as a **描述** of the chart
   ("KD 在低檔黃金交叉"), never "buy".
+
+### 1a. Chart patterns (`analytics/chart_patterns.py`)
+
+Same contract as `patterns.py` (pure, ascending bars, no invented thresholds) but for multi-bar
+structures. Built on the shared swing-pivot function at `span=5` (one pivot definition at a wider
+scale, not a second rule). The module docstring is the rule book; every tolerance is a named
+constant with its justification:
+
+| Rule | Constant |
+|------|----------|
+| pivot scale | `_CHART_PIVOT_SPAN = 5` bars each side |
+| ignore noise | height ≥ `_MIN_HEIGHT_FRACTION = 5%` of the price level |
+| "equal" levels | within `_LEVEL_TOL_HEIGHT = 20%` of the height, never more than `_LEVEL_TOL_PRICE = 3%` of price; a line is flat when it drifts less than that |
+| head and neckline | head clear of the shoulders by `_HEAD_MARGIN_HEIGHT = 25%` of height; neckline moves at most `_NECK_SLOPE_MAX_HEIGHT = 50%` of height between its two points |
+| size | peaks ≥ `_MIN_SEPARATION_BARS = 10` apart; consolidations ≥ `_MIN_PATTERN_BARS = 20`; nothing wider than `_MAX_PATTERN_BARS = 120` |
+| confirmation | a CLOSE beyond the breakout level by `_CONFIRM_MARGIN = 1%` of it |
+| tracking | unresolved shapes expire after `_HORIZON_WIDTHS = 1` own width; status is judged over `_TRACK_WIDTHS = 2` widths; `_MAX_HITS = 12` most recent returned |
+
+- Reversal shapes: neckline = the lowest low (highest high for the mirror) between the peaks, or
+  the straight line through the two neckline troughs for head-and-shoulders. A top must also be
+  the highest high of the shape-width of bars before it.
+- Consolidations: two-point boundary lines through the first and last swing high / low in a
+  window (≥ 2 touches a side, not crossed, no bar piercing a line by more than the tolerance);
+  the slope pair names the shape (flat+flat rectangle, flat+rising ascending, falling+flat
+  descending, falling+rising symmetrical). Rising or widening pairs are not named.
+- Status: `forming` (shape present), `confirmed` (close beyond the neckline / a boundary, with the
+  confirming bar and `broken_side`), `failed` (a close beyond the opposite extreme - the head /
+  highest peak for a reversal, whether or not confirmed first; the opposite boundary after a
+  consolidation breakout).
+- Each hit: pattern id, `family` (`reversal_top` / `reversal_bottom` / `consolidation`, geometry
+  only), status, pivots (bar index, date, price, role), the lines to draw as two (date, price)
+  endpoints, `breakout_level`, `height`, window start / end. **No target, stop, bias or
+  probability.**
+- **Deliberately not built: flag / pennant.** They need a "pole" and a "tight" counter-trend
+  channel, and how sharp / tight / long has no agreed numeric definition, so any rule would be an
+  invented threshold. Also not defined: wedges, channels, triple tops, rounded tops, cup-and-handle.
+- Cost: bounded per start pivot (≤ `_MAX_PATTERN_BARS` lookahead), about 3-5 ms for 250 bars and
+  about 15 ms for 3 years of bars. Surfaced as the additive `chart_patterns` field of
+  `get_technical_indicators`; the K線 chart draws it under the 圖形型態 toggle with a list below.
 
 ## 2. Multi-factor 多空 score (`analytics/score.py`, `analytics/models.py`, `analytics/scoring_batch/`, `analytics/scoring_store.py`)
 

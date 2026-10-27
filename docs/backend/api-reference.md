@@ -158,7 +158,7 @@ check. See [modules/17](modules/17-devops-operations.md).
 
 | Method | Path | Purpose | Access |
 |--------|------|---------|--------|
-| GET | `/stock/technical-indicators?symbol=&market=&start_date=&end_date=` | Indicator series (MA/KD/MACD/RSI/Bollinger/volume) behind the K-line chart; lives under `/stock/*`, **not** `/analytics/{symbol}/indicators` | public |
+| GET | `/stock/technical-indicators?symbol=&market=&start_date=&end_date=` | Indicator series (MA/KD/MACD/RSI/Bollinger/volume) and descriptive `chart_patterns` (double top/bottom, head and shoulders, triangles, rectangle: status, pivots, lines, levels) behind the K-line chart; lives under `/stock/*`, **not** `/analytics/{symbol}/indicators` | public |
 | GET | `/analytics/{symbol}/score?market=TW&profile=swing\|position` | **real** — cached lean 5-factor 多空 composite + 偏多/中性/偏空 + breakdown + regime/non-trading/normalization caveats; `found=false` if today's batch hasn't scored this symbol yet (cache-only, never live-computed) | public |
 | GET | `/analytics/{symbol}/summary` | AI 智能摘要 + 市場定位 + SWOT | Premium+ (teaser otherwise) |
 | GET | `/analytics/screener/factors?market=TW\|US\|ETF` | Bilingual catalog + **per-market `fields[]`** (unit/min/max/step/enum/preset-chips) + presets | public |
@@ -585,7 +585,7 @@ table cannot carry.
 | GET | `/api/v1/stock/finmind-news` | optional | `get_finmind_stock_news` | public | 相關新聞's 財經新聞 sub-tab — FinMind's own per-symbol news dataset (single trading day per request upstream) |
 | GET | `/api/v1/stock/foreign-shareholding` | optional | `get_foreign_shareholding` | public | 籌碼分析's 三大法人 column, 持股 sub-tab — daily 外資持股比 (foreign-ownership ratio/ limit) |
 | GET | `/api/v1/stock/day-trading` | optional | `get_day_trading` | public | 籌碼分析's 融資券 column, 當沖 sub-tab — day-trading eligibility + volume/value |
-| GET | `/api/v1/stock/technical-indicators` | optional | `get_technical_indicators` | public | 技術分析's K線 chart data source — MA/Bollinger/KD/MACD series, 支撐/壓力 levels, and candlestick-pattern hits over a date range |
+| GET | `/api/v1/stock/technical-indicators` | optional | `get_technical_indicators` | public | 技術分析's K線 chart data source — MA/Bollinger/KD/MACD series, 支撐/壓力 levels, candlestick-pattern hits, and multi-bar chart patterns over a date range |
 | GET | `/api/v1/stock/shareholder-dispersion` | optional | `get_shareholder_dispersion` | sponsor | 技術分析/籌碼分析's 散戶 副圖 overlay — 股東人數/千張大戶比率 concentration series |
 | GET | `/api/v1/stock/etfs-holding-stock` | optional | `get_etfs_holding_stock` | sponsor | 追蹤 tab's ETF持有 card — every active-management ETF holding one stock, with 持有張數排行/權重排行/建清倉 sub-views |
 | GET | `/api/v1/stock/live-quote` | optional | `get_live_quote_snapshot` | public | 即時 tab's 五檔 ladder — one bounded TWSE MIS best-5 bid/ask + last-trade snapshot |
