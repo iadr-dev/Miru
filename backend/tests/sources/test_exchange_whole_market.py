@@ -178,6 +178,18 @@ async def test_price_merges_listed_and_otc_in_the_finmind_row_shape(web: FakeWeb
     assert sorted(web.hosts()) == ["www.tpex.org.tw", "www.twse.com.tw"]
 
 
+async def test_tpex_price_volume_is_the_round_lot_figure_of_the_otc_report(web: FakeWeb) -> None:
+    """Characterization (before the dailyQuotes supplement): TPEx volume/turnover come straight
+    from `afterTrading/otc`, which is round-lot only, and one TPEx request answers the price."""
+    rows = _by(_rows(await _fetch(Capability.PRICE_EOD)), "symbol")
+
+    assert rows[("00411A",)]["volume"] == 10545000
+    assert rows[("00411A",)]["turnover"] == 105726380
+    assert rows[("00679B",)]["volume"] == 32463000
+    tpex_paths = [r.url.path for r in web.requests if r.url.host == "www.tpex.org.tw"]
+    assert tpex_paths == ["/www/zh-tw/afterTrading/otc"]
+
+
 async def test_price_drops_untraded_stocks_and_index_labels(web: FakeWeb) -> None:
     rows = _rows(await _fetch(Capability.PRICE_EOD))
 
