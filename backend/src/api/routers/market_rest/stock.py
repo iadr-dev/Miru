@@ -526,9 +526,9 @@ async def technical_indicators(
     state: AppState = Depends(get_state),
     ctx: ToolContext = Depends(_context),
 ) -> dict[str, object]:
-    """技術分析's K線 chart data source — MA/Bollinger/KD/MACD series, 支撐/壓力 levels, and
-    candlestick-pattern hits over a date range, backed by `get_technical_indicators`,
-    `DataClass.PUBLIC`."""
+    """技術分析's K線 chart data source — MA/Bollinger/KD/MACD series, 支撐/壓力 levels,
+    candlestick-pattern hits, and multi-bar chart patterns over a date range, backed by
+    `get_technical_indicators`, `DataClass.PUBLIC`."""
     return await _dispatch(
         state,
         "get_technical_indicators",

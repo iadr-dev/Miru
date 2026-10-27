@@ -3433,6 +3433,7 @@
       "structureLabel": "標記：",
       "structureSupportResistance": "支撐/壓力",
       "structurePatterns": "K線型態",
+      "structureChartPatterns": "圖形型態",
       "overlayLabel": "副圖：",
       "overlay": {
         "bollinger": "BB(20)",
@@ -3511,6 +3512,56 @@
           "agm": "股東會",
           "capitalIncrease": "增資"
         }
+      },
+      "chartPatterns": {
+        "title": "圖形型態",
+        "listLabel": "圖表區間內偵測到的圖形型態",
+        "empty": "此區間沒有偵測到圖形型態。",
+        "statusNote": "狀態只描述收盤價相對於頸線或邊界的位置，不是交易訊號。",
+        "pattern": {
+          "double_top": "雙重頂（M 頭）",
+          "double_bottom": "雙重底（W 底）",
+          "head_shoulders_top": "頭肩頂",
+          "head_shoulders_bottom": "頭肩底",
+          "ascending_triangle": "上升三角形",
+          "descending_triangle": "下降三角形",
+          "symmetrical_triangle": "對稱三角形",
+          "rectangle": "箱型整理"
+        },
+        "short": {
+          "double_top": "M 頭",
+          "double_bottom": "W 底",
+          "head_shoulders_top": "頭肩頂",
+          "head_shoulders_bottom": "頭肩底",
+          "ascending_triangle": "上升三角",
+          "descending_triangle": "下降三角",
+          "symmetrical_triangle": "對稱三角",
+          "rectangle": "箱型"
+        },
+        "status": {
+          "forming": "成形中",
+          "confirmed": "已確認",
+          "failed": "已失敗"
+        },
+        "family": {
+          "reversal_top": "頂部結構",
+          "reversal_bottom": "底部結構",
+          "consolidation": "整理結構"
+        },
+        "level": {
+          "neckline": "頸線 {value}",
+          "upper": "上緣 {value}",
+          "lower": "下緣 {value}",
+          "height": "高度 {value}"
+        },
+        "range": "{start} 至 {end}",
+        "confirmedOn": "{date} 收盤越過界線",
+        "failedOn": "{date} 結構失效",
+        "side": {
+          "above": "收在界線上方",
+          "below": "收在界線下方"
+        },
+        "select": "在圖上標示 {name}"
       },
       "kdGoldenCross": "KD 低檔黃金交叉",
       "kdDeathCross": "KD 高檔死亡交叉",

@@ -120,11 +120,41 @@ export function MaToggleRow({
   );
 }
 
+/** One on/off chip of the 標記 row. The 44px floor applies below `sm` (touch); a pointer-sized
+ * chip is enough from `sm` up. */
+function StructureChip({
+  active,
+  onToggle,
+  label,
+}: {
+  readonly active: boolean;
+  readonly onToggle: (v: boolean) => void;
+  readonly label: string;
+}): ReactNode {
+  return (
+    <button
+      type="button"
+      onClick={() => onToggle(!active)}
+      aria-pressed={active}
+      className={cn(
+        "inline-flex min-h-[44px] items-center rounded-[var(--radius-pill)] px-3 py-1 text-[11px] transition-colors sm:min-h-0 sm:px-2.5",
+        active
+          ? "bg-[var(--accent-weak)] text-[var(--accent-text)]"
+          : "bg-[var(--surface-2)] text-[var(--text-muted)] hover:text-[var(--text)]",
+      )}
+    >
+      {label}
+    </button>
+  );
+}
+
 export function StructureToggleRow({
   showSupportResistance,
   onToggleSupportResistance,
   showPatterns,
   onTogglePatterns,
+  showChartPatterns,
+  onToggleChartPatterns,
   showEvents,
   onToggleEvents,
   t,
@@ -133,6 +163,8 @@ export function StructureToggleRow({
   readonly onToggleSupportResistance: (v: boolean) => void;
   readonly showPatterns: boolean;
   readonly onTogglePatterns: (v: boolean) => void;
+  readonly showChartPatterns: boolean;
+  readonly onToggleChartPatterns: (v: boolean) => void;
   /** `undefined` hides the chip (markets with no event feed). */
   readonly showEvents?: boolean | undefined;
   readonly onToggleEvents?: ((v: boolean) => void) | undefined;
@@ -141,46 +173,23 @@ export function StructureToggleRow({
   return (
     <div className="mb-3 flex flex-wrap items-center gap-2">
       <span className="text-[11px] text-[var(--text-muted)]">{t("structureLabel")}</span>
-      <button
-        type="button"
-        onClick={() => onToggleSupportResistance(!showSupportResistance)}
-        aria-pressed={showSupportResistance}
-        className={cn(
-          "rounded-[var(--radius-pill)] px-2.5 py-1 text-[11px] transition-colors",
-          showSupportResistance
-            ? "bg-[var(--accent-weak)] text-[var(--accent-text)]"
-            : "bg-[var(--surface-2)] text-[var(--text-muted)] hover:text-[var(--text)]",
-        )}
-      >
-        {t("structureSupportResistance")}
-      </button>
-      <button
-        type="button"
-        onClick={() => onTogglePatterns(!showPatterns)}
-        aria-pressed={showPatterns}
-        className={cn(
-          "rounded-[var(--radius-pill)] px-2.5 py-1 text-[11px] transition-colors",
-          showPatterns
-            ? "bg-[var(--accent-weak)] text-[var(--accent-text)]"
-            : "bg-[var(--surface-2)] text-[var(--text-muted)] hover:text-[var(--text)]",
-        )}
-      >
-        {t("structurePatterns")}
-      </button>
+      <StructureChip
+        active={showSupportResistance}
+        onToggle={onToggleSupportResistance}
+        label={t("structureSupportResistance")}
+      />
+      <StructureChip
+        active={showPatterns}
+        onToggle={onTogglePatterns}
+        label={t("structurePatterns")}
+      />
+      <StructureChip
+        active={showChartPatterns}
+        onToggle={onToggleChartPatterns}
+        label={t("structureChartPatterns")}
+      />
       {showEvents !== undefined && onToggleEvents ? (
-        <button
-          type="button"
-          onClick={() => onToggleEvents(!showEvents)}
-          aria-pressed={showEvents}
-          className={cn(
-            "rounded-[var(--radius-pill)] px-2.5 py-1 text-[11px] transition-colors",
-            showEvents
-              ? "bg-[var(--accent-weak)] text-[var(--accent-text)]"
-              : "bg-[var(--surface-2)] text-[var(--text-muted)] hover:text-[var(--text)]",
-          )}
-        >
-          {t("events.toggle")}
-        </button>
+        <StructureChip active={showEvents} onToggle={onToggleEvents} label={t("events.toggle")} />
       ) : null}
     </div>
   );

@@ -38,3 +38,34 @@ describe("RichCardView empty results", () => {
     expect(out).toContain("7");
   });
 });
+
+describe("RichCardView technical_indicators with chart patterns", () => {
+  const CHART_PATTERNS = [
+    {
+      pattern: "double_top",
+      family: "reversal_top",
+      status: "confirmed",
+      pivots: [],
+      lines: [],
+      height: 12.5,
+    },
+  ];
+
+  it("keeps rendering the flat stats and ignores the nested chart_patterns array", () => {
+    const out = html("technical_indicators", {
+      symbol: "2330",
+      market: "TW",
+      data_available: true,
+      chart_patterns: CHART_PATTERNS,
+      non_trading_caveat: "indicators describe the chart",
+    });
+    expect(out).toContain("2330");
+    expect(out).not.toContain("double_top");
+    expect(out).not.toContain("chart_patterns");
+  });
+
+  it("does not break when the array is empty", () => {
+    const out = html("technical_indicators", { symbol: "2330", chart_patterns: [] });
+    expect(out).toContain("2330");
+  });
+});
