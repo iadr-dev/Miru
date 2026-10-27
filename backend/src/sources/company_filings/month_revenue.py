@@ -7,11 +7,14 @@ revenue of every company that filed for that month:
 the latest month, the page is addressable by month, so a backfill can reach any past period.
 
 How a run date maps to a period. FinMind files the revenue of month M under the FIRST day of
-month M+1 (`trade_date` and the date partition are both that day, never any other), so the job's
-`run_date` is the 1st and the period is the month before it; any other date holds no revenue rows
-by definition. The statutory deadline for the filing is the 10th, and a page fetched earlier is a
-partial market that could never be completed (a partition with rows is not re-fetched), so the
-1st is only served from the 11th of its own month.
+month M+1 (`trade_date` is that day, never any other), so the period of the 1st is the month
+before it and any other date holds no revenue rows by definition. The date PARTITION is that day
+when it is a trading day, else the next trading day (`ingest/jobs/period_dates.py`): the job runs
+under the partition date but asks for the 1st, so the rows keep FinMind's `trade_date`. The
+statutory deadline for the filing is the 10th, and a page fetched earlier is a partial market that
+the gap-fill could never complete (a partition with rows is not re-fetched; only the operator's
+additive refresh, `ingest/refresh.py`, adds companies later), so the 1st is only served from the
+11th of its own month.
 
 Row shape = `sources/finmind/fundamental.py::_map_month_revenue`: revenue in TWD (the page is in
 thousands), `revenue_year`/`revenue_month` of the revenue month, `country` "Taiwan". `create_time`

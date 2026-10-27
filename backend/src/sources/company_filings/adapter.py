@@ -4,7 +4,9 @@ revenue, financial statements) from MOPS's free report pages.
 An ingest-only whole-market source with the call shape of `FinMindAdapter.fetch_whole_market`, so
 the runner is source-agnostic; not a `SourceAdapter`, never reachable through the per-symbol
 router. Unlike the daily exchange reports, these datasets are keyed by a reporting period, not by
-the date of a trading day, so each capability says which run dates it owns:
+the date of a trading day, so each capability says which run dates it owns. The runner passes the
+NOMINAL date (the 1st, the quarter end), also when that day is not a trading day and the period is
+stored under the next one (`ingest/jobs/period_dates.py`); any other date it passes is its own:
 
 - a date that holds no rows BY DEFINITION (monthly revenue is filed under the 1st of a month, a
   statement under its quarter end) is answered `HealthStatus.OK` with no rows and costs no

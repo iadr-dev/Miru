@@ -9,6 +9,7 @@ import structlog
 from pydantic import BaseModel, ValidationError
 
 from ingest.context import IngestContext
+from ingest.jobs.period_dates import filing_date_for
 from ingest.jobs.source_chain import MARKET_CLOSED_DETAIL, ChainOutcome, result_rows, walk_chain
 from ingest.jobs.specs import (
     ACTIVE_ETF_HOLDING_CHANGE_JOB,
@@ -132,6 +133,16 @@ def _holds_only_a_placeholder(
     )
 
 
+def _nominal_date(spec: WholeMarketJobSpec, run_date: date_, ctx: IngestContext) -> date_ | None:
+    """For a period-keyed dataset whose period is stored under `run_date`, the nominal date the
+    sources are asked for (the 1st, the quarter end), which differs from `run_date` when that date
+    is not a trading day; `None` otherwise (the sources are asked for `run_date` itself, and a date
+    that is no period's partition is answered "nothing by definition")."""
+    if spec.period_anchor is None:
+        return None
+    return filing_date_for(spec.period_anchor, run_date, ctx.calendar)
+
+
 async def run_whole_market_job(
     spec: WholeMarketJobSpec,
     run_date: date_,
@@ -164,7 +175,9 @@ async def run_whole_market_job(
     # The sources are asked in the configured order (official exchange reports, then FinMind);
     # the first healthy answer with rows wins. Never retry-loop tightly - a day no source could
     # serve journals FAILED and the next scheduled run (or an explicit gap-fill) retries.
-    outcome = await walk_chain(ctx, spec.capability, run_date)
+    outcome = await walk_chain(
+        ctx, spec.capability, run_date, source_date=_nominal_date(spec, run_date, ctx)
+    )
     if outcome.market_closed:
         # Both exchanges said, explicitly, that nothing was published for a past date: a closure
         # the internal calendar could not know. Nothing is written and FinMind is not asked; the

@@ -8,6 +8,7 @@ from datetime import time as time_
 import structlog
 from pydantic import BaseModel
 
+from ingest.jobs.period_dates import PeriodAnchor
 from schemas.capabilities import (
     ActiveEtfHoldingChangeRow,
     ActiveEtfHoldingRow,
@@ -83,6 +84,10 @@ class WholeMarketJobSpec:
     # A current-state snapshot with no per-day history upstream (the stock roster): a gap-fill
     # fetches only the latest day. Walking back would file today's roster under every past date.
     snapshot_only: bool = False
+    # A period-keyed dataset (monthly revenue, financial statements): the nominal date its period
+    # is filed under. The partition is the first trading day on or after it
+    # (`ingest/jobs/period_dates.py`), and the sources are asked for the nominal date.
+    period_anchor: PeriodAnchor | None = None
 
 
 # The two whole-market-by-date datasets this phase wires end-to-end (the
@@ -119,6 +124,7 @@ FINANCIALS_JOB = WholeMarketJobSpec(
     finmind_update_time=_IRREGULAR_PER_FILING_UPDATE_TIME,
     cron_hint="21:30 Asia/Taipei (after the other post-close pulls; catches same-day filings)",
     row_model=FinancialStatementLine,
+    period_anchor=PeriodAnchor.QUARTER_END,
 )
 
 
@@ -147,6 +153,7 @@ MONTH_REVENUE_JOB = WholeMarketJobSpec(
     finmind_update_time=_IRREGULAR_PER_FILING_UPDATE_TIME,
     cron_hint=_CRON_2130_STATEMENT_PULLS,
     row_model=MonthRevenueRow,
+    period_anchor=PeriodAnchor.MONTH_START,
 )
 
 
@@ -190,6 +197,7 @@ BALANCE_SHEET_JOB = WholeMarketJobSpec(
     finmind_update_time=_IRREGULAR_PER_FILING_UPDATE_TIME,
     cron_hint=_CRON_2130_STATEMENT_PULLS,
     row_model=FinancialStatementLine,
+    period_anchor=PeriodAnchor.QUARTER_END,
 )
 
 
@@ -199,6 +207,7 @@ CASH_FLOW_JOB = WholeMarketJobSpec(
     finmind_update_time=_IRREGULAR_PER_FILING_UPDATE_TIME,
     cron_hint=_CRON_2130_STATEMENT_PULLS,
     row_model=FinancialStatementLine,
+    period_anchor=PeriodAnchor.QUARTER_END,
 )
 
 
