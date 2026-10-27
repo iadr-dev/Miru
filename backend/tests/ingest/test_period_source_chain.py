@@ -26,6 +26,7 @@ from ingest.leader import AlwaysLeader
 from ingest.store import ParquetStore
 from schemas.enums import Capability, DataClass, TimingClass, TLSPolicy
 from schemas.source import HealthStatus, SourceHealth, SourceResult
+from sources.company_filings.adapter import CompanyFilingsAdapter
 from tests.ingest.test_whole_market_runner import RecordingPublisher, StubSource
 
 FIRST = date(2024, 1, 1)  # a Monday, the 1st: carries December 2023
@@ -253,3 +254,34 @@ async def test_a_statement_job_on_a_date_that_is_not_a_quarter_end_asks_nobody_e
         assert run.detail == f"served by {FILINGS_ID}: 2024-01-02 is not a quarter end"
         assert filings.calls[0][0] is job.capability
         assert finmind.calls == []
+
+
+# --- a period that is not due yet, through the REAL filings adapter (no request is made: the
+# adapter answers from the deadline calendar alone) -------------------------------------------
+
+_Q3_END = date(2026, 9, 30)  # a Wednesday; its last statutory deadline is 2026-11-29
+_TODAY = datetime(2026, 10, 27, 12, 0, tzinfo=UTC)
+
+
+def _real_filings() -> CompanyFilingsAdapter:
+    return CompanyFilingsAdapter(clock=lambda: _TODAY)
+
+
+async def test_q3_statements_before_the_deadline_are_a_failed_run_when_finmind_refuses(
+    tmp_path: object,
+) -> None:
+    """Characterisation of the stray failure of a backfill: the quarter that ended a month ago is
+    not complete (MOPS says STALE without a request), FinMind's free tier refuses, and the day
+    ends FAILED although nothing is wrong."""
+    for job in (FINANCIALS_JOB, BALANCE_SHEET_JOB, CASH_FLOW_JOB):
+        finmind = _finmind([], HealthStatus.UNREACHABLE, "FinMind HTTP 403")
+        ctx = _ctx(tmp_path, finmind, _real_filings())
+
+        run = await run_whole_market_job(job, _Q3_END, ctx)
+
+        assert run.status is RunStatus.FAILED
+        assert (
+            run.detail == f"no source served: {FINMIND_ID}: FinMind HTTP 403; {FILINGS_ID}: no rows"
+        )
+        assert not ctx.store.is_closed(job.dataset, "TW", _Q3_END)
+        assert len(finmind.calls) == 1
