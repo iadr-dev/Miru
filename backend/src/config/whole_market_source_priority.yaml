@@ -9,6 +9,8 @@
 #   filings_official   free company filings republished by MOPS (sources/company_filings): the
 #                      period-keyed datasets (monthly revenue, financial statements), reachable for any past period
 #   roster_official    free TWSE ISIN lists (sources/exchange_roster): the stock/ETF roster
+#   market_value_derived  market value and weights computed from the stored closes and the free
+#                      shares-outstanding snapshot (ingest/jobs/market_weight.py), forward-only
 #   finmind            FinMind whole-table form (metered; the free tier is 600 requests/hour)
 #
 #
@@ -27,3 +29,5 @@ TW:
   balance_sheet: [filings_official, finmind]
   cash_flow_statement: [filings_official, finmind]
   stock_info: [roster_official, finmind]
+  market_value: [market_value_derived, finmind]
+  market_value_weight: [market_value_derived, finmind]
