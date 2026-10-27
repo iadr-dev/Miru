@@ -8,6 +8,7 @@
 #   exchange_official  free TWSE + TPEx daily reports (sources/exchange_whole_market)
 #   filings_official   free company filings republished by MOPS (sources/company_filings): the
 #                      period-keyed datasets (monthly revenue, financial statements), reachable for any past period
+#   roster_official    free TWSE ISIN lists (sources/exchange_roster): the stock/ETF roster
 #   finmind            FinMind whole-table form (metered; the free tier is 600 requests/hour)
 #
 #
@@ -25,3 +26,4 @@ TW:
   financials: [filings_official, finmind]
   balance_sheet: [filings_official, finmind]
   cash_flow_statement: [filings_official, finmind]
+  stock_info: [roster_official, finmind]

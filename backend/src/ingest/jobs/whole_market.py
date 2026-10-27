@@ -155,6 +155,34 @@ def _unserved_run(
     )
 
 
+def _no_fetch_needed(
+    spec: WholeMarketJobSpec, run_date: date_, ctx: IngestContext
+) -> JobRun | None:
+    """The journal entry of a run that asks no source; `None` when the sources are asked."""
+    if not ctx.leader.is_leader():
+        # Leadership contract: only the leader ingest process writes. Not holding leadership
+        # is not an error — the leader (or the next election) will cover this date; no fetch
+        # is attempted either, to avoid pointless quota spend.
+        return journal_run(
+            spec.dataset,
+            run_date,
+            rows_written=0,
+            status=RunStatus.SKIPPED,
+            detail="not the leader — write skipped",
+        )
+    if spec.fetch_once_per_day and ctx.store.has_rows(spec.dataset, ctx.market.value, run_date):
+        # A reference snapshot already fetched for this date (the 06:00 job, then a backfill the
+        # same evening) is fresh: asking again would change nothing.
+        return journal_run(
+            spec.dataset,
+            run_date,
+            rows_written=0,
+            status=RunStatus.SUCCESS,
+            detail=f"already fetched for {run_date.isoformat()}: not asked again today",
+        )
+    return None
+
+
 def _holds_only_a_placeholder(
     ctx: IngestContext, spec: WholeMarketJobSpec, run_date: date_
 ) -> bool:
@@ -186,21 +214,11 @@ async def run_whole_market_job(
     date partition. Safe to call from a cron, a gap-fill sweep, or a backfill loop — this is
     the one code path all three reuse.
     """
-    skipped = _run_if_trading_day(ctx.calendar, run_date, spec.dataset)
+    skipped = _run_if_trading_day(ctx.calendar, run_date, spec.dataset) or _no_fetch_needed(
+        spec, run_date, ctx
+    )
     if skipped is not None:
         return skipped
-
-    if not ctx.leader.is_leader():
-        # Leadership contract: only the leader ingest process writes. Not holding leadership
-        # is not an error — the leader (or the next election) will cover this date; no fetch
-        # is attempted either, to avoid pointless quota spend.
-        return journal_run(
-            spec.dataset,
-            run_date,
-            rows_written=0,
-            status=RunStatus.SKIPPED,
-            detail="not the leader — write skipped",
-        )
 
     date_str = run_date.isoformat()
     # The sources are asked in the configured order (official exchange reports, then FinMind);

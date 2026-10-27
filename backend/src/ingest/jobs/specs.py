@@ -84,6 +84,10 @@ class WholeMarketJobSpec:
     # A current-state snapshot with no per-day history upstream (the stock roster): a gap-fill
     # fetches only the latest day. Walking back would file today's roster under every past date.
     snapshot_only: bool = False
+    # A reference snapshot is fetched once per day: a run for a date that already holds rows
+    # (a second pass of the same day, a backfill after the 06:00 job) returns without asking any
+    # source. The roster changes only on listings, delistings and reclassifications.
+    fetch_once_per_day: bool = False
     # A period-keyed dataset (monthly revenue, financial statements): the nominal date its period
     # is filed under. The partition is the first trading day on or after it
     # (`ingest/jobs/period_dates.py`), and the sources are asked for the nominal date.
@@ -284,6 +288,11 @@ ACTIVE_ETF_HOLDING_CHANGE_JOB = WholeMarketJobSpec(
 # not up to a month later. Scheduled once daily at 06:00 Asia/Taipei — well before the trading
 # day's own 17:40+ post-close pulls, so it never competes with them for FinMind quota, and any
 # reclassification lands before the day's `get_sector_heatmap` calls need it.
+#
+# Source order: the free TWSE ISIN lists first (`sources/exchange_roster`, ingest module §1d),
+# FinMind only when they cannot serve. The partition is the day of the snapshot (the lists carry
+# no history to ask for) and a row's `as_of` is the list's own last-update date; a day that
+# already holds the roster is not fetched again (`fetch_once_per_day`).
 STOCK_INFO_JOB = WholeMarketJobSpec(
     dataset="TaiwanStockInfo",
     capability=Capability.STOCK_INFO,
@@ -291,6 +300,7 @@ STOCK_INFO_JOB = WholeMarketJobSpec(
     cron_hint="06:00 Asia/Taipei (once daily, off-peak — see job docstring for cadence rationale)",
     row_model=StockInfoRow,
     snapshot_only=True,
+    fetch_once_per_day=True,
 )
 
 

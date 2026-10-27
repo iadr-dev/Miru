@@ -61,6 +61,8 @@ class IngestContext:
     # The free official company filings (monthly revenue, ...), asked before FinMind for the
     # period-keyed datasets they cover - same chain, same `None`-means-FinMind-only default.
     filings: WholeMarketSource | None = None
+    # The free official stock roster (TWSE ISIN lists), asked before FinMind for the roster job.
+    roster: WholeMarketSource | None = None
 
 
 __all__ = ["IngestContext"]

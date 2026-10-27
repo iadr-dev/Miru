@@ -33,6 +33,7 @@ _CONFIG_PATH: Final = (
 FINMIND_ID: Final = "finmind"
 EXCHANGE_ID: Final = "exchange_official"
 FILINGS_ID: Final = "filings_official"
+ROSTER_ID: Final = "roster_official"
 _DEFAULT_CHAIN: Final = (FINMIND_ID,)
 _TAIPEI: Final = ZoneInfo("Asia/Taipei")
 # The journal detail of a day both exchanges said they published nothing for.
@@ -50,7 +51,12 @@ def load_whole_market_priority(path: Path = _CONFIG_PATH) -> dict[str, dict[str,
 
 
 def _sources(ctx: IngestContext) -> dict[str, WholeMarketSource | None]:
-    return {FINMIND_ID: ctx.finmind, EXCHANGE_ID: ctx.exchange, FILINGS_ID: ctx.filings}
+    return {
+        FINMIND_ID: ctx.finmind,
+        EXCHANGE_ID: ctx.exchange,
+        FILINGS_ID: ctx.filings,
+        ROSTER_ID: ctx.roster,
+    }
 
 
 @dataclass(frozen=True)
@@ -246,6 +252,7 @@ __all__ = [
     "FILINGS_ID",
     "FINMIND_ID",
     "MARKET_CLOSED_DETAIL",
+    "ROSTER_ID",
     "ChainLink",
     "ChainOutcome",
     "confirms_market_closure",
