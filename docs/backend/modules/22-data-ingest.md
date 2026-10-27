@@ -443,9 +443,10 @@ its live feed (392 / 517; no reader uses it). The rebuilt series has MORE rows t
 (precision 87% disposition) because the live jobs missed rows: the whole TPEx side on the three
 days its live request failed (2026-09-07, -08, -11), TWSE dispositions announced the same evening
 (the job ran before TWSE posted them), and, for attention, one announcement day on a few days the
-live list was behind. The stored attention snapshots hold NO TWSE rows at all (the OpenAPI
-`announcement/notice` dump answers its empty placeholder), so the rebuilt series is the first to hold
-the listed market's flags (about 15 to 25 a day).
+live list was behind. The stored attention snapshots of that time held NO TWSE rows at all (the
+OpenAPI `announcement/notice` dump answers its empty placeholder; the daily job reads the range
+reports since, see below), so the rebuilt series is the first to hold the listed market's flags
+(about 15 to 25 a day).
 
 **How to run it.** `python -m ingest.backfill_cli --yes --event-history [--years N]` (dev only: the
 CLI refuses in production and without `--yes`, takes the single-writer lease like every backfill, and
@@ -453,10 +454,39 @@ the daemon must not be running). `--years` defaults to `dev_backfill_years` (3).
 idempotent; after a `FAILED` month, run it again.
 
 **Limits.** The reports are the exchanges' own history, so what they omit is omitted here (they keep
-roughly a decade). A day inside the settle window waits for the reports. The TWSE attention gap above
-is in the LIVE job (`fetch_whole_market_attention_stocks`), not in this module: from the first
-forward day on, attention snapshots still lack listed flags until that job is fixed, which makes
-attention counts before and after the rebuilt window not strictly comparable.
+roughly a decade). A day inside the settle window waits for the reports.
+
+**The daily attention job is the same series.** `job_attention_stocks` used to read the current-day
+OpenAPI dumps, and TWSE's `announcement/notice` dump answers only its empty placeholder (one row with
+a blank `Code`), so no stored forward snapshot held a listed-market flag (the screener's attention
+gate, the watchlist exclusions and the market board missed every listed attention stock from the
+first forward day on). It now asks the same range reports as this module (`fetch_attention` of
+`ExchangeEventHistoryAdapter`, the shared throttled client, one request per exchange) for
+`previous trading day .. D` and cuts the rows with the same `attention_snapshot` rule
+(`ingest/event_snapshots.py`, shared with the rebuild): the live and the rebuilt snapshot of a day
+are the same rows by construction (validated for 2026-10-27 against the real reports: 22 listed + 22
+OTC rows, identical). The TWSE `announcement/notice` and TPEx `tpex_trading_warning_information`
+OpenAPI fetchers are gone. `job_disposition_events` keeps reading the OpenAPI dumps (the stored
+disposition snapshots do hold TWSE rows).
+
+- **Never half a market, live.** If either exchange cannot be read (`ExchangeFetchError`: a block
+  page, a bad status, a layout change, a cut-off report) the run is `FAILED` and writes NOTHING: the
+  day stays a gap, filled by the next run (the startup gap-fill calls the job for today) or by
+  `--event-history`. If a report does not yet list D for either exchange (the job's evening run came
+  before the exchange posted it: `NoDataPublishedError` is an empty side, and an exchange that has
+  no row of D has not posted D) the run is `SKIPPED` and writes nothing, for the same reason. A
+  stored snapshot is never replaced by a failed or skipped run.
+- **Half snapshots already stored.** A snapshot written by the old job holds TPEx rows only (every
+  forward day from 2026-09-04), or nothing when the TPEx request failed too (2026-09-07, -08, -11);
+  a disposition snapshot written while the TPEx request failed holds TWSE rows only (the same three
+  days). `python -m ingest.backfill_cli --yes --event-history --repair-half-snapshots [--years N]`
+  lists them (`half snapshot <dataset> <day>: no <exchange>`) and rebuilds each from the history
+  reports. A snapshot is replaced only when the rebuilt one holds every exchange the stored one
+  does and more: a complete snapshot is never touched, a half one the reports cannot complete
+  either (an exchange that truly listed nothing) is kept, a month the reports cannot be read for
+  keeps its stored snapshots (`FAILED`), days inside the settle window follow the same rule as the
+  fill, and a second run writes nothing. The plain `--event-history` still fills only the days
+  without a partition (the gaps a failed or skipped daily run leaves).
 
 ## 2. Cadence — what is scheduled today
 
@@ -756,6 +786,8 @@ process shapes.
 - **`--event-history`** replaces the backfill with the rebuild of the missing past daily snapshots of
   `attention_stocks` / `disposition_events` from the exchanges' history reports (§1f), over `--years`.
   Same gates as the backfill (never in production, `--yes`, the single-writer lease).
+  **`--event-history --repair-half-snapshots`** instead rebuilds the stored snapshots that lack one
+  exchange's rows and lists them first (§1f); complete snapshots are never touched.
 - **Exit code** is `1` if any `JobRun` has `status=RunStatus.FAILED`, else `0`.
 
 **FinMind quota.** Ingest shares the FinMind token with the API, and every call it makes is
@@ -982,5 +1014,5 @@ stocks, disposition events) the jobs with their own fetch logic. Modules import 
 (`specs` <- `whole_market` <- the rest). A test that stubs a fetcher patches it on the module that
 calls it (for example `ingest.jobs.risk_lists`), not on the package.
 
-`ingest/event_history.py` (not a job of the package: an operator backfill, §1f) rebuilds past attention / disposition snapshots from `sources/exchange_event_history/`.
+`ingest/event_history.py` (not a job of the package: an operator backfill, §1f) rebuilds past attention / disposition snapshots from `sources/exchange_event_history/`, `ingest/event_snapshots.py` holds the snapshot rules it shares with `job_attention_stocks`.
 
