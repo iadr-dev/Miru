@@ -809,7 +809,7 @@
         "offtopicCaveat": "This board is off-topic chatter (Beauty/Gossiping) — never treated as market content.",
         "buzzCaveat": "Unverified retail/industry chatter — buzz/attention signal only, never a trading recommendation.",
         "empty": "No posts right now.",
-        "unavailable": "PTT board unavailable right now.",
+        "unavailable": "PTT is temporarily unreachable. Please try again later.",
         "expandTo": "Show all {count}",
         "collapse": "Collapse"
       },
@@ -3283,6 +3283,7 @@
       "hot": "Hot",
       "newsEmpty": "No related news yet.",
       "pttEmpty": "No related posts yet.",
+      "pttUnavailable": "PTT is temporarily unreachable. Please try again later.",
       "pttApproximateCaveat": "Matched by symbol/name in the post body — an approximate result, not a complete per-stock discussion list.",
       "expandTo": "Show all {count}",
       "collapse": "Collapse"

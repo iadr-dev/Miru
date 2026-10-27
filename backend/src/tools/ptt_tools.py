@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from dataaccess.ptt import PttGateway
 from schemas.enums import DataClass
+from schemas.source import HealthStatus
 from tools.base import BaseTool, Tool, ToolContext, parse_args
 
 # The only boards this tool will fetch — mirrors `sources/ptt.py`'s own `_BOARD_TAGS` keys
@@ -68,7 +69,11 @@ class PttPostOut(BaseModel):
 class GetPttBoardOutput(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    source_id: str
     currentness_caveat: str = Field(min_length=1)
+    # An empty `posts` is ambiguous on its own: `unreachable` means PTT could not be fetched
+    # (an outage, NOT "nothing was posted"), `stale` means the page answered but no post parsed.
+    health_status: HealthStatus
     posts: tuple[PttPostOut, ...] = Field(default_factory=tuple)
 
 
@@ -102,7 +107,12 @@ class GetPttBoardTool(BaseTool):
         if isinstance(raw_posts, list):
             typed_posts = cast("list[dict[str, object]]", raw_posts)
             posts = tuple(PttPostOut.model_validate(post) for post in typed_posts)
-        return GetPttBoardOutput(currentness_caveat=result.currentness_caveat, posts=posts)
+        return GetPttBoardOutput(
+            source_id=result.source_id,
+            currentness_caveat=result.currentness_caveat,
+            health_status=result.health.status,
+            posts=posts,
+        )
 
 
 class GetPttStockSearchInput(BaseModel):
@@ -126,7 +136,11 @@ class GetPttStockSearchInput(BaseModel):
 class GetPttStockSearchOutput(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    source_id: str
     currentness_caveat: str = Field(min_length=1)
+    # An empty `posts` is ambiguous on its own: `unreachable` means PTT could not be fetched
+    # (an outage, NOT "nothing was posted"), `stale` means the page answered but no post parsed.
+    health_status: HealthStatus
     posts: tuple[PttPostOut, ...] = Field(default_factory=tuple)
 
 
@@ -168,7 +182,12 @@ class GetPttStockSearchTool(BaseTool):
         if isinstance(raw_posts, list):
             typed_posts = cast("list[dict[str, object]]", raw_posts)
             posts = tuple(PttPostOut.model_validate(post) for post in typed_posts)
-        return GetPttStockSearchOutput(currentness_caveat=result.currentness_caveat, posts=posts)
+        return GetPttStockSearchOutput(
+            source_id=result.source_id,
+            currentness_caveat=result.currentness_caveat,
+            health_status=result.health.status,
+            posts=posts,
+        )
 
 
 def build_registration_table(gateway: PttGateway | None = None) -> list[tuple[Tool, bool]]:

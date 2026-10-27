@@ -47,7 +47,9 @@ outputs: markdown
 2. For "what are retail investors talking about", call `get_ptt_board(board, lookback_days)`
    (`Stock`, `Tech_Job` or `Warrant`; `lookback_days` up to 14). It returns the board's index
    listing (title, author, push count, post tag) — not post bodies. Read it as an attention
-   signal only, and label it plainly as unverified chatter.
+   signal only, and label it plainly as unverified chatter. Check `health_status` first: when it
+   is `unreachable` (or any non-`ok` tier) an empty `posts` means the source could not be reached,
+   not that nothing was posted - say the source is temporarily unavailable, never "no posts".
 3. For "is stock X being discussed on PTT", call `get_ptt_stock_search(symbol, company_name,
    lookback_days)` — a best-effort body search over the Stock, Tech_Job and Warrant boards. Say
    that an empty or short result does not prove there was no discussion.

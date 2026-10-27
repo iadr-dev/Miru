@@ -4,13 +4,19 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { QueryState } from "@/components/ui/query-state";
 import { getPttBoard } from "@/lib/api/market";
 import { queryKeys } from "@/lib/api/query-keys";
 import { cn } from "@/lib/cn";
 import { safeHttpUrl } from "@/lib/safe-url";
-import { PTT_BOARDS, type PttBoardName, type PttPost } from "@/types/market/news";
+import {
+  PTT_BOARDS,
+  type PttBoardName,
+  type PttBoardResponse,
+  type PttPost,
+} from "@/types/market/news";
 
 // This sub-tab has no sibling card next to it, so its own post list needs to fill the tab's
 // width/height on its own — 40 items across a 2-column grid, same reasoning
@@ -60,47 +66,66 @@ export function PttBoardPanel(): ReactNode {
 
       <div className="mt-3">
         <QueryState query={query} skeleton={<CardSkeletonBody height={600} />}>
-          {(data) => {
-            if (data.posts.length === 0) {
-              return <p className="text-[13px] text-[var(--text-muted)]">{t("empty")}</p>;
-            }
-            const boardTag = data.posts[0]?.board_tag ?? "stock_buzz";
-
-            return (
-              <>
-                <p className="mb-2 text-[11.5px] text-[var(--text-muted)] leading-relaxed">
-                  {boardTag === "offtopic" ? t("offtopicCaveat") : t("buzzCaveat")}
-                </p>
-
-                <PttPostList posts={data.posts.slice(0, PTT_BOARD_COLLAPSED_ROW_COUNT)} />
-
-                {data.posts.length > PTT_BOARD_COLLAPSED_ROW_COUNT ? (
-                  <button
-                    type="button"
-                    onClick={() => setExpanded(true)}
-                    className={cn(
-                      "mt-2.5 flex min-h-11 w-full items-center justify-center gap-1.5 rounded-[var(--radius-input)]",
-                      "bg-[var(--surface-2)] text-[12.5px] text-[var(--text-muted)] hover:bg-[var(--surface-3)] hover:text-[var(--text)]",
-                    )}
-                  >
-                    <span>{t("expandTo", { count: data.posts.length })}</span>
-                  </button>
-                ) : null}
-
-                <ExpandModal
-                  open={expanded}
-                  title={t("title")}
-                  closeLabel={t("collapse")}
-                  onClose={() => setExpanded(false)}
-                >
-                  <PttPostList posts={data.posts} />
-                </ExpandModal>
-              </>
-            );
-          }}
+          {(data) => (
+            <PttBoardContent data={data} expanded={expanded} onExpandedChange={setExpanded} />
+          )}
         </QueryState>
       </div>
     </section>
+  );
+}
+
+/** The three states of one board: posts present, source down (an outage is NOT "nothing
+ * posted" — an empty list from an unreachable/unavailable source says so), or genuinely no posts. */
+export function PttBoardContent({
+  data,
+  expanded,
+  onExpandedChange,
+}: {
+  readonly data: PttBoardResponse;
+  readonly expanded: boolean;
+  readonly onExpandedChange: (next: boolean) => void;
+}): ReactNode {
+  const t = useTranslations("market.cards.pttBoard");
+
+  if (data.posts.length === 0) {
+    if (data.health_status === "ok" || data.health_status === "stale") {
+      return <p className="text-[13px] text-[var(--text-muted)]">{t("empty")}</p>;
+    }
+    return <EmptyState compact title={t("unavailable")} />;
+  }
+  const boardTag = data.posts[0]?.board_tag ?? "stock_buzz";
+
+  return (
+    <>
+      <p className="mb-2 text-[11.5px] text-[var(--text-muted)] leading-relaxed">
+        {boardTag === "offtopic" ? t("offtopicCaveat") : t("buzzCaveat")}
+      </p>
+
+      <PttPostList posts={data.posts.slice(0, PTT_BOARD_COLLAPSED_ROW_COUNT)} />
+
+      {data.posts.length > PTT_BOARD_COLLAPSED_ROW_COUNT ? (
+        <button
+          type="button"
+          onClick={() => onExpandedChange(true)}
+          className={cn(
+            "mt-2.5 flex min-h-11 w-full items-center justify-center gap-1.5 rounded-[var(--radius-input)]",
+            "bg-[var(--surface-2)] text-[12.5px] text-[var(--text-muted)] hover:bg-[var(--surface-3)] hover:text-[var(--text)]",
+          )}
+        >
+          <span>{t("expandTo", { count: data.posts.length })}</span>
+        </button>
+      ) : null}
+
+      <ExpandModal
+        open={expanded}
+        title={t("title")}
+        closeLabel={t("collapse")}
+        onClose={() => onExpandedChange(false)}
+      >
+        <PttPostList posts={data.posts} />
+      </ExpandModal>
+    </>
   );
 }
 

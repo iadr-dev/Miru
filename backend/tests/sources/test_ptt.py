@@ -347,6 +347,24 @@ async def test_search_boards_no_match_returns_empty_but_healthy(
     assert result.payload["posts"] == []
 
 
+async def test_search_boards_all_boards_unreachable_is_unreachable_not_empty_ok(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def factory(**_kwargs: object) -> httpx.AsyncClient:
+        return httpx.AsyncClient(
+            transport=httpx.MockTransport(lambda _r: httpx.Response(500, text="down"))
+        )
+
+    monkeypatch.setattr(ptt_module, "build_async_client", factory)
+
+    result = await PttAdapter().search_boards(
+        boards=["Stock", "Warrant"], needles=["2330"], tls_policy=TLSPolicy.STRICT, lookback_days=7
+    )
+
+    assert result.health.status is HealthStatus.UNREACHABLE
+    assert "posts" not in result.payload
+
+
 async def test_search_boards_body_fetch_transport_error_skips_post_not_whole_search(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

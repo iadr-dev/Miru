@@ -51,7 +51,9 @@ export const pttStockSearchPostSchema = z.object({
 export type PttStockSearchPost = z.infer<typeof pttStockSearchPostSchema>;
 
 export const pttStockSearchResponseSchema = z.object({
+  source_id: z.string(),
   currentness_caveat: z.string(),
+  health_status: healthStatusSchema,
   posts: z.array(pttStockSearchPostSchema).default([]),
 });
 

@@ -809,7 +809,7 @@
         "offtopicCaveat": "此版為閒聊性質（表特/八卦），不視為市場相關內容。",
         "buzzCaveat": "未經驗證的散戶/業界討論 — 僅為熱度/關注度參考，非交易建議。",
         "empty": "目前沒有貼文。",
-        "unavailable": "PTT 版面目前無法取得。",
+        "unavailable": "PTT 暫時無法連線，稍後再試",
         "expandTo": "展開完整 {count} 筆",
         "collapse": "收合"
       },
@@ -3283,6 +3283,7 @@
       "hot": "熱門",
       "newsEmpty": "目前沒有相關新聞。",
       "pttEmpty": "目前沒有相關貼文。",
+      "pttUnavailable": "PTT 暫時無法連線，稍後再試",
       "pttApproximateCaveat": "依貼文內文比對股票代號/名稱，僅為概略結果，非完整的個股討論列表。",
       "expandTo": "展開完整 {count} 筆",
       "collapse": "收合"

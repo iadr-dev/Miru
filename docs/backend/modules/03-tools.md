@@ -206,7 +206,11 @@ convention) or don't exist yet at all. Corrections are called out inline below.
   aggregator) and `get_social_buzz`/`get_trending_buzz` (PTT) became three real tools, all
   `public`; `get_news_feed` (`news_tools.py`, RSS + optional Finnhub), `get_ptt_board` and
   `get_ptt_stock_search` (`ptt_tools.py`; unverified chatter, attention signal only) are reached in
-  chat through the `news-and-sentiment` skill (third-party content, never advice).
+  chat through the `news-and-sentiment` skill (third-party content, never advice). Both PTT outputs
+  are `{source_id, currentness_caveat, health_status, posts}`: `health_status` distinguishes
+  `unreachable` (PTT could not be fetched - an outage, NOT "nothing posted"), `stale` (the page
+  answered but no post parsed) and `ok`, so an empty `posts` is never ambiguous. For
+  `get_ptt_stock_search` every searched board unreachable reports `unreachable`.
 - `get_etf_fund_info` — TW ETF fund-level metadata (issuer, tracked index, units outstanding) —
   not per-constituent holdings (documented gap in the adapter itself). Sibling tools in
   `etf_pcf_tools.py`: `get_etf_expense_ratio` (SITCA 內扣費用), `get_etf_theme_tags` (主題/因子 +
