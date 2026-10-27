@@ -39,9 +39,12 @@ outputs: markdown
    report covering exchange rate (TW-scoped), central-bank policy rate / gold / crude oil
    (GLOBAL-scoped), and US Treasury yield / Fear & Greed Index (US-scoped). Report each
    sub-panel tagged with the market it actually belongs to — never imply all six panels share
-   one market scope.
+   one market scope. `health_status` is the worst status among the bundled sources: when it is
+   `unreachable` (or any non-`ok` tier), an empty sub-panel means that source could not be
+   reached, not that there is no reading - say so, never "no data".
 3. Call `get_business_indicator(market="TW", start_date, end_date)` (Sponsor-tier) for
-   Taiwan's monthly 景氣對策信號 (藍黃紅燈) readings.
+   Taiwan's monthly 景氣對策信號 (藍黃紅燈) readings. Apply the same `health_status` rule: an
+   empty result with `unreachable` is an outage, not a missing signal.
 4. If the caller is unentitled, report around the masked sections rather than omitting the
    dashboard entirely.
 5. Synthesize using `output_structure`, in order. Never translate a macro reading into an

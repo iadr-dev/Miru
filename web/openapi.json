@@ -7660,6 +7660,9 @@
       "title": "Currentness Caveat",
       "type": "string"
      },
+     "health_status": {
+      "$ref": "#/components/schemas/HealthStatus"
+     },
      "rows": {
       "items": {
        "$ref": "#/components/schemas/BusinessIndicatorRow"
@@ -7669,7 +7672,8 @@
      }
     },
     "required": [
-     "currentness_caveat"
+     "currentness_caveat",
+     "health_status"
     ],
     "title": "GetBusinessIndicatorOutput",
     "type": "object"
@@ -10233,10 +10237,19 @@
       },
       "title": "Events",
       "type": "array"
+     },
+     "health_status": {
+      "$ref": "#/components/schemas/HealthStatus"
+     },
+     "source_id": {
+      "title": "Source Id",
+      "type": "string"
      }
     },
     "required": [
-     "currentness_caveat"
+     "source_id",
+     "currentness_caveat",
+     "health_status"
     ],
     "title": "GetMacroCalendarOutput",
     "type": "object"
@@ -10290,10 +10303,14 @@
       },
       "title": "Government Bond Yield",
       "type": "array"
+     },
+     "health_status": {
+      "$ref": "#/components/schemas/HealthStatus"
      }
     },
     "required": [
-     "currentness_caveat"
+     "currentness_caveat",
+     "health_status"
     ],
     "title": "GetMacroIndicatorsOutput",
     "type": "object"
@@ -10566,16 +10583,25 @@
       "title": "Currentness Caveat",
       "type": "string"
      },
+     "health_status": {
+      "$ref": "#/components/schemas/HealthStatus"
+     },
      "items": {
       "items": {
        "$ref": "#/components/schemas/NewsFeedItemOut"
       },
       "title": "Items",
       "type": "array"
+     },
+     "source_id": {
+      "title": "Source Id",
+      "type": "string"
      }
     },
     "required": [
-     "currentness_caveat"
+     "source_id",
+     "currentness_caveat",
+     "health_status"
     ],
     "title": "GetNewsFeedOutput",
     "type": "object"
@@ -29381,7 +29407,7 @@
   },
   "/api/v1/market/macro-calendar": {
    "get": {
-    "description": "US/global macro-release events (GDP/CPI/PCE/PMI/NFP/FOMC) with consensus/prior/actual,\nbacked by `get_macro_calendar` (financecalendar.com, `DataClass.PUBLIC`) — a distinct\nthird-party feed from `get_calendar_events_feed`'s existing yfinance economic calendar, see\nthat tool's own docstring. `from_date`/`to_date` (given together) override `days_ahead` and\ncan address a genuinely past range, for a caller paging back to a prior month/week.",
+    "description": "US/global macro-release events (GDP/CPI/PCE/PMI/NFP/FOMC) with consensus/prior/actual,\nbacked by `get_macro_calendar` (financecalendar.com, `DataClass.PUBLIC`) — a distinct\nthird-party feed from `get_calendar_events_feed`'s existing yfinance economic calendar, see\nthat tool's own docstring. `from_date`/`to_date` (given together) override `days_ahead` and\ncan address a genuinely past range, for a caller paging back to a prior month/week.\n`health_status` is `unreachable` when the calendar source could not be fetched (an outage,\nnot an empty window), `stale` when it answered with no events.",
     "operationId": "macro_calendar_api_v1_market_macro_calendar_get",
     "parameters": [
      {
@@ -29775,7 +29801,7 @@
   },
   "/api/v1/market/news-feed": {
    "get": {
-    "description": "即時新聞 — near-real-time news aggregated from financial RSS + optional Finnhub, backed by\n`get_news_feed`, `DataClass.PUBLIC`. `market=TW` (default): `query` scopes the Finnhub\ncompany-news call; RSS feeds are always fetched whole (not query-filterable upstream). Any\nother market: RSS is skipped (TW-only outlets) and Finnhub's general-market-news category is\nused instead of a `query`-scoped company-news call — see `get_news_feed`'s own docstring.",
+    "description": "即時新聞 — near-real-time news aggregated from financial RSS + optional Finnhub, backed by\n`get_news_feed`, `DataClass.PUBLIC`. `market=TW` (default): `query` scopes the Finnhub\ncompany-news call; RSS feeds are always fetched whole (not query-filterable upstream). Any\nother market: RSS is skipped (TW-only outlets) and Finnhub's general-market-news category is\nused instead of a `query`-scoped company-news call — see `get_news_feed`'s own docstring.\n`health_status` is `unreachable` when every source failed (an outage, not \"no news\"),\n`stale` when the sources answered with nothing.",
     "operationId": "news_feed_api_v1_market_news_feed_get",
     "parameters": [
      {

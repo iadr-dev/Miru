@@ -193,7 +193,9 @@ async def macro_calendar(
     backed by `get_macro_calendar` (financecalendar.com, `DataClass.PUBLIC`) — a distinct
     third-party feed from `get_calendar_events_feed`'s existing yfinance economic calendar, see
     that tool's own docstring. `from_date`/`to_date` (given together) override `days_ahead` and
-    can address a genuinely past range, for a caller paging back to a prior month/week."""
+    can address a genuinely past range, for a caller paging back to a prior month/week.
+    `health_status` is `unreachable` when the calendar source could not be fetched (an outage,
+    not an empty window), `stale` when it answered with no events."""
     args: dict[str, object] = {"days_ahead": days_ahead}
     if impact is not None:
         args["impact"] = impact
@@ -215,7 +217,9 @@ async def news_feed(
     `get_news_feed`, `DataClass.PUBLIC`. `market=TW` (default): `query` scopes the Finnhub
     company-news call; RSS feeds are always fetched whole (not query-filterable upstream). Any
     other market: RSS is skipped (TW-only outlets) and Finnhub's general-market-news category is
-    used instead of a `query`-scoped company-news call — see `get_news_feed`'s own docstring."""
+    used instead of a `query`-scoped company-news call — see `get_news_feed`'s own docstring.
+    `health_status` is `unreachable` when every source failed (an outage, not "no news"),
+    `stale` when the sources answered with nothing."""
     return await _dispatch(state, "get_news_feed", {"query": query, "market": market.value}, ctx)
 
 

@@ -288,3 +288,18 @@ async def test_general_tech_and_security_headlines_are_not_market_news() -> None
     )
     titles = [h["title"] for h in (await _run(_Registry(news)))["headlines"]]  # type: ignore[attr-defined]
     assert titles == ["外資連三日買超台積電"]
+
+
+async def test_a_news_or_calendar_outage_is_a_data_gap_not_a_quiet_empty_list() -> None:
+    down = {"health_status": "unreachable", "items": [], "events": []}
+    result = await _run(_Registry(_Stub("get_news_feed", down), _Stub("get_macro_calendar", down)))
+    gaps = " ".join(str(x) for x in result["unavailable"])  # type: ignore[attr-defined]
+    assert "新聞標題（來源暫時無法取得）" in gaps
+    assert "今日行事曆（來源暫時無法取得）" in gaps
+
+
+async def test_an_answering_news_source_with_no_items_is_not_reported_as_down() -> None:
+    quiet = {"health_status": "stale", "items": []}
+    result = await _run(_Registry(_Stub("get_news_feed", quiet)))
+    gaps = " ".join(str(x) for x in result["unavailable"])  # type: ignore[attr-defined]
+    assert "新聞標題（來源暫時無法取得）" not in gaps

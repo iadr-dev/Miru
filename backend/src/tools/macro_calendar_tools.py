@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from dataaccess.financecalendar import FinanceCalendarGateway
 from schemas.capabilities import MacroReleaseEventRow
 from schemas.enums import DataClass
+from schemas.source import HealthStatus
 from tools.base import BaseTool, Tool, ToolContext, parse_args
 
 _MAX_DAYS_AHEAD = 90
@@ -60,7 +61,11 @@ class GetMacroCalendarInput(BaseModel):
 class GetMacroCalendarOutput(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    source_id: str
     currentness_caveat: str = Field(min_length=1)
+    # An empty result is ambiguous on its own: `unreachable` means the source could not be fetched
+    # (an outage, NOT "nothing there"), `stale` means it answered with nothing.
+    health_status: HealthStatus
     events: tuple[MacroReleaseEventRow, ...] = Field(default_factory=tuple)
 
 
@@ -102,7 +107,12 @@ class GetMacroCalendarTool(BaseTool):
         if isinstance(raw_events, list):
             typed_events = cast("list[dict[str, object]]", raw_events)
             events = tuple(MacroReleaseEventRow.model_validate(event) for event in typed_events)
-        return GetMacroCalendarOutput(currentness_caveat=result.currentness_caveat, events=events)
+        return GetMacroCalendarOutput(
+            source_id=result.source_id,
+            currentness_caveat=result.currentness_caveat,
+            health_status=result.health.status,
+            events=events,
+        )
 
 
 def build_registration_table(

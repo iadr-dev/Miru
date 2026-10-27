@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from dataaccess.news import NewsGateway
 from schemas.enums import DataClass, Market
+from schemas.source import HealthStatus
 from tools.base import BaseTool, Tool, ToolContext, parse_args
 
 
@@ -52,7 +53,11 @@ class NewsFeedItemOut(BaseModel):
 class GetNewsFeedOutput(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    source_id: str
     currentness_caveat: str = Field(min_length=1)
+    # An empty result is ambiguous on its own: `unreachable` means the source could not be fetched
+    # (an outage, NOT "nothing there"), `stale` means it answered with nothing.
+    health_status: HealthStatus
     items: tuple[NewsFeedItemOut, ...] = Field(default_factory=tuple)
 
 
@@ -87,7 +92,12 @@ class GetNewsFeedTool(BaseTool):
         if isinstance(raw_items, list):
             typed_items = cast("list[dict[str, object]]", raw_items)
             items = tuple(NewsFeedItemOut.model_validate(item) for item in typed_items)
-        return GetNewsFeedOutput(currentness_caveat=result.currentness_caveat, items=items)
+        return GetNewsFeedOutput(
+            source_id=result.source_id,
+            currentness_caveat=result.currentness_caveat,
+            health_status=result.health.status,
+            items=items,
+        )
 
 
 def build_registration_table(gateway: NewsGateway | None = None) -> list[tuple[Tool, bool]]:

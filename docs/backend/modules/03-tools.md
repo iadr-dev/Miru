@@ -214,7 +214,16 @@ convention) or don't exist yet at all. Corrections are called out inline below.
   are `{source_id, currentness_caveat, health_status, posts}`: `health_status` distinguishes
   `unreachable` (PTT could not be fetched - an outage, NOT "nothing posted"), `stale` (the page
   answered but no post parsed) and `ok`, so an empty `posts` is never ambiguous. For
-  `get_ptt_stock_search` every searched board unreachable reports `unreachable`.
+  `get_ptt_stock_search` every searched board unreachable reports `unreachable`. The same rule
+  holds for the other adapter/router-backed tools whose empty result used to be ambiguous:
+  `get_news_feed`, `get_macro_calendar`, `web_search` and `fetch_url` return
+  `{source_id, currentness_caveat, health_status, ...}` (`get_news_feed` is `unreachable` when
+  every feed failed; a feed list that merely came back empty is `stale`), and the bundled
+  `get_macro_indicators`, `get_business_indicator`, `get_convertible_bond_profile` and
+  `get_convertible_bond_flow` carry `health_status` as the worst status among their fetches
+  (`tools/_rows.py::worst_health`). `get_morning_brief` lists a news or calendar outage in
+  `unavailable` instead of an empty headline/event section. Tools that already carry
+  `data_available` + `unavailable_reason` (`tw_ranking_tools`, `us_macro_tools`) are unchanged.
 - `get_etf_fund_info` — TW ETF fund-level metadata (issuer, tracked index, units outstanding) —
   not per-constituent holdings (documented gap in the adapter itself). Sibling tools in
   `etf_pcf_tools.py`: `get_etf_expense_ratio` (SITCA 內扣費用), `get_etf_theme_tags` (主題/因子 +

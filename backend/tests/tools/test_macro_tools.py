@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import pytest
+
 from dataaccess.router import DataAccessRouter
 from schemas.enums import Capability, DataClass, Market, Tier, TimingClass
 from schemas.market import Symbol
@@ -17,7 +19,7 @@ from tools.macro_tools import (
 )
 
 
-def _result(payload: dict[str, object]) -> SourceResult:
+def _result(payload: dict[str, object], status: HealthStatus = HealthStatus.OK) -> SourceResult:
     return SourceResult(
         source_id="STUB",
         data_class=DataClass.PUBLIC,
@@ -25,8 +27,53 @@ def _result(payload: dict[str, object]) -> SourceResult:
         fetched_at=datetime.now(UTC),
         currentness_caveat="caveat",
         payload=payload,
-        health=SourceHealth(status=HealthStatus.OK, detail="ok"),
+        health=SourceHealth(status=status, detail="x"),
     )
+
+
+@pytest.mark.parametrize(
+    ("gold_status", "expected"),
+    [
+        (HealthStatus.OK, HealthStatus.OK),
+        (HealthStatus.STALE, HealthStatus.STALE),
+        (HealthStatus.UNREACHABLE, HealthStatus.UNREACHABLE),
+    ],
+)
+async def test_macro_indicators_report_the_worst_section_health(
+    gold_status: HealthStatus, expected: HealthStatus
+) -> None:
+    caps = {
+        (Capability.EXCHANGE_RATE, Market.TW): "exchange_rate",
+        (Capability.CENTRAL_BANK_RATE, Market.GLOBAL): "central_bank_rate",
+        (Capability.GOLD_PRICE, Market.GLOBAL): "gold_price",
+        (Capability.CRUDE_OIL_PRICES, Market.GLOBAL): "crude_oil_prices",
+        (Capability.GOVERNMENT_BOND_YIELD, Market.US): "government_bond_yield",
+    }
+    results = {
+        cap: _result({"rows": []}, gold_status if cap is Capability.GOLD_PRICE else HealthStatus.OK)
+        for cap, _market in caps
+    }
+    adapter = StubAdapter("STUB", supported=set(caps), results=results)
+    priority: dict[str, dict[str, list[str]]] = {}
+    for (cap, market), name in caps.items():
+        priority.setdefault(market.value, {})[name] = ["STUB"]
+        assert cap.value == name
+    router = DataAccessRouter({"STUB": adapter}, priority_config=priority)
+
+    out = await GetMacroIndicatorsTool(router).run(GetMacroIndicatorsInput(), ToolContext())
+
+    assert out.health_status is expected  # type: ignore[attr-defined]
+
+
+async def test_business_indicator_reports_health() -> None:
+    symbol = Symbol(id="", market=Market.TW)
+    router, _ = make_router(
+        symbol, {Capability.BUSINESS_INDICATOR: _result({"rows": []}, HealthStatus.UNREACHABLE)}
+    )
+    out = await GetBusinessIndicatorTool(router).run(
+        MarketOnlyInput(market=Market.TW), ToolContext()
+    )
+    assert out.health_status is HealthStatus.UNREACHABLE  # type: ignore[attr-defined]
 
 
 async def test_get_macro_indicators_is_public_with_fear_greed_for_paid_only() -> None:

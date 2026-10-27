@@ -13,9 +13,14 @@ from tools.macro_calendar_tools import GetMacroCalendarInput, GetMacroCalendarTo
 
 
 class _FakeGateway:
-    def __init__(self, events: list[dict[str, object]] | None = None) -> None:
+    def __init__(
+        self,
+        events: list[dict[str, object]] | None = None,
+        status: HealthStatus = HealthStatus.OK,
+    ) -> None:
         self.calls: list[tuple[str | None, int, date | None, date | None]] = []
         self._events = events if events is not None else []
+        self._status = status
 
     async def fetch_calendar(
         self,
@@ -34,7 +39,7 @@ class _FakeGateway:
             fetched_at=datetime.now(UTC),
             currentness_caveat="caveat",
             payload={"events": self._events},
-            health=SourceHealth(status=HealthStatus.OK, detail="ok"),
+            health=SourceHealth(status=self._status, detail="x"),
         )
 
 
@@ -130,3 +135,16 @@ async def test_run_handles_no_events_honestly() -> None:
 
     assert output.events == ()
     assert output.currentness_caveat == "caveat"
+
+
+@pytest.mark.parametrize("status", [HealthStatus.OK, HealthStatus.STALE, HealthStatus.UNREACHABLE])
+async def test_run_reports_source_health_so_an_outage_is_not_an_empty_calendar(
+    status: HealthStatus,
+) -> None:
+    tool = GetMacroCalendarTool(_FakeGateway(events=[], status=status))
+
+    output = await tool.run(GetMacroCalendarInput(), ToolContext())
+
+    assert output.events == ()
+    assert output.health_status is status
+    assert output.source_id == "FINANCE_CALENDAR"

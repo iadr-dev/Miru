@@ -23,6 +23,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from dataaccess.web_search import WebSearchGateway
 from schemas.enums import DataClass
+from schemas.source import HealthStatus
 from tools.base import BaseTool, Tool, ToolContext, parse_args
 
 _FETCH_URL_TEXT_CAP = 20_000  # size-capped extraction, per the output-size-control rule
@@ -47,7 +48,11 @@ class WebSearchHitOut(BaseModel):
 class WebSearchOutput(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    source_id: str
     currentness_caveat: str = Field(min_length=1)
+    # An empty result is ambiguous on its own: `unreachable` means the source could not be fetched
+    # (an outage, NOT "nothing there"), `stale` means it answered with nothing.
+    health_status: HealthStatus
     hits: tuple[WebSearchHitOut, ...] = Field(default_factory=tuple)
 
 
@@ -76,7 +81,12 @@ class WebSearchTool(BaseTool):
         if isinstance(raw_hits, list):
             typed_hits = cast("list[dict[str, object]]", raw_hits)
             hits = tuple(WebSearchHitOut.model_validate(hit) for hit in typed_hits)
-        return WebSearchOutput(currentness_caveat=result.currentness_caveat, hits=hits)
+        return WebSearchOutput(
+            source_id=result.source_id,
+            currentness_caveat=result.currentness_caveat,
+            health_status=result.health.status,
+            hits=hits,
+        )
 
 
 class FetchUrlInput(BaseModel):
@@ -88,7 +98,9 @@ class FetchUrlInput(BaseModel):
 class FetchUrlOutput(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    source_id: str
     currentness_caveat: str = Field(min_length=1)
+    health_status: HealthStatus
     url: str | None = None
     text: str | None = None
     truncated: bool = False
@@ -120,7 +132,9 @@ class FetchUrlTool(BaseTool):
             truncated = True
         raw_url = result.payload.get("url")
         return FetchUrlOutput(
+            source_id=result.source_id,
             currentness_caveat=result.currentness_caveat,
+            health_status=result.health.status,
             url=str(raw_url) if isinstance(raw_url, str) else None,
             text=text,
             truncated=truncated,
