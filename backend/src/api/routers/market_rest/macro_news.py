@@ -231,7 +231,9 @@ async def ptt_board(
     ('Stock' 股票版, 'Tech_Job' 科技業板, 'Warrant' 權證版 — usable in analysis; 'Beauty' 表特版,
     'Gossiping' 八卦版 — offtopic, never a market claim). `lookback_days` (default 1, today's
     index page only) walks the board's own 'older posts' nav link to cover more days — there is
-    no per-page date filter upstream, so a wider window costs more sequential page fetches."""
+    no per-page date filter upstream, so a wider window costs more sequential page fetches.
+    `health_status` is `unreachable` when PTT itself could not be fetched (an outage, not an
+    empty board), `stale` when the page answered but no post parsed."""
     return await _dispatch(
         state, "get_ptt_board", {"board": board, "lookback_days": lookback_days}, ctx
     )

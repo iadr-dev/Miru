@@ -229,7 +229,15 @@ function StockPttList({
     return <CardSkeletonBody height={480} />;
   }
   if (sorted.length === 0) {
-    return <p className="text-[13px] text-[var(--text-muted)]">{t("pttEmpty")}</p>;
+    // An unreachable/unavailable source returns an empty list too - that is an outage, not
+    // "no related posts".
+    const status = searchQuery.data?.health_status;
+    const down = status !== undefined && status !== "ok" && status !== "stale";
+    return (
+      <p className="text-[13px] text-[var(--text-muted)]">
+        {down ? t("pttUnavailable") : t("pttEmpty")}
+      </p>
+    );
   }
 
   return (

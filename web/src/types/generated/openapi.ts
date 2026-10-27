@@ -1865,6 +1865,8 @@ export interface paths {
      *     'Gossiping' 八卦版 — offtopic, never a market claim). `lookback_days` (default 1, today's
      *     index page only) walks the board's own 'older posts' nav link to cover more days — there is
      *     no per-page date filter upstream, so a wider window costs more sequential page fetches.
+     *     `health_status` is `unreachable` when PTT itself could not be fetched (an outage, not an
+     *     empty board), `stale` when the page answered but no post parsed.
      */
     get: operations["ptt_board_api_v1_market_ptt_board_get"];
     put?: never;
@@ -8788,15 +8790,21 @@ export interface components {
     GetPttBoardOutput: {
       /** Currentness Caveat */
       currentness_caveat: string;
+      health_status: components["schemas"]["HealthStatus"];
       /** Posts */
       posts?: components["schemas"]["PttPostOut"][];
+      /** Source Id */
+      source_id: string;
     };
     /** GetPttStockSearchOutput */
     GetPttStockSearchOutput: {
       /** Currentness Caveat */
       currentness_caveat: string;
+      health_status: components["schemas"]["HealthStatus"];
       /** Posts */
       posts?: components["schemas"]["PttPostOut"][];
+      /** Source Id */
+      source_id: string;
     };
     /** GetPutCallRatioOutput */
     GetPutCallRatioOutput: {

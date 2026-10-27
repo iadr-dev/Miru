@@ -3,6 +3,7 @@
  */
 
 import { z } from "zod";
+import { healthStatusSchema } from "@/types/market/shared";
 
 // ---------------------------------------------------------------------------
 // 26. GET /market/news-feed — get_news_feed (public). Mirrors
@@ -52,7 +53,9 @@ export const pttPostSchema = z.object({
 export type PttPost = z.infer<typeof pttPostSchema>;
 
 export const pttBoardResponseSchema = z.object({
+  source_id: z.string(),
   currentness_caveat: z.string(),
+  health_status: healthStatusSchema,
   posts: z.array(pttPostSchema).default([]),
 });
 

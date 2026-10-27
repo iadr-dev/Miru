@@ -430,6 +430,16 @@ class PttAdapter:
 
         checked = await asyncio.gather(*(_check(post) for post in candidates))
         matched = [post for post in checked if post is not None]
+        # Every board index failing is an outage, not "no stock mention" — surface it so the
+        # empty result is not read as a clean search.
+        if all(r.health.status is HealthStatus.UNREACHABLE for r in board_results):
+            return _result(
+                board_tag=_STOCK_BUZZ_TAG,
+                payload={},
+                health=SourceHealth(
+                    status=HealthStatus.UNREACHABLE, detail="every searched board is unreachable"
+                ),
+            )
         return _result(
             board_tag=_STOCK_BUZZ_TAG,
             payload={"posts": [post.model_dump(mode="json") for post in matched]},

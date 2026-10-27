@@ -10880,16 +10880,25 @@
       "title": "Currentness Caveat",
       "type": "string"
      },
+     "health_status": {
+      "$ref": "#/components/schemas/HealthStatus"
+     },
      "posts": {
       "items": {
        "$ref": "#/components/schemas/PttPostOut"
       },
       "title": "Posts",
       "type": "array"
+     },
+     "source_id": {
+      "title": "Source Id",
+      "type": "string"
      }
     },
     "required": [
-     "currentness_caveat"
+     "source_id",
+     "currentness_caveat",
+     "health_status"
     ],
     "title": "GetPttBoardOutput",
     "type": "object"
@@ -10902,16 +10911,25 @@
       "title": "Currentness Caveat",
       "type": "string"
      },
+     "health_status": {
+      "$ref": "#/components/schemas/HealthStatus"
+     },
      "posts": {
       "items": {
        "$ref": "#/components/schemas/PttPostOut"
       },
       "title": "Posts",
       "type": "array"
+     },
+     "source_id": {
+      "title": "Source Id",
+      "type": "string"
      }
     },
     "required": [
-     "currentness_caveat"
+     "source_id",
+     "currentness_caveat",
+     "health_status"
     ],
     "title": "GetPttStockSearchOutput",
     "type": "object"
@@ -30042,7 +30060,7 @@
   },
   "/api/v1/market/ptt-board": {
    "get": {
-    "description": "PTT — one board's index-listing (title/author/push-count/post-tag/posted_date), backed by\n`get_ptt_board`, `DataClass.PUBLIC`. `board` must be one of `tools.ptt_tools.PTT_BOARDS`\n('Stock' 股票版, 'Tech_Job' 科技業板, 'Warrant' 權證版 — usable in analysis; 'Beauty' 表特版,\n'Gossiping' 八卦版 — offtopic, never a market claim). `lookback_days` (default 1, today's\nindex page only) walks the board's own 'older posts' nav link to cover more days — there is\nno per-page date filter upstream, so a wider window costs more sequential page fetches.",
+    "description": "PTT — one board's index-listing (title/author/push-count/post-tag/posted_date), backed by\n`get_ptt_board`, `DataClass.PUBLIC`. `board` must be one of `tools.ptt_tools.PTT_BOARDS`\n('Stock' 股票版, 'Tech_Job' 科技業板, 'Warrant' 權證版 — usable in analysis; 'Beauty' 表特版,\n'Gossiping' 八卦版 — offtopic, never a market claim). `lookback_days` (default 1, today's\nindex page only) walks the board's own 'older posts' nav link to cover more days — there is\nno per-page date filter upstream, so a wider window costs more sequential page fetches.\n`health_status` is `unreachable` when PTT itself could not be fetched (an outage, not an\nempty board), `stale` when the page answered but no post parsed.",
     "operationId": "ptt_board_api_v1_market_ptt_board_get",
     "parameters": [
      {
