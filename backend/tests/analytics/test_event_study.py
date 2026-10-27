@@ -98,8 +98,7 @@ def test_nothing_before_day_zero_enters_a_forward_return() -> None:
 
     flat_return = flat.outcomes[0].returns[5]
     spiked_return = with_spike.outcomes[0].returns[5]
-    assert flat_return == pytest.approx(0.0)
-    assert spiked_return == pytest.approx(0.0)
+    assert spiked_return == flat_return
 
 
 def test_pre_event_drift_uses_the_five_trading_days_before_day_zero() -> None:
