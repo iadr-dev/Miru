@@ -265,6 +265,10 @@
   --radius-pill: 999px;
   --radius-button: 12px;
 
+  /* One indicator row of a US macro category card. Every card reserves the same number of these,
+     so the grid never stretches a short category to a tall neighbour's height. */
+  --macro-row-height: 5rem;
+
   /* Motion scale - one set of durations and curves for every transition. Restrained and
      purposeful: feedback is fast, entrances are a touch slower, nothing is magnitude-scaled. The
      global reduced-motion rule in globals.css still collapses all of it. */

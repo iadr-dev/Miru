@@ -362,6 +362,8 @@
         "unavailableTitle": "美國經濟數據尚未更新",
         "unavailableDescription": "資料會於每日更新後顯示，請稍後再回來查看。",
         "asOf": "資料更新至 {date}",
+        "expandTo": "展開完整 {count} 筆",
+        "expandLabel": "展開{group}的完整 {count} 筆數據",
         "groupEmpty": "此類別目前沒有可顯示的數據。",
         "groups": {
           "yield_curve_recession": "殖利率曲線與景氣衰退",
