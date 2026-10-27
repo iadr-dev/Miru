@@ -6,6 +6,7 @@ import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SubTabRow } from "@/components/stock/chip/shared";
 import { StockComparePanel } from "@/components/stock/compare/compare-panel";
+import { ChartPatternList } from "@/components/stock/technical/chart-pattern-list";
 import { EventList } from "@/components/stock/technical/event-list";
 import { KLineChart } from "@/components/stock/technical/k-line-chart";
 import type {
@@ -115,6 +116,10 @@ function TechnicalChartView({
   const [subOverlays, setSubOverlays] = useState<ReadonlySet<SubOverlay>>(new Set());
   const [showSupportResistance, setShowSupportResistance] = useState(false);
   const [showPatterns, setShowPatterns] = useState(false);
+  const [showChartPatterns, setShowChartPatterns] = useState(false);
+  // The pattern picked in the list under the chart; it is drawn heavier (and drawn at all even
+  // when the 圖形型態 toggle is off, or the pattern failed).
+  const [selectedPatternKey, setSelectedPatternKey] = useState<string | null>(null);
   const [showEvents, setShowEvents] = useState(true);
 
   const today = useMemo(() => new Date(), []);
@@ -170,6 +175,8 @@ function TechnicalChartView({
         onToggleSupportResistance={setShowSupportResistance}
         showPatterns={showPatterns}
         onTogglePatterns={setShowPatterns}
+        showChartPatterns={showChartPatterns}
+        onToggleChartPatterns={setShowChartPatterns}
         showEvents={hasEventFeed ? showEvents : undefined}
         onToggleEvents={setShowEvents}
         t={t}
@@ -183,12 +190,21 @@ function TechnicalChartView({
         subOverlays={subOverlays}
         showSupportResistance={showSupportResistance}
         showPatterns={showPatterns}
+        showChartPatterns={showChartPatterns}
+        selectedPatternKey={selectedPatternKey}
         showEvents={hasEventFeed && showEvents}
         events={chartEvents.events}
         symbol={symbol}
         market={market}
         startDate={startDate}
         endDate={endDate}
+        t={t}
+      />
+
+      <ChartPatternList
+        hits={data.chart_patterns}
+        selectedKey={selectedPatternKey}
+        onSelect={setSelectedPatternKey}
         t={t}
       />
 

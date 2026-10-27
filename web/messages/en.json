@@ -3415,6 +3415,7 @@
       "structureLabel": "Markers:",
       "structureSupportResistance": "Support/Resistance",
       "structurePatterns": "Candlestick Patterns",
+      "structureChartPatterns": "Chart patterns",
       "overlayLabel": "Subpane:",
       "overlay": {
         "bollinger": "BB(20)",
@@ -3493,6 +3494,56 @@
           "agm": "AGM",
           "capitalIncrease": "Capital inc."
         }
+      },
+      "chartPatterns": {
+        "title": "Chart patterns",
+        "listLabel": "Chart patterns detected in the chart range",
+        "empty": "No chart patterns detected in this range.",
+        "statusNote": "A status only describes where closes sit relative to the neckline or boundaries — it is not a trading signal.",
+        "pattern": {
+          "double_top": "Double top (M)",
+          "double_bottom": "Double bottom (W)",
+          "head_shoulders_top": "Head and shoulders top",
+          "head_shoulders_bottom": "Inverse head and shoulders",
+          "ascending_triangle": "Ascending triangle",
+          "descending_triangle": "Descending triangle",
+          "symmetrical_triangle": "Symmetrical triangle",
+          "rectangle": "Rectangle range"
+        },
+        "short": {
+          "double_top": "M top",
+          "double_bottom": "W bottom",
+          "head_shoulders_top": "H&S top",
+          "head_shoulders_bottom": "Inv H&S",
+          "ascending_triangle": "Asc tri",
+          "descending_triangle": "Desc tri",
+          "symmetrical_triangle": "Sym tri",
+          "rectangle": "Box"
+        },
+        "status": {
+          "forming": "Forming",
+          "confirmed": "Confirmed",
+          "failed": "Failed"
+        },
+        "family": {
+          "reversal_top": "Top structure",
+          "reversal_bottom": "Bottom structure",
+          "consolidation": "Consolidation"
+        },
+        "level": {
+          "neckline": "Neckline {value}",
+          "upper": "Upper {value}",
+          "lower": "Lower {value}",
+          "height": "Height {value}"
+        },
+        "range": "{start} to {end}",
+        "confirmedOn": "Closed beyond the line on {date}",
+        "failedOn": "Structure broke on {date}",
+        "side": {
+          "above": "Closed above the line",
+          "below": "Closed below the line"
+        },
+        "select": "Highlight {name} on the chart"
       },
       "kdGoldenCross": "KD golden cross (low range)",
       "kdDeathCross": "KD death cross (high range)",

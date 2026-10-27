@@ -8,6 +8,7 @@ import {
   type IChartApi,
   type ISeriesApi,
   LineSeries,
+  LineStyle,
   type SeriesMarker,
   type Time,
 } from "lightweight-charts";
@@ -36,6 +37,13 @@ import {
   mergeMarkers,
   snapEventsToBars,
 } from "@/lib/chart-events";
+import {
+  buildPatternLines,
+  buildPatternPivotMarkers,
+  type PatternLineStyle,
+  patternKey,
+  patternsToDraw,
+} from "@/lib/chart-patterns";
 import { resolveToken } from "@/lib/resolve-css-token";
 import type { Market } from "@/types/settings";
 import type { EodBar, TechnicalIndicatorsResponse } from "@/types/stock/technical";
@@ -52,6 +60,62 @@ function patternMarkerPosition(direction: number): "aboveBar" | "belowBar" | "in
   if (direction === -1) return "aboveBar";
   if (direction === 1) return "belowBar";
   return "inBar";
+}
+
+const LINE_STYLE: Record<PatternLineStyle, LineStyle> = {
+  0: LineStyle.Solid,
+  1: LineStyle.Dotted,
+  2: LineStyle.Dashed,
+};
+
+/** 圖形型態 neckline / boundary lines: one two-point line series per line, on the price pane. Colour
+ * is the pattern family's categorical token, dash is the status, and the list-selected pattern is
+ * drawn heavier — never the signed up/down tokens, and no gradient. */
+function drawChartPatternLines(
+  chart: IChartApi,
+  indicators: TechnicalIndicatorsResponse,
+  barDates: readonly string[],
+  showAll: boolean,
+  selectedKey: string | null,
+): void {
+  for (const hit of patternsToDraw(indicators.chart_patterns, showAll, selectedKey)) {
+    const highlighted = patternKey(hit) === selectedKey;
+    for (const line of buildPatternLines(hit, barDates, highlighted)) {
+      const series = chart.addSeries(LineSeries, {
+        color: resolveToken(line.token),
+        lineWidth: line.lineWidth,
+        lineStyle: LINE_STYLE[line.lineStyle],
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+      });
+      series.setData(line.points.map((p) => ({ time: p.time as Time, value: p.value })));
+    }
+  }
+}
+
+/** Small pivot dots for the drawn patterns; only each pattern's first pivot carries its short name. */
+function buildChartPatternMarkers(
+  indicators: TechnicalIndicatorsResponse,
+  bars: readonly EodBar[],
+  showAll: boolean,
+  selectedKey: string | null,
+  t: ReturnType<typeof useTranslations>,
+): SeriesMarker<Time>[] {
+  const markers: SeriesMarker<Time>[] = [];
+  for (const hit of patternsToDraw(indicators.chart_patterns, showAll, selectedKey)) {
+    for (const pivot of buildPatternPivotMarkers(hit, bars)) {
+      markers.push({
+        time: pivot.time as Time,
+        position: pivot.position,
+        color: resolveToken(pivot.token),
+        shape: "circle",
+        size: pivot.labelled ? 1 : 0.5,
+        ...(pivot.labelled ? { text: t(`chartPatterns.short.${hit.pattern}`) } : {}),
+      });
+    }
+  }
+  return markers;
 }
 
 function drawMovingAverages(
@@ -206,6 +270,8 @@ export function KLineChart({
   subOverlays,
   showSupportResistance,
   showPatterns,
+  showChartPatterns,
+  selectedPatternKey,
   showEvents,
   events,
   symbol,
@@ -220,6 +286,8 @@ export function KLineChart({
   readonly subOverlays: ReadonlySet<SubOverlay>;
   readonly showSupportResistance: boolean;
   readonly showPatterns: boolean;
+  readonly showChartPatterns: boolean;
+  readonly selectedPatternKey: string | null;
   readonly showEvents: boolean;
   readonly events: readonly ChartEvent[];
   readonly symbol: string;
@@ -305,8 +373,16 @@ export function KLineChart({
     if (showSupportResistance) drawSupportResistance(candleSeries, indicators, t);
     // One markers plugin per series (a second createSeriesMarkers call replaces the first), so
     // pattern pins and event pins are merged into a single array.
+    drawChartPatternLines(
+      chart,
+      indicators,
+      bars.map((b) => b.trade_date),
+      showChartPatterns,
+      selectedPatternKey,
+    );
     const markers = mergeMarkers(
       showPatterns ? buildPatternMarkers(indicators, t) : [],
+      buildChartPatternMarkers(indicators, bars, showChartPatterns, selectedPatternKey, t),
       showEvents ? buildEventMarkers(events, bars, indicators.trade_dates[0], t) : [],
     );
     if (markers.length > 0) createSeriesMarkers(candleSeries, markers);
@@ -326,6 +402,8 @@ export function KLineChart({
     maSeriesByWindow,
     showSupportResistance,
     showPatterns,
+    showChartPatterns,
+    selectedPatternKey,
     showEvents,
     events,
     subOverlays,
