@@ -122,6 +122,18 @@ class ThrottledJsonClient:
             reader=_Reader("application/json", self._read_json),
         )
 
+    async def get_json_array(
+        self, url: str, *, label: str, tls_policy: TLSPolicy
+    ) -> list[JsonObject]:
+        """A JSON array of objects (an open-data dump), with the same throttle, timeout, retry and
+        error rules as `get_json`; a body that is not an array of objects is an error."""
+        return await self._get(
+            _Call(url, {}),
+            label=label,
+            tls_policy=tls_policy,
+            reader=_Reader("application/json", self._read_json_array),
+        )
+
     async def get_text(
         self,
         url: str,
@@ -220,6 +232,16 @@ class ThrottledJsonClient:
         if not isinstance(body, dict):
             raise ExchangeFetchError(f"{self._host}: response is not a JSON object")
         return cast("JsonObject", body)
+
+    def _read_json_array(self, response: httpx.Response) -> list[JsonObject]:
+        try:
+            body: object = response.json()
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise _TransientError("response is not JSON") from exc
+        items = cast("list[object]", body) if isinstance(body, list) else None
+        if items is None or not all(isinstance(item, dict) for item in items):
+            raise ExchangeFetchError(f"{self._host}: response is not a JSON array of objects")
+        return cast("list[JsonObject]", items)
 
 
 class _TransientError(Exception):
