@@ -196,7 +196,11 @@ convention) or don't exist yet at all. Corrections are called out inline below.
 - `get_order_book_stats` — whole-exchange 5-second order-book stats.
 - `get_taiex_index_snapshot` — whole-market TAIEX 5-second index reading (the index level only).
   Breadth and contribution are separate tools in `tools/market/`: `get_advance_decline` (public)
-  and `get_index_contribution` (sponsor).
+  and `get_index_contribution` (sponsor). The latter ranks `weight_per x close-to-close change`,
+  where `weight_per` is the stored market-value share (close x issued common shares over the listed
+  + OTC companies priced that day; NOT free-float adjusted, no ETFs or emerging stocks), so it is an
+  estimate, not TWSE's contribution points; `contribution_caveat` says so and that days stored
+  before 2026-09-25 carried OTC-only weights.
 - `get_day_trading` — 當沖標的/量值/當沖比重.
 - `get_total_return_index` — 報酬指數.
 - `get_price_limit` — 漲跌停價.
@@ -383,7 +387,9 @@ in the list above.)
 - `get_business_indicator` — 景氣對策信號 藍黃紅燈 (Sponsor in the real build; same correction).
 - `get_market_value` — daily market-capitalization rows (Sponsor; no free per-symbol tier
   upstream).
-- `get_market_value_weight` — daily whole-market market-cap-weight ranking (Sponsor).
+- `get_market_value_weight` — daily whole-market market-cap-weight ranking (Sponsor). The stored rows
+  are derived from close x issued shares (listed + OTC, not free-float adjusted) since the paid
+  upstream table left the free plan (ingest module 1g).
 - `get_us_stock_price_minute` — US-only minute-level price (Sponsor).
 - `get_warrant_underlying` — 權證-to-underlying mapping.
 - `get_price_tick` — tick-level trade history.

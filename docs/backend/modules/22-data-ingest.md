@@ -353,7 +353,7 @@ roster has 26 symbols (new ETFs and listings, emerging stocks added since); only
 ## 1e. Plan-gated datasets — a skip, not a failure
 
 FinMind's free ("register") level lacks several datasets: `TaiwanStockMarketValue`,
-`TaiwanStockMarketValueWeight`, `TaiwanStockActiveETFHolding`, `TaiwanStockActiveETFHoldingChange`,
+`TaiwanStockMarketValueWeight` (both now derived from closes and shares, 1g), `TaiwanStockActiveETFHolding`, `TaiwanStockActiveETFHoldingChange`,
 `TaiwanStockDividend` (no free official source replaces them, §1c), and the whole-market-by-date
 form of the daily datasets (which only matters when the official source before it failed). Without
 special handling every date of such a dataset was refused and journaled FAILED.
@@ -488,6 +488,65 @@ disposition snapshots do hold TWSE rows).
   fill, and a second run writes nothing. The plain `--event-history` still fills only the days
   without a partition (the gaps a failed or skipped daily run leaves).
 
+## 1g. Market value and market-value weight — derived from closes and shares outstanding
+
+`TaiwanStockMarketValue` and `TaiwanStockMarketValueWeight` are outside FinMind's free plan and no
+exchange publishes them daily, so the chain for `market_value` and `market_value_weight` is
+`[market_value_derived, finmind]` (`config/whole_market_source_priority.yaml`). The first source
+computes the rows from data we already store plus one free snapshot; the stored row shapes and the
+partition keys are FinMind's, so `get_index_contribution`, the value factor and every other reader
+are unchanged.
+
+- **What the numbers are.** `market_value = round(close x issued common shares)` and
+  `weight_per = 100 x market_value / sum of market_value` over the companies priced that day (percent,
+  6 decimals, `rank` by weight, ties by symbol). A plain market-value share, **not free-float
+  adjusted** and not an exchange-published figure. Measured on the stored FinMind-era partitions:
+  FinMind's `market_value` is exactly `close x issued common shares` (the `已發行普通股數` of the
+  company-basics dump) for 84-86% of the stocks both have and within 0.01% for another 5%, the rest
+  being share-count drift. Its `weight_per` is `market_value / sum(market_value)` over its universe, up
+  to its own 4-decimal rounding.
+- **Universe: wider than the stored FinMind weights.** The FinMind partitions (2026-06 to 2026-09-24;
+  earlier days are empty placeholders) hold **890 OTC (tpex) rows only, summing to 100**; no listed
+  stock ever appeared. The derived weights cover **listed and OTC companies together** (`listing_type`
+  `twse` / `tpex`, about 1,080 + 870, summing to 100): a market-wide share, which is what a
+  market-contribution ranking needs (TSMC about 38%). So a day stored by FinMind and a day derived are
+  not the same universe; the tool caveat says so. ETFs, emerging-board stocks, depositary receipts
+  (codes `91xx`: the dump holds the foreign original shares, not the receipts) and warrants have no
+  usable share count and are not in it; `market_value` therefore has about 1,950 rows a day against
+  FinMind's 2,730 (which included ETFs and emerging stocks).
+- **Inputs.** (1) Closes: the stored `TaiwanStockPrice` partition of the day, whichever source wrote
+  it. (2) Shares: TWSE OpenAPI `opendata/t187ap03_L` (`已發行普通股數或TDR原股發行股數`) and TPEx
+  `openapi/v1/mopsfin_t187ap03_O` (`IssueShares`), `sources/company_shares/`, one request each, the
+  `出表日期` of each being its table date. No official published weight report was found: the TWSE
+  OpenAPI swagger (143 paths) has none and no `rwd` report was probed.
+- **Snapshot cadence.** The shares are fetched at most once per Taipei day and cached in the process
+  (the daily jobs and a backfill share it); a failed fetch is not cached. Both dumps must answer and
+  each must hold at least 500 companies, else the answer is UNREACHABLE (never half a market).
+- **Forward-only.** There is no free history of share counts, so the snapshot's own table date bounds
+  the days that are derived: a day more than `MAX_SNAPSHOT_LAG_DAYS` (7) **before** the snapshot is
+  refused with `UNAVAILABLE_TIER` ("no history of share counts"); with FinMind denied too the runner
+  journals it as a tier skip (`tier_skipped`), never a failure and never an approximation. A snapshot
+  more than 7 days older than the day looks stale and is UNREACHABLE. So the backfill command
+  (`python -m ingest.backfill_cli`) fills a gap of the last week and **skips older dates**; the
+  gap-fill, the 23:40 job and `only_missing` behave the same.
+- **No price partition yet.** The day is answered STALE with no rows (`no price partition for D
+  yet`): FinMind is asked next and, if denied, the day is journaled FAILED with both reasons and
+  retried by the next run once the prices land. A board with fewer than 80% of its companies priced
+  (one exchange's prices missing) is UNREACHABLE ("partial"), never a partition from one board.
+- **Skipped, counted, never invented.** A company without a close (suspended) or with a blank or
+  zero share count is left out; the journal detail says how many: `served by market_value_derived:
+  close x shares as of 2026-10-26: TWSE 1084 + TPEx 871 companies, 27 without a close skipped, 0
+  without a share count skipped`. The `as of` date is the shares snapshot's.
+- **Validation (2026-09-17 to 09-24, five FinMind-era days, snapshot of 2026-10-26).** On the symbols
+  in both (about 868 of 890; the 20-25 FinMind names missing are emerging-board or suspended stocks we
+  have no close for, 0.3-0.6% of its weight), both sides renormalised over them: weight absolute
+  error median 0.00007 percentage points, p95 0.0021, max 0.41 (one stock whose share count changed
+  by 60% since); relative error median 0.2%, p95 1.6-1.8%; top-20 overlap 20/20 on every day, top-50
+  overlap 50/50 (49/50 on one day); Spearman rank correlation over FinMind's top 50 0.9988-0.9998.
+  `market_value` on 1,950 common symbols: median relative error 0, p95 3-5%, max 1.7-2.0 (a split).
+- **Not free-float adjusted.** TWSE's index weights use free-float-adjusted shares; a market-value
+  share overstates closely held names. The tool states this in `contribution_caveat`.
+
 ## 2. Cadence — what is scheduled today
 
 The scheduler is `ingest/daemon.py`'s `IngestDaemon`: a **leader-gated, wall-clock poll loop**. One
@@ -530,7 +589,7 @@ retried in a tight loop; the next window's pass or an explicit backfill retries)
 | `financials`, `balance_sheet`, `cash_flow`, `dividends`, `month_revenue` | 21:30 | daily | statement / dividend / 月營收 families |
 | `material_announcements`, `insider_transfer_declaration` | 21:35 | daily | MOPS 重大訊息, 內部人股權轉讓事前申報 |
 | `attention_stocks`, `disposition_events` | 21:35 | daily | TWSE/TPEX 注意股, 處置股 |
-| `market_value`, `market_value_weight` | 23:40 | daily | 市值, 市值比重 |
+| `market_value`, `market_value_weight` | 23:40 | daily | 市值, 市值比重 (derived from closes x shares, 1g) |
 | `scoring_batch` | 23:55 | daily | derived: 多空 5-factor `stock_scores` (module 20) |
 | `trend_score_batch` | 23:57 | daily | derived: 趨勢評分 `trend_scores` (module 20) |
 | `theme_industry_seed`, `theme_tier_seed` | 18:30 / 18:35 | monthly | theme membership + tier seeds (module 20) |
