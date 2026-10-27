@@ -141,14 +141,22 @@ class ChainOutcome:
 
 
 async def walk_chain(
-    ctx: IngestContext, capability: Capability, run_date: date_, market: Market | None = None
+    ctx: IngestContext,
+    capability: Capability,
+    run_date: date_,
+    market: Market | None = None,
+    *,
+    source_date: date_ | None = None,
 ) -> ChainOutcome:
-    """Ask each source in turn for `run_date`; stop at the first healthy answer with rows."""
+    """Ask each source in turn for `run_date`; stop at the first healthy answer with rows.
+    `source_date` is the date the sources are asked for when it differs from the partition
+    `run_date` (a period filed under a non-trading nominal date, stored under the next trading
+    day: `ingest/jobs/period_dates.py`)."""
     chain = resolve_chain(ctx, capability, market)
     outcome = ChainOutcome(chain_ids=[link.source_id for link in chain])
     for link in chain:
         result = await link.source.fetch_whole_market(
-            capability, tls_policy=ctx.tls_policy, start_date=run_date.isoformat()
+            capability, tls_policy=ctx.tls_policy, start_date=(source_date or run_date).isoformat()
         )
         outcome.last = result
         if confirms_market_closure(link.source_id, result, run_date):
