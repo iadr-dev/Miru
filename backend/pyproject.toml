@@ -24,7 +24,7 @@ dependencies = [
   "tiktoken>=0.13.0",
   "feedparser>=6.0.14",
   "selectolax>=0.4.11",
-  "fastmcp>=3.4.5",
+  "fastmcp>=3.4.10",  # floor = first release without GHSA-7xgj-8392-5q4r
   "redis>=8.1.0",
   "holidays>=0.105",
   "pywebpush>=2.5.0",
