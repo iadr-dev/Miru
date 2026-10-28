@@ -485,7 +485,7 @@ Registered tools (module 20 owns the engines behind them):
 | `get_stock_summary` (headline, narrative, SWOT) | `summary_tools.py` | sponsor | `stock-score` skill |
 | `run_tag_screener`, `get_tag_catalog` | `screener_tools.py` | public | `stock-screener` skill |
 | `run_screener`, `get_factor_catalog`, `get_screener_presets` | `screener_tools.py` | public | `stock-screener` skill |
-| `get_technical_indicators` (MA/Bollinger/KD/MACD, support/resistance, candlestick patterns, multi-bar `chart_patterns`: double top/bottom, head and shoulders, triangles, rectangle with status and levels) | `technical_tools.py` | public | `technical-trend-read` skill |
+| `get_technical_indicators` (MA/Bollinger/KD/MACD, support/resistance, candlestick patterns, multi-bar `chart_patterns`: double top/bottom, head and shoulders, triangles, wedges, rectangle with status and levels) | `technical_tools.py` | public | `technical-trend-read` skill |
 | `get_themes`, `get_theme_members`, `get_symbol_themes`, `get_theme_tiers`, `get_entity_graph` | `theme_tools.py` | public | `theme-lookup` skill (`get_themes` is web-only) |
 | `get_supply_chain_edges`, `get_chain_position`, `get_theme_tier_heatmap` | `theme_tools.py` | public | web (no skill) |
 

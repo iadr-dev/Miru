@@ -3526,6 +3526,8 @@
           "ascending_triangle": "Ascending triangle",
           "descending_triangle": "Descending triangle",
           "symmetrical_triangle": "Symmetrical triangle",
+          "rising_wedge": "Rising wedge",
+          "falling_wedge": "Falling wedge",
           "rectangle": "Rectangle range"
         },
         "short": {
@@ -3536,6 +3538,8 @@
           "ascending_triangle": "Asc tri",
           "descending_triangle": "Desc tri",
           "symmetrical_triangle": "Sym tri",
+          "rising_wedge": "Rise wedge",
+          "falling_wedge": "Fall wedge",
           "rectangle": "Box"
         },
         "status": {

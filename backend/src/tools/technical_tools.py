@@ -631,8 +631,9 @@ class GetTechnicalIndicatorsOutput(BaseModel):
     macd: MacdResult | None = None
     support_resistance: SupportResistanceResult | None = None
     candlestick_patterns: tuple[CandlestickPatternHit, ...] = Field(default_factory=tuple)
-    # Multi-bar chart structures (double top/bottom, head and shoulders, triangles, rectangle) with
-    # status, pivots, lines to draw and key levels - `analytics/chart_patterns.py`. Empty when none.
+    # Multi-bar chart structures (double top/bottom, head and shoulders, triangles, wedges,
+    # rectangle) with status, pivots, lines to draw and key levels - `analytics/chart_patterns.py`.
+    # Empty when none.
     chart_patterns: tuple[ChartPatternHit, ...] = Field(default_factory=tuple)
     non_trading_caveat: str = Field(
         default="技術指標與型態為圖表描述，非買賣建議 — indicators/patterns describe the chart, "
@@ -644,7 +645,7 @@ class GetTechnicalIndicatorsTool(BaseTool):
     """`get_technical_indicators` — the K線 chart's ONE data source: the raw OHLCV `bars`
     themselves plus MA5/10/20/60/120/240, Bollinger(20,2), KD(9,3,3), MACD(12,26,9), 支撐/壓力
     swing-pivot levels, completed candlestick-pattern hits, and multi-bar chart patterns
-    (double top/bottom, head and shoulders, triangles, rectangle) — all computed from one
+    (double top/bottom, head and shoulders, triangles, wedges, rectangle) — all computed from one
     `Capability.PRICE_EOD` fetch over the requested `[start_date, end_date]` window (the same
     live per-symbol range fetch `get_dividend_policy_summary`/`get_month_revenue` already use —
     NOT the ingest store's 60-trading-day-capped `get_price_history`, since a 1Y/5Y chart range
@@ -656,7 +657,7 @@ class GetTechnicalIndicatorsTool(BaseTool):
     name = "get_technical_indicators"
     description = (
         "Get MA/Bollinger/KD/MACD indicator series, 支撐/壓力 levels, candlestick-pattern hits "
-        "and multi-bar chart patterns (double top/bottom, head and shoulders, triangles, "
+        "and multi-bar chart patterns (double top/bottom, head and shoulders, triangles, wedges, "
         "rectangle) for one stock over a date range — the technical-analysis chart's data "
         "source. Present chart_patterns hits only as descriptive structure: the pattern name, "
         "its status (forming / confirmed / failed), its key levels (neckline or boundaries, "
