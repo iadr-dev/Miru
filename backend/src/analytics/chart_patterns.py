@@ -4,7 +4,7 @@ Pure and deterministic, same contract as `patterns.py`/`structure.py`: no I/O, b
 parallel `dates`) supplied in ascending order, never re-sorted. Where `patterns.py` names few-bar
 candlestick shapes, this module names the multi-bar structures drawn on a chart: double top (M)
 and double bottom (W), head-and-shoulders top and its inverse, ascending / descending /
-symmetrical triangles and the rectangle (box range).
+symmetrical triangles, rising / falling wedges and the rectangle (box range).
 
 **Descriptive, never advice.** A hit says "this geometry is present, in this state, with these
 levels". It carries no price target, stop, bias or probability, and `family` is geometry only
@@ -55,9 +55,12 @@ through the swing lows - at least two touches per side, each side's touches at l
 rises above the upper line, and no low falls below the lower line, by more than the equality
 tolerance. Classification by slopes: both flat = rectangle; flat upper + rising lower = ascending
 triangle; falling upper + flat lower = descending triangle; falling upper + rising lower =
-symmetrical triangle (every triangle therefore converges). Anything else (parallel channels,
-widening shapes) is not a pattern this module names. A swing pivot lying within the equality
-tolerance of its boundary is reported as a touch.
+symmetrical triangle (every triangle therefore converges); both rising with the lower line
+rising faster = rising wedge, both falling with the upper line falling faster = falling wedge (a
+wedge also converges - boundaries sloping the same way but widening or parallel are a channel or an
+expanding shape, which this module does not name). A swing pivot lying within the equality
+tolerance of its boundary is reported as a touch. Consolidations that share bars are resolved
+greedily - triangles and the rectangle before wedges (the loosest shape), then the widest.
 
 *Status machine.* After the shape's last pivot the closes are scanned in order:
 - `forming`: the shape is present and no close has moved beyond the confirmation level.
@@ -75,7 +78,7 @@ tolerance of its boundary is reported as a touch.
 *Left out: flag and pennant.* A flag needs a "pole" (a sharp prior move) and a "tight"
 counter-trend channel. How sharp, how tight and how long have no agreed numeric definition, so
 any rule here would be an invented threshold, which this codebase does not do (see
-`patterns.py`). They are a disclosed gap, not a guess. Rising and falling wedges, channels,
+`patterns.py`). They are a disclosed gap, not a guess. Channels,
 triple tops, rounded tops and cup-and-handle are likewise not defined.
 
 Bounded work: every shape considers only pivots within `_MAX_PATTERN_BARS` of its first one, so
@@ -151,6 +154,10 @@ _TRACK_WIDTHS = 2.0
 
 # Cap on the hits returned (most recent kept): a multi-year window completes dozens of shapes.
 _MAX_HITS = 12
+
+# Both boundaries slope the same way, so a wedge is the loosest consolidation: where it shares bars
+# with a triangle or rectangle, the flatter-sided, more specific shape keeps them.
+_WEDGES: frozenset[ChartPatternId] = frozenset({"rising_wedge", "falling_wedge"})
 
 _MIN_BARS = 2 * _CHART_PIVOT_SPAN + 1
 _MIN_TOUCHES = 2
@@ -559,6 +566,17 @@ def _side_line(side: Sequence[_Pivot]) -> _Line | None:
     return _Line(first[0], first[1], last[0], last[1])
 
 
+def _converging(d_up: float, d_low: float, tol: float) -> ChartPatternId | None:
+    """Name a shape whose boundaries close in on each other (`d_up < d_low`)."""
+    if d_up < -tol and d_low > tol:
+        return "symmetrical_triangle"
+    if d_up > tol:
+        return "rising_wedge"
+    if d_low < -tol:
+        return "falling_wedge"
+    return None
+
+
 def _classify(upper: _Line, lower: _Line, s: int, e: int, height: float) -> ChartPatternId | None:
     tol = _level_tol(height, upper.at(s))
     d_up = upper.at(e) - upper.at(s)
@@ -570,9 +588,7 @@ def _classify(upper: _Line, lower: _Line, s: int, e: int, height: float) -> Char
         return "ascending_triangle"
     if low_flat and d_up < -tol:
         return "descending_triangle"
-    if d_up < -tol and d_low > tol:
-        return "symmetrical_triangle"
-    return None
+    return _converging(d_up, d_low, tol) if d_up < d_low else None
 
 
 def _contained(
@@ -717,7 +733,7 @@ def _box_hits(
     for box in _non_overlapping(
         candidates,
         lambda b: (b.start, b.end),
-        lambda b: (-(b.end - b.start), -b.end),
+        lambda b: (b.pattern in _WEDGES, -(b.end - b.start), -b.end),
     ):
         outcome = _resolve_box(bars, box)
         if outcome is not None:

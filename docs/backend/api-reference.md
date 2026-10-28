@@ -158,7 +158,7 @@ check. See [modules/17](modules/17-devops-operations.md).
 
 | Method | Path | Purpose | Access |
 |--------|------|---------|--------|
-| GET | `/stock/technical-indicators?symbol=&market=&start_date=&end_date=` | Indicator series (MA/KD/MACD/RSI/Bollinger/volume) and descriptive `chart_patterns` (double top/bottom, head and shoulders, triangles, rectangle: status, pivots, lines, levels) behind the K-line chart; lives under `/stock/*`, **not** `/analytics/{symbol}/indicators` | public |
+| GET | `/stock/technical-indicators?symbol=&market=&start_date=&end_date=` | Indicator series (MA/KD/MACD/RSI/Bollinger/volume) and descriptive `chart_patterns` (double top/bottom, head and shoulders, triangles, wedges, rectangle: status, pivots, lines, levels) behind the K-line chart; lives under `/stock/*`, **not** `/analytics/{symbol}/indicators` | public |
 | GET | `/analytics/{symbol}/score?market=TW&profile=swing\|position` | **real** — cached lean 5-factor 多空 composite + 偏多/中性/偏空 + breakdown + regime/non-trading/normalization caveats; `found=false` if today's batch hasn't scored this symbol yet (cache-only, never live-computed) | public |
 | GET | `/analytics/{symbol}/summary` | AI 智能摘要 + 市場定位 + SWOT | Premium+ (teaser otherwise) |
 | GET | `/analytics/screener/factors?market=TW\|US\|ETF` | Bilingual catalog + **per-market `fields[]`** (unit/min/max/step/enum/preset-chips) + presets | public |

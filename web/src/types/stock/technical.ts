@@ -81,6 +81,8 @@ export const chartPatternIdSchema = z.enum([
   "ascending_triangle",
   "descending_triangle",
   "symmetrical_triangle",
+  "rising_wedge",
+  "falling_wedge",
   "rectangle",
 ]);
 

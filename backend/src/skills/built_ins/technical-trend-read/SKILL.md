@@ -2,7 +2,7 @@
 name: technical-trend-read
 version: 1.0.0
 description: 技術面與趨勢讀數 — 單一個股／ETF 的 MA、布林通道、KD、MACD 指標序列、支撐／壓力位與 K 線型態，以及六維度趨勢評分 (0-100)。純描述圖表與資料，絕非買賣訊號。
-triggers: [技術面, 技術分析, 均線, 布林通道, KD, MACD, 支撐, 壓力, 支撐壓力, K線型態, 黃金交叉, 死亡交叉, 趨勢評分, 趨勢強度, technical analysis, moving average, bollinger, macd, support resistance, candlestick pattern, 頭肩頂, 頭肩底, 雙重頂, 雙重底, M頭, W底, 三角形態, 箱型整理, chart pattern, head and shoulders, double top, double bottom, triangle, trend score]
+triggers: [技術面, 技術分析, 均線, 布林通道, KD, MACD, 支撐, 壓力, 支撐壓力, K線型態, 黃金交叉, 死亡交叉, 趨勢評分, 趨勢強度, technical analysis, moving average, bollinger, macd, support resistance, candlestick pattern, 頭肩頂, 頭肩底, 雙重頂, 雙重底, M頭, W底, 三角形態, 楔形, 箱型整理, chart pattern, head and shoulders, double top, double bottom, triangle, wedge, trend score]
 design_pattern: tool_wrapper
 inputs:
   stock_id:

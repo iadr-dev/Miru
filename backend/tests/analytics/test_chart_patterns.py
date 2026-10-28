@@ -237,6 +237,15 @@ class TestHeadAndShoulders:
 # -- triangles and rectangle -----------------------------------------------------------------
 
 _ASCENDING: Points = [(0, 95), (10, 110), (22, 98), (34, 110), (44, 102), (56, 110), (66, 106)]
+_RISING_WEDGE: Points = [
+    (0, 100),
+    (10, 112),
+    (22, 104.8),
+    (34, 115),
+    (46, 110.2),
+    (56, 117.4),
+    (66, 114.4),
+]
 
 
 @pytest.mark.parametrize(
@@ -248,6 +257,8 @@ _ASCENDING: Points = [(0, 95), (10, 110), (22, 98), (34, 110), (44, 102), (56, 1
             "symmetrical_triangle",
             [(0, 100), (8, 114), (20, 100), (32, 109), (44, 103), (50, 106), (56, 104.5)],
         ),
+        ("rising_wedge", _RISING_WEDGE),
+        ("falling_wedge", _mirror(_RISING_WEDGE)),
         (
             "rectangle",
             [(0, 100), (10, 110), (22, 100), (34, 110), (46, 100), (58, 110), (70, 100), (76, 104)],
@@ -343,12 +354,19 @@ def test_closing_back_through_the_opposite_boundary_fails(pattern: str, points: 
     assert hits[0].broken_side == "above"
 
 
-def test_wedge_rising_both_boundaries_is_not_named() -> None:
+def test_widening_rising_boundaries_are_not_named() -> None:
     pts: Points = [(0, 100), (10, 106), (22, 100), (34, 114), (46, 108), (58, 122), (66, 116)]
     names = {h.pattern for h in _scan(pts)}
 
     assert names.isdisjoint(
-        {"ascending_triangle", "descending_triangle", "symmetrical_triangle", "rectangle"}
+        {
+            "ascending_triangle",
+            "descending_triangle",
+            "symmetrical_triangle",
+            "rising_wedge",
+            "falling_wedge",
+            "rectangle",
+        }
     )
 
 
@@ -469,7 +487,9 @@ _FIXTURES = Path(__file__).parent / "fixtures"
 # neckline highs 1525 and 1515 are the highest highs between them, the first close above the
 # neckline plus 1% is 2025-12-29), 2330 double top (peaks 2535 / 2590 around the 2180 low, no close
 # under 2158 since), 3711 double top (251.5 / 248 around the 206 low; first close above 254.0 is
-# 2026-01-02) and 3711 head-and-shoulders top (first close above 729 plus 1% is 2026-10-05).
+# 2026-01-02), 3711 head-and-shoulders top (first close above 729 plus 1% is 2026-10-05), 3711
+# rising wedge (highs 669 / 700 / 729, lows 465 / 577) and 6669 rising wedge (highs 5250 / 5835,
+# lows 4250 / 4620 / 4865, first close above the upper line plus 1% is 2026-08-04).
 _EXPECTED: dict[str, list[tuple[str, str, str, str, str | None, str | None]]] = {
     "2330": [
         ("head_shoulders_bottom", "confirmed", "2025-10-23", "2025-12-18", "2025-12-29", None),
@@ -481,6 +501,7 @@ _EXPECTED: dict[str, list[tuple[str, str, str, str, str | None, str | None]]] = 
     "3711": [
         ("double_top", "failed", "2025-11-04", "2025-12-12", None, "2026-01-02"),
         ("symmetrical_triangle", "confirmed", "2026-02-05", "2026-03-23", "2026-03-26", None),
+        ("rising_wedge", "confirmed", "2026-05-20", "2026-07-20", "2026-07-28", None),
         ("head_shoulders_top", "failed", "2026-05-27", "2026-09-10", None, "2026-10-05"),
         ("ascending_triangle", "confirmed", "2026-07-30", "2026-09-15", "2026-09-22", None),
     ],
@@ -492,6 +513,7 @@ _EXPECTED: dict[str, list[tuple[str, str, str, str, str | None, str | None]]] = 
         ("head_shoulders_top", "failed", "2026-04-27", "2026-07-06", None, "2026-08-04"),
         ("head_shoulders_bottom", "failed", "2026-06-11", "2026-07-17", "2026-07-22", "2026-09-02"),
         ("double_top", "failed", "2026-05-25", "2026-07-24", None, "2026-08-04"),
+        ("rising_wedge", "failed", "2026-06-18", "2026-07-30", "2026-08-04", "2026-09-02"),
     ],
 }
 

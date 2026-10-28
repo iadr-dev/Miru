@@ -37,7 +37,7 @@ score and tag screener also consume them directly.
 | Volume | `obv`, `vwap` | `vwap` is a same-day `turnover/volume` proxy, not textbook intraday-cumulative VWAP |
 | Patterns (`patterns.py`) | doji, bullish/bearish engulfing, 多方炮/空方炮 (bullish/bearish cannon), V/倒V reversal, 紅三兵/黑三兵 — **9 patterns** | each a plain boolean ("completes as of the most recent bar?"); `scan_patterns` returns the hits |
 | Structure (`structure.py`) | `support_resistance_levels` — swing-high/low pivots (strict extremum over a ±3-bar window; `span=` widens it) | every pivot found, oldest first; no ranking |
-| Chart patterns (`chart_patterns.py`) | double top (M) / double bottom (W), head-and-shoulders top / inverse, ascending / descending / symmetrical triangle, rectangle — **8 shapes** | multi-bar geometry with a `forming → confirmed → failed` status; `scan_chart_patterns(bars, dates)` returns the hits (see §1a) |
+| Chart patterns (`chart_patterns.py`) | double top (M) / double bottom (W), head-and-shoulders top / inverse, ascending / descending / symmetrical triangle, rising / falling wedge, rectangle — **10 shapes** | multi-bar geometry with a `forming → confirmed → failed` status; `scan_chart_patterns(bars, dates)` returns the hits (see §1a) |
 
 - Series-returning indicators **left-pad with `None`** for the warm-up window — never a fabricated
   number standing in for "not computable yet". Bars must be supplied ascending by `trade_date`;
@@ -83,7 +83,7 @@ constant with its justification:
   probability.**
 - **Deliberately not built: flag / pennant.** They need a "pole" and a "tight" counter-trend
   channel, and how sharp / tight / long has no agreed numeric definition, so any rule would be an
-  invented threshold. Also not defined: wedges, channels, triple tops, rounded tops, cup-and-handle.
+  invented threshold. Also not defined: channels, triple tops, rounded tops, cup-and-handle.
 - Cost: bounded per start pivot (≤ `_MAX_PATTERN_BARS` lookahead), about 3-5 ms for 250 bars and
   about 15 ms for 3 years of bars. Surfaced as the additive `chart_patterns` field of
   `get_technical_indicators`; the K線 chart draws it under the 圖形型態 toggle with a list below.

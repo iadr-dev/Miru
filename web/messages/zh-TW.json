@@ -3526,6 +3526,8 @@
           "ascending_triangle": "上升三角形",
           "descending_triangle": "下降三角形",
           "symmetrical_triangle": "對稱三角形",
+          "rising_wedge": "上升楔形",
+          "falling_wedge": "下降楔形",
           "rectangle": "箱型整理"
         },
         "short": {
@@ -3536,6 +3538,8 @@
           "ascending_triangle": "上升三角",
           "descending_triangle": "下降三角",
           "symmetrical_triangle": "對稱三角",
+          "rising_wedge": "上楔",
+          "falling_wedge": "下楔",
           "rectangle": "箱型"
         },
         "status": {
