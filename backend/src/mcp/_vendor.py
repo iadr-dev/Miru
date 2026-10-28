@@ -87,10 +87,11 @@ def bootstrap_vendor_sdk() -> None:
         from fastmcp import FastMCP  # noqa: PLC0415 — must import inside the path-swapped block
 
         FastMCP(name="_miru_mcp_vendor_bootstrap_probe")
-        # The client halves are imported in the same window so they stay importable under the
-        # real SDK name afterwards: the test-suite (and any in-repo smoke script) drives this
-        # server with the official `mcp` client and `fastmcp.Client`, and a submodule that was
-        # not cached here would resolve against THIS package's `mcp` and fail.
+        # The client halves, and fastmcp modules that are otherwise imported lazily, are imported
+        # in the same window so they stay importable under the real SDK name afterwards: the
+        # test-suite (and any in-repo smoke script) drives this server with the official `mcp`
+        # client and `fastmcp.Client`, and a submodule that was not cached here would resolve
+        # against THIS package's `mcp` and fail.
         for client_module in (
             "fastmcp.client",
             "mcp.client.session",
@@ -98,6 +99,9 @@ def bootstrap_vendor_sdk() -> None:
             "mcp.client.auth",
             "mcp.shared.auth",
             "mcp.shared.exceptions",
+            # fastmcp >= 3.4.10 reaches for `mcp.types` from this middleware's module globals the
+            # first time a tool is called; imported lazily it would bind THIS package's `mcp`.
+            "fastmcp.server.middleware.tool_injection",
         ):
             importlib.import_module(client_module)
     finally:
