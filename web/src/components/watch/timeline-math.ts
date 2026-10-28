@@ -64,6 +64,23 @@ export function nextCheck(nowMinutes: number): { slot: string; inMinutes: number
   return { slot: hhmm(next), inMinutes: next - nowMinutes };
 }
 
+/** A check normally lands within a minute or two of its slot. Two missed slots in a row (25
+ * minutes since the last landed one, or since the open when none has) mean the checks have
+ * stopped - the quote source is down, or the job is not running. */
+const CHECKS_STALLED_AFTER = 25;
+
+/** Whether the session's checks should be landing and have stopped. Only judged while the
+ * session is running on today's list; before the open and after the close nothing is due. */
+export function checksStalled({
+  live,
+  minutes,
+  lastSlot,
+}: Readonly<{ live: boolean; minutes: number; lastSlot: string | null }>): boolean {
+  if (!live || minutes < SESSION_START || minutes > SESSION_END + SLOT_MINUTES) return false;
+  const since = lastSlot === null ? SESSION_START : minutesOf(lastSlot);
+  return minutes - since > CHECKS_STALLED_AFTER;
+}
+
 /** Taipei's date (YYYY-MM-DD) and minutes since midnight for `at`. */
 export function taipeiClock(at: Date): { date: string; minutes: number } {
   const parts = new Intl.DateTimeFormat("en-CA", {

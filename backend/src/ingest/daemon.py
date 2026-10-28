@@ -103,6 +103,7 @@ from sources.exchange_roster import ExchangeRosterAdapter
 from sources.exchange_whole_market import ExchangeWholeMarketAdapter
 from sources.finmind import FinMindAdapter, FinMindQuotaRefusedError, build_finmind_quota
 from sources.fred import FredAdapter
+from sources.twse_mis import fetch_watchlist_quotes
 from sources.yfinance import YFinanceAdapter
 
 logger = structlog.get_logger(__name__)
@@ -769,6 +770,7 @@ async def build_ingest_context_from_settings(settings: Settings | None = None) -
         filings=CompanyFilingsAdapter(),
         roster=ExchangeRosterAdapter(),
         derived=DerivedMarketValueSource(store, CompanySharesAdapter()),
+        intraday_quotes=fetch_watchlist_quotes,
         data_update_publisher=resolve_data_update_publisher(resolved),
     )
 

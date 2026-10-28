@@ -773,9 +773,17 @@ store and writes `strategy_watchlist`, one row per `(symbol, strategy)`:
   win-rate figure is shown to users (§7).
 
 **Stage 2, `strategy_intraday` (09:00–13:30 every 10 min, `ingest/jobs/strategy_intraday.py` +
-`intraday.py`).** One whole-market Sponsor snapshot per slot; each watchlist row gets a hit with
-every condition's observed and required value, appended to the day's `strategy_hits` partition
-(re-running a slot replaces it). Triggers per strategy:
+`intraday.py`).** One quote read per slot; each watchlist row gets a hit with every condition's
+observed and required value, appended to the day's `strategy_hits` partition (re-running a slot
+replaces it). Quote sources, in order: the free TWSE MIS feed (`sources/twse_mis.py`
+`fetch_watchlist_quotes`: just the watchlist's codes, listed and OTC, plus the 加權指數, ~5 s
+delayed, `ctx.intraday_quotes`), then FinMind's whole-market `taiwan_stock_tick_snapshot` (Sponsor)
+only when MIS cannot be read; a readable MIS feed with no trade yet today is a skipped slot, not a
+fallback. The journal detail says which one served the slot ("via twse_mis" / "via finmind"). From
+MIS the fields are derived: change = last trade vs previous close; 量比 = the day's volume per
+elapsed session minute against the 20-day average per session minute (cumulative volume only);
+the day's average price is unknown, so the `above_average_price` guard stays open; the market
+filter uses the index change instead of the median of every stock. Triggers per strategy:
 
 | Strategy | Triggers (all must hold) |
 |---|---|
@@ -784,10 +792,13 @@ every condition's observed and required value, appended to the day's `strategy_h
 | `ad_divergence` | price < `low_20d` · RSI14 above `rsi_at_low` · A/D above its 20-day low |
 
 `all_met` = every trigger holds. `alertable` additionally needs the same pair `all_met` on the
-previous slot (`confirmed`) and every guard: not before 09:30, market median change > −1%, price at
+previous slot (`confirmed`) and every guard: not before 09:30, market change > −1% (median of the whole-market snapshot; the 加權指數 change on the free feed), price at
 or above the day's average price (not for divergence), not within 1% of 漲停 (squeeze). Rows that are
 not alertable are the near-miss log: stored and shown, never sent. The snapshot must be dated today,
 otherwise the slot is skipped.
+The 今日流程 timeline marks the checks as paused ("盤中檢查暫停") when, during the session on today's
+list, no slot has landed for 25 minutes (two missed slots) - whatever the cause (both sources down,
+ingest not running) - instead of reading as "not started".
 
 **Close confirmation, `strategy_close_check` (18:00, after `price_eod`).** For the breakout setups
 (`volatility_squeeze`, `chip_accumulation`, `momentum_flag`) it compares today's close with the

@@ -213,13 +213,18 @@ def evaluate_slot(
     *,
     slot: time_,
     previously_met: frozenset[tuple[str, str]],
+    market_pct: float | Literal["median"] | None = "median",
 ) -> list[Hit]:
     """One hit per watchlist row whose stock is in the snapshot with a price.
+
+    The market filter is the median change of the snapshot ("median", right when the snapshot
+    covers the whole market). A snapshot of just the watchlist is no market, so that caller passes
+    the index change as `market_pct` instead (`None` leaves the filter open).
 
     `previously_met` holds the `(symbol, strategy)` pairs that were `all_met` on the previous
     slot today; a pair met twice in a row is `confirmed`."""
     quotes = {row["symbol"]: row for row in snapshot if isinstance(row.get("symbol"), str)}
-    market = market_change(snapshot)
+    market = market_change(snapshot) if market_pct == "median" else market_pct
     hits: list[Hit] = []
     for watch in watchlist:
         symbol = watch.get("symbol")

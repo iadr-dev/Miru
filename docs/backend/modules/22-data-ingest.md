@@ -574,7 +574,7 @@ retried in a tight loop; the next window's pass or an explicit backfill retries)
 |---|---|---|---|
 | `stock_info` | 06:00 | daily | `TaiwanStockInfo` roster (symbol universe, industry classification): TWSE ISIN lists first, FinMind fallback (§1d); not re-fetched on a date that already holds it |
 | `strategy_watchlist` | 08:00 | daily | derived: 策略盯盤 pre-market watchlist with trigger levels (module 20) |
-| `strategy_intraday` | 09:00–13:30, every 10 min | intraday | 策略盯盤 check: one whole-market `taiwan_stock_tick_snapshot` (FinMind Sponsor) per slot vs the watchlist → `strategy_hits` (module 20) |
+| `strategy_intraday` | 09:00–13:30, every 10 min | intraday | 策略盯盤 check: the watchlist's quotes from the free TWSE MIS feed per slot (FinMind Sponsor `taiwan_stock_tick_snapshot` only when MIS cannot be read) vs the watchlist → `strategy_hits` (module 20) |
 | `shareholding_distribution` | 06:05 | weekly | 集保股權分散/分級 `TaiwanStockHoldingSharesPer` |
 | `price_eod` | 17:40 | daily | EOD OHLCV `TaiwanStockPrice` |
 | `margin_short` | 17:40 | daily | 融資融券 `TaiwanStockMarginPurchaseShortSale` |

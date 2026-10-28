@@ -7,7 +7,9 @@ no behavior of its own.
 from __future__ import annotations
 
 from calendar.trading_days import TradingDayCalendar
+from collections.abc import Awaitable, Sequence
 from dataclasses import dataclass, field
+from typing import Protocol
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -18,7 +20,15 @@ from ingest.store import ParquetStore
 from schemas.enums import Market, TLSPolicy
 from sources.base import WholeMarketSource
 from sources.finmind import FinMindAdapter
+from sources.twse_mis import MisQuotes
 from sources.yfinance import YFinanceAdapter
+
+
+# Free exchange quotes for a list of codes (`sources.twse_mis.fetch_watchlist_quotes`).
+class IntradayQuotes(Protocol):
+    def __call__(
+        self, symbols: Sequence[str], *, tls_policy: TLSPolicy
+    ) -> Awaitable[MisQuotes]: ...
 
 
 @dataclass(frozen=True)
@@ -66,6 +76,9 @@ class IngestContext:
     # Market value and its weights derived from the stored closes and the free shares-outstanding
     # snapshot (`ingest/jobs/market_weight.py`), asked before FinMind for those two datasets.
     derived: WholeMarketSource | None = None
+    # The free TWSE MIS quote feed for the 策略盯盤 intraday check, asked BEFORE the FinMind
+    # whole-market snapshot (a Sponsor dataset). `None` leaves FinMind as the only source.
+    intraday_quotes: IntradayQuotes | None = None
 
 
-__all__ = ["IngestContext"]
+__all__ = ["IngestContext", "IntradayQuotes"]

@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { PipelineStep, PipelineStepKey } from "@/components/watch/run-status";
 import {
+  checksStalled,
   hhmm,
   minutesOf,
   nextCheck,
@@ -86,15 +87,20 @@ function buildViews(
   steps: readonly PipelineStep[],
   colors: Record<PipelineStepKey, string>,
   runDate: string | null,
-  inSession: boolean,
+  watch: Readonly<{ inSession: boolean; stalledSince: string | null | undefined }>,
 ): StepView[] {
-  return steps.map((step) => ({
-    ...step,
-    position: positionOf(STEP_MINUTES[step.key]),
-    color: colors[step.key],
-    running: step.key === "watch" && inSession,
-    stale: isStale(step, runDate),
-  }));
+  return steps.map((step) => {
+    // `undefined` = the checks are landing; `null` = stalled with no check yet today.
+    const stalled = step.key === "watch" && watch.stalledSince !== undefined;
+    return {
+      ...step,
+      note: stalled ? { kind: "stalled", time: watch.stalledSince ?? null } : step.note,
+      position: positionOf(STEP_MINUTES[step.key]),
+      color: colors[step.key],
+      running: step.key === "watch" && watch.inSession && !stalled,
+      stale: stalled || isStale(step, runDate),
+    };
+  });
 }
 
 function lastDoneIndex(views: readonly StepView[]): number {
@@ -151,7 +157,11 @@ export function PipelineTimeline({
   const [open, setOpen] = useState<PipelineStepKey | null>(null);
 
   const inSession = live && clock.minutes >= SESSION_START && clock.minutes <= SESSION_END;
-  const views = buildViews(steps, colors, data.run_date, inSession);
+  const stalled = checksStalled({ live, minutes: clock.minutes, lastSlot: data.last_slot });
+  const views = buildViews(steps, colors, data.run_date, {
+    inSession,
+    stalledSince: stalled ? data.last_slot : undefined,
+  });
   const lastDone = lastDoneIndex(views);
   const next = nextPending(views, lastDone);
   const nowPosition = live ? positionOf(clock.minutes) : null;
@@ -181,7 +191,7 @@ export function PipelineTimeline({
           <div className="relative h-[112px]">
             <SessionBand left={sessionLeft} right={sessionRight} color={colors.watch} />
             <SessionSweep
-              inSession={inSession}
+              inSession={inSession && !stalled}
               nowPosition={nowPosition}
               left={sessionLeft}
               color={colors.watch}
@@ -618,6 +628,9 @@ function StepNote({ view, wrap = false }: Readonly<{ view: StepView; wrap?: bool
     case "notStarted":
       text = t("pipeline.notStarted");
       break;
+    case "stalled":
+      text = t("pipeline.stalled");
+      break;
     case "dataThrough":
       text = t("pipeline.dataThrough", { date: note.date });
       break;
@@ -666,7 +679,15 @@ function StepDetails({
       t("pipeline.closeCount", { count: data.events.filter((e) => e.kind === "close").length }),
     );
   }
-  if (view.stale) lines.push(t("pipeline.stale"));
+  if (view.note?.kind === "stalled") {
+    lines.push(
+      view.note.time === null
+        ? t("pipeline.stalledNone")
+        : t("pipeline.stalledDetail", { time: view.note.time }),
+    );
+  } else if (view.stale) {
+    lines.push(t("pipeline.stale"));
+  }
   return (
     <>
       <p className="mb-1 font-medium text-[12.5px] text-[var(--text)]">

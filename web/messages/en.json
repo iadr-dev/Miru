@@ -4093,6 +4093,9 @@
       "close": "18:00 close check",
       "lastCheck": "Last check {time}",
       "notStarted": "Not started",
+      "stalled": "Intraday checks paused",
+      "stalledDetail": "Intraday quotes are unavailable right now; the last check was at {time}.",
+      "stalledNone": "Intraday quotes are unavailable right now; no check has completed today.",
       "label": "Today's run",
       "prices": "17:40 prices & margin",
       "flows": "20:10 institutional flows",
@@ -4111,7 +4114,7 @@
       "status": "Status",
       "desc": {
         "screen": "Builds today's list from the last session's prices, institutional flows and holdings, with each stock's trigger levels.",
-        "watch": "Every 10 minutes in the session, checks the list against a whole-market live snapshot; alerts after two checks in a row.",
+        "watch": "Every 10 minutes in the session, checks the list against live exchange quotes; alerts after two checks in a row.",
         "prices": "After the close, adds the day's prices and margin balances for the close check and tomorrow's screen.",
         "close": "Confirms breakouts on the closing price and volume, with its own alert.",
         "flows": "Adds institutional net buying for tomorrow's screen (streaks and chip signals)."

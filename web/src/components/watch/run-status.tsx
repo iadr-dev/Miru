@@ -15,6 +15,7 @@ export type PipelineStep = {
     | { kind: "asOf"; date: string }
     | { kind: "lastCheck"; time: string }
     | { kind: "notStarted" }
+    | { kind: "stalled"; time: string | null }
     | { kind: "dataThrough"; date: string }
     | { kind: "noData" }
     | null;

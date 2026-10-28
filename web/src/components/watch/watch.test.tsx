@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { PipelineTimeline } from "@/components/watch/pipeline-timeline";
 import { pipelineSteps } from "@/components/watch/run-status";
 import {
+  checksStalled,
   minutesOf,
   nextCheck,
   positionOf,
@@ -238,6 +239,28 @@ describe("PipelineTimeline", () => {
     expect(list[0]?.querySelector("[id^='watch-step-']")).not.toBeNull();
     fireEvent.click(first as HTMLElement);
     expect(list[0]?.querySelector("[id^='watch-step-']")).toBeNull();
+  });
+});
+
+describe("checksStalled", () => {
+  const base = { live: true, lastSlot: "10:00" };
+  it("is quiet while the checks keep landing", () => {
+    expect(checksStalled({ ...base, minutes: minutesOf("10:05") })).toBe(false);
+    expect(checksStalled({ ...base, minutes: minutesOf("10:25") })).toBe(false);
+  });
+  it("trips after two missed slots", () => {
+    expect(checksStalled({ ...base, minutes: minutesOf("10:26") })).toBe(true);
+  });
+  it("counts from the open when no check has landed", () => {
+    expect(checksStalled({ live: true, minutes: minutesOf("09:20"), lastSlot: null })).toBe(false);
+    expect(checksStalled({ live: true, minutes: minutesOf("09:30"), lastSlot: null })).toBe(true);
+  });
+  it("judges nothing before the open, long after the close or on a past day's list", () => {
+    expect(checksStalled({ live: true, minutes: minutesOf("08:30"), lastSlot: null })).toBe(false);
+    expect(checksStalled({ live: true, minutes: minutesOf("17:40"), lastSlot: "13:30" })).toBe(
+      false,
+    );
+    expect(checksStalled({ ...base, live: false, minutes: minutesOf("10:40") })).toBe(false);
   });
 });
 
