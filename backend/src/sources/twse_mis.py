@@ -221,6 +221,17 @@ def parse_quote(row: dict[str, object]) -> MisQuote | None:
     )
 
 
+async def _get_once_more_on_timeout(
+    client: httpx.AsyncClient, params: dict[str, str]
+) -> httpx.Response:
+    """One GET, repeated once straight away if it times out: the endpoint occasionally stalls on
+    a single request, and a slot is only 10 minutes long. No delay, no further attempts."""
+    try:
+        return await client.get(_BASE_URL, params=params)
+    except httpx.TimeoutException:
+        return await client.get(_BASE_URL, params=params)
+
+
 async def fetch_watchlist_quotes(symbols: Sequence[str], *, tls_policy: TLSPolicy) -> MisQuotes:
     """Quotes for `symbols` (listed and OTC) plus the index: a bounded handful of GETs, one per 40
     codes, in order - no loop on a timer, no retry, no stream. A transport error on any request
@@ -235,8 +246,8 @@ async def fetch_watchlist_quotes(symbols: Sequence[str], *, tls_policy: TLSPolic
                 ex_ch = [f"{prefix}_{c}.tw" for c in chunk for prefix in (_TSE_PREFIX, _OTC_PREFIX)]
                 if position == 0:
                     ex_ch.append(f"{_TSE_PREFIX}_{_INDEX_CODE}.tw")
-                response = await client.get(
-                    _BASE_URL, params={"ex_ch": "|".join(ex_ch), "json": "1", "delay": "0"}
+                response = await _get_once_more_on_timeout(
+                    client, {"ex_ch": "|".join(ex_ch), "json": "1", "delay": "0"}
                 )
                 response.raise_for_status()
                 body: object = response.json()
