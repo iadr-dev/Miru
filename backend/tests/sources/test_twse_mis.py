@@ -222,3 +222,47 @@ async def test_watchlist_fetch_transport_error_is_unreachable_not_empty(
 
     assert result.quotes == ()
     assert result.health.status is HealthStatus.UNREACHABLE
+
+
+async def test_watchlist_fetch_repeats_a_timed_out_request_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    attempts = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise httpx.ReadTimeout("slow", request=request)
+        return httpx.Response(200, json={"msgArray": [_row("2330", trade_z="102.5000")]})
+
+    def factory(**_kwargs: object) -> httpx.AsyncClient:
+        return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+    monkeypatch.setattr(twse_mis_module, "build_async_client", factory)
+
+    result = await twse_mis_module.fetch_watchlist_quotes(["2330"], tls_policy=TLSPolicy.STRICT)
+
+    assert attempts == 2
+    assert result.health.status is HealthStatus.OK
+
+
+async def test_watchlist_fetch_gives_up_after_the_second_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    attempts = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        raise httpx.ReadTimeout("slow", request=request)
+
+    def factory(**_kwargs: object) -> httpx.AsyncClient:
+        return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+    monkeypatch.setattr(twse_mis_module, "build_async_client", factory)
+
+    result = await twse_mis_module.fetch_watchlist_quotes(["2330"], tls_policy=TLSPolicy.STRICT)
+
+    assert attempts == 2
+    assert result.health.status is HealthStatus.UNREACHABLE
