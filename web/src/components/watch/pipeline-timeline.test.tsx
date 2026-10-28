@@ -145,6 +145,28 @@ describe("PipelineTimeline rendering", () => {
   });
 });
 
+describe("PipelineTimeline stalled checks", () => {
+  it("says the intraday checks paused, and stops the sweep, when slots stop landing", () => {
+    at("2026-10-16T02:40:00Z"); // 10:40 Taipei, last check 10:00
+    const c = mount(BASE);
+    expect(c.textContent).toContain("盤中檢查暫停");
+    expect(c.querySelector(".watch-scan")).toBeNull();
+    expect(c.querySelector(".watch-breathe")).toBeNull();
+  });
+
+  it("an empty morning is not 'not started' once the first slots are missed", () => {
+    at("2026-10-16T01:40:00Z"); // 09:40 Taipei, nothing landed
+    const c = mount({ ...BASE, last_slot: null, slots: [] });
+    expect(c.textContent).toContain("盤中檢查暫停");
+    expect(c.textContent).not.toContain("尚未開始");
+  });
+
+  it("stays plain while the checks are landing", () => {
+    at("2026-10-16T02:05:00Z"); // 10:05 Taipei, last check 10:00
+    expect(mount(BASE).textContent).not.toContain("盤中檢查暫停");
+  });
+});
+
 describe("PipelineTimeline interaction", () => {
   const richer: StrategyWatchToday = {
     ...BASE,

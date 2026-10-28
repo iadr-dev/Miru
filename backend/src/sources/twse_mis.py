@@ -16,6 +16,8 @@ subscription tier (governance: "real-time" is a label, not a guarantee).
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import cast
 
@@ -36,6 +38,8 @@ _BASE_URL = "https://mis.twse.com.tw/stock/api/getStockInfo.jsp"
 # listed + OTC, one snapshot per call.
 _TSE_PREFIX = "tse"
 _OTC_PREFIX = "otc"
+
+_SHARES_PER_LOT = 1000  # MIS reports volume in lots (張)
 
 _CAVEAT = (
     "TWSE MIS is a delayed, browser-observed snapshot (commonly several seconds behind the "
@@ -128,7 +132,7 @@ class TwseMisAdapter:
             "symbol": sym.id,
             "market": sym.market.value,
             "name": match.get("n"),
-            "last_price": _to_float(match.get("z")),
+            "last_price": _last_trade_price(match) or 0.0,
             "open": _to_float(match.get("o")),
             "high": _to_float(match.get("h")),
             "low": _to_float(match.get("l")),
@@ -146,6 +150,132 @@ class TwseMisAdapter:
         return _result(
             payload={"snapshot": snapshot}, health=SourceHealth(status=HealthStatus.OK, detail="ok")
         )
+
+
+# -- watchlist batch (策略盯盤 intraday) -------------------------------------------------------
+
+# One request carries both exchange prefixes for each code (the exchange of a code is not known
+# here; the wrong prefix returns an empty stub row, dropped below), so 40 codes is 80 `ex_ch`
+# items - well inside what the endpoint accepts in one GET.
+_CODES_PER_REQUEST = 40
+_INDEX_CODE = "t00"  # 加權指數, asked with the first request so the market filter has a reference
+
+
+@dataclass(frozen=True)
+class MisQuote:
+    """One stock's intraday state as the exchange reports it. `last` is `None` before the first
+    trade of the day; `volume_shares` is the cumulative day volume (MIS reports lots of 1,000)."""
+
+    symbol: str
+    last: float | None
+    prev_close: float | None
+    open: float | None
+    high: float | None
+    low: float | None
+    volume_shares: int
+    trade_date: str  # YYYY-MM-DD
+    observed_at: str  # HH:MM:SS, Taipei
+
+
+@dataclass(frozen=True)
+class MisQuotes:
+    quotes: tuple[MisQuote, ...]
+    index: MisQuote | None
+    health: SourceHealth
+
+
+def _last_trade_price(row: dict[str, object]) -> float | None:
+    """The last trade price. Between ticks the top-level `z` is "-" and the price lives in the
+    nested `trade` object; before the first trade of the day neither is a number."""
+    trade = row.get("trade")
+    nested = cast("dict[str, object]", trade).get("z") if isinstance(trade, dict) else None
+    for raw in (row.get("z"), nested):
+        value = _to_float(raw)
+        if value > 0:
+            return value
+    return None
+
+
+def _positive(raw: object) -> float | None:
+    value = _to_float(raw)
+    return value if value > 0 else None
+
+
+def parse_quote(row: dict[str, object]) -> MisQuote | None:
+    """A `MisQuote` from one `msgArray` row, or `None` for the empty stub the endpoint returns for
+    a wrong exchange prefix or an unknown code (no previous close)."""
+    code, prev_close = row.get("c"), _positive(row.get("y"))
+    raw_date = str(row.get("d") or "")
+    if not isinstance(code, str) or prev_close is None or len(raw_date) != 8:  # noqa: PLR2004 - YYYYMMDD
+        return None
+    return MisQuote(
+        symbol=code,
+        last=_last_trade_price(row),
+        prev_close=prev_close,
+        open=_positive(row.get("o")),
+        high=_positive(row.get("h")),
+        low=_positive(row.get("l")),
+        volume_shares=_to_int(row.get("v")) * _SHARES_PER_LOT,
+        trade_date=f"{raw_date[:4]}-{raw_date[4:6]}-{raw_date[6:]}",
+        observed_at=str(row.get("t") or ""),
+    )
+
+
+async def fetch_watchlist_quotes(symbols: Sequence[str], *, tls_policy: TLSPolicy) -> MisQuotes:
+    """Quotes for `symbols` (listed and OTC) plus the index: a bounded handful of GETs, one per 40
+    codes, in order - no loop on a timer, no retry, no stream. A transport error on any request
+    makes the whole batch `unreachable` (a half-read watchlist would skew every comparison)."""
+    codes = sorted({code for code in symbols if code})
+    chunks = [codes[i : i + _CODES_PER_REQUEST] for i in range(0, len(codes), _CODES_PER_REQUEST)]
+    quotes: list[MisQuote] = []
+    index: MisQuote | None = None
+    try:
+        async with build_async_client(tls_policy=tls_policy) as client:
+            for position, chunk in enumerate(chunks or [[]]):
+                ex_ch = [f"{prefix}_{c}.tw" for c in chunk for prefix in (_TSE_PREFIX, _OTC_PREFIX)]
+                if position == 0:
+                    ex_ch.append(f"{_TSE_PREFIX}_{_INDEX_CODE}.tw")
+                response = await client.get(
+                    _BASE_URL, params={"ex_ch": "|".join(ex_ch), "json": "1", "delay": "0"}
+                )
+                response.raise_for_status()
+                body: object = response.json()
+                rows = (
+                    cast("dict[str, object]", body).get("msgArray")
+                    if isinstance(body, dict)
+                    else None
+                )
+                if not isinstance(rows, list):
+                    raise ValueError("TWSE MIS response has no msgArray")
+                for raw in cast("list[object]", rows):
+                    quote = (
+                        parse_quote(cast("dict[str, object]", raw))
+                        if isinstance(raw, dict)
+                        else None
+                    )
+                    if quote is None:
+                        continue
+                    if quote.symbol == _INDEX_CODE:
+                        index = quote
+                    else:
+                        quotes.append(quote)
+    except (httpx.HTTPError, ValueError) as exc:
+        return MisQuotes(
+            quotes=(),
+            index=None,
+            health=SourceHealth(
+                status=HealthStatus.UNREACHABLE, detail=f"transport error: {type(exc).__name__}"
+            ),
+        )
+    if not quotes:
+        return MisQuotes(
+            quotes=(),
+            index=index,
+            health=SourceHealth(status=HealthStatus.STALE, detail="no quote returned for the list"),
+        )
+    return MisQuotes(
+        quotes=tuple(quotes), index=index, health=SourceHealth(status=HealthStatus.OK, detail="ok")
+    )
 
 
 def _to_float(value: object) -> float:
@@ -183,4 +313,4 @@ def _result(*, payload: dict[str, object], health: SourceHealth) -> SourceResult
     )
 
 
-__all__ = ["TwseMisAdapter"]
+__all__ = ["MisQuote", "MisQuotes", "TwseMisAdapter", "fetch_watchlist_quotes", "parse_quote"]
