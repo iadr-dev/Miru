@@ -44,6 +44,9 @@ class DeliveryRecipient(BaseModel):
     email_address: str | None = None
     # One-click unsubscribe link for the email channel (None when no HTTPS public URL is set).
     unsubscribe_url: str | None = None
+    # The app's public HTTPS origin, for a channel that can carry an "open in the app" button
+    # (None when only a local/plain-HTTP address is configured).
+    app_url: str | None = None
     device_tokens: tuple[str, ...] = Field(default_factory=tuple)
 
 

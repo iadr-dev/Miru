@@ -338,6 +338,56 @@ def test_a_long_message_without_a_footer_still_fits() -> None:
     assert text.endswith(_POINTER)
 
 
+_APP = "https://miru.example"
+
+
+def _telegram_request_json(
+    deep_link: dict[str, object], *, app_url: str | None = _APP
+) -> dict[str, object]:
+    channel = TelegramChannel(Settings(telegram_bot_token="bot-tok"))
+    request = channel.build_request(
+        DeliveryNotification(notification_id="n1", title="t", body="b", deep_link=deep_link),
+        DeliveryRecipient(user_id="u1", telegram_chat_id="12345", app_url=app_url),
+    )
+    return request.json
+
+
+@pytest.mark.parametrize(
+    ("deep_link", "path"),
+    [
+        ({"route": "stock", "symbol": "2330"}, "/stock/2330"),
+        ({"route": "thread", "thread_id": "t-1"}, "/chat?thread=t-1"),
+        ({"route": "watch", "symbol": "2330", "strategy": "x"}, "/watch"),
+        ({"route": "notifications"}, "/settings/alerts"),
+        ({}, "/settings/alerts"),
+    ],
+)
+def test_telegram_carries_one_open_in_miru_button_for_the_deep_link(
+    deep_link: dict[str, object], path: str
+) -> None:
+    payload = _telegram_request_json(deep_link)
+    assert payload["reply_markup"] == {
+        "inline_keyboard": [[{"text": "在 Miru 開啟", "url": f"{_APP}{path}"}]]
+    }
+    assert "parse_mode" not in payload
+
+
+def test_the_button_url_is_built_from_the_base_without_a_double_slash() -> None:
+    payload = _telegram_request_json({"route": "stock", "symbol": "2330"}, app_url=f"{_APP}/")
+    markup = payload["reply_markup"]
+    assert markup == {"inline_keyboard": [[{"text": "在 Miru 開啟", "url": f"{_APP}/stock/2330"}]]}
+
+
+def test_a_symbol_in_the_button_url_is_escaped() -> None:
+    payload = _telegram_request_json({"route": "stock", "symbol": "a/b?c"})
+    assert "a%2Fb%3Fc" in str(payload["reply_markup"])
+
+
+def test_without_a_public_https_app_url_telegram_sends_no_keyboard() -> None:
+    payload = _telegram_request_json({"route": "stock", "symbol": "2330"}, app_url=None)
+    assert "reply_markup" not in payload
+
+
 _BLOCKED = "Forbidden: bot was blocked by the user"
 _CHAT_GONE = "Bad Request: chat not found"
 

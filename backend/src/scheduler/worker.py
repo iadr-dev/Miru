@@ -170,6 +170,8 @@ class SchedulerContext:
     # Public HTTPS base URL and signing secret for the one-click email unsubscribe link.
     public_base_url: str | None = None
     link_secret: str | None = None
+    # The web app's public base URL; a channel only gets it when it is HTTPS.
+    app_base_url: str | None = None
     # Needed to resolve the owner's own LLM key (BYOK); None runs every job on the platform key.
     settings: Settings | None = None
 
@@ -1026,9 +1028,14 @@ class SchedulerWorker:
             ),
             device_tokens=tuple(d.token for d in await store.list_devices(user_id=user.id)),
             unsubscribe_url=self._unsubscribe_url(user),
+            app_url=self._app_url(),
             line_user_id=await store.linked_line_user_id(user_id=user.id),
             telegram_chat_id=await store.channel_address(user_id=user.id, channel="telegram"),
         )
+
+    def _app_url(self) -> str | None:
+        base = self._ctx.app_base_url
+        return base.rstrip("/") if base and base.startswith("https://") else None
 
     def _unsubscribe_url(self, user: User) -> str | None:
         if not (user.email and self._ctx.public_base_url and self._ctx.link_secret):
@@ -1581,6 +1588,7 @@ def build_scheduler_worker(  # noqa: PLR0913 — one seam per injected collabora
     brief_tool: Tool | None = None,
     public_base_url: str | None = None,
     link_secret: str | None = None,
+    app_base_url: str | None = None,
     settings: Settings | None = None,
 ) -> SchedulerWorker:
     """Assemble a worker with the single-process defaults (always-leader). The quota gate defaults
@@ -1601,6 +1609,7 @@ def build_scheduler_worker(  # noqa: PLR0913 — one seam per injected collabora
             brief_tool=brief_tool,
             public_base_url=public_base_url,
             link_secret=link_secret,
+            app_base_url=app_base_url,
             settings=settings,
         )
     )

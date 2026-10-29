@@ -162,6 +162,7 @@ _CHAT_NOT_FOUND = "chat not found"
 
 
 _TELEGRAM_MAX_UNITS = 4096
+_OPEN_IN_APP = "在 Miru 開啟"
 _TRIM_POINTER = "…（完整內容請見 Miru）"
 
 
@@ -230,14 +231,21 @@ class TelegramChannel:
     ) -> OutboundRequest:
         if recipient.telegram_chat_id is None:
             raise ChannelNotConfiguredError("no Telegram chat id for recipient")
+        payload: dict[str, object] = {
+            "chat_id": recipient.telegram_chat_id,
+            "text": _fit_telegram(_text(notification)),
+        }
+        if recipient.app_url is not None:
+            button = {
+                "text": _OPEN_IN_APP,
+                "url": f"{recipient.app_url.rstrip('/')}{_push_url(notification.deep_link)}",
+            }
+            payload["reply_markup"] = {"inline_keyboard": [[button]]}
         return OutboundRequest(
             method="POST",
             url=f"https://api.telegram.org/bot{self._token or ''}/sendMessage",
             headers={"Content-Type": _JSON_CONTENT_TYPE},
-            json={
-                "chat_id": recipient.telegram_chat_id,
-                "text": _fit_telegram(_text(notification)),
-            },
+            json=payload,
         )
 
     async def send(
@@ -401,7 +409,7 @@ def _parse_subscription(token: str) -> dict[str, object] | None:
     return None
 
 
-_LINK_ROUTES = {"stock": "/stock/{detail}", "thread": "/chat?thread={detail}"}
+_LINK_ROUTES = {"stock": "/stock/{detail}", "thread": "/chat?thread={detail}", "watch": "/watch"}
 
 
 def _push_url(deep_link: dict[str, object]) -> str:
@@ -409,7 +417,9 @@ def _push_url(deep_link: dict[str, object]) -> str:
     route = deep_link.get("route")
     detail = deep_link.get("symbol") or deep_link.get("thread_id")
     template = _LINK_ROUTES.get(str(route))
-    if template and detail:
+    if template is not None and "{detail}" not in template:
+        return template
+    if template is not None and detail:
         return template.format(detail=quote(str(detail), safe=""))
     return "/settings/alerts"
 
