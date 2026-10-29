@@ -37,6 +37,7 @@ from typing import cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import structlog
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from accounts.byok import ByokKeyRequiredError, resolve_byok_override
@@ -65,6 +66,7 @@ from scheduler.delivery.base import (
     DeliveryReceipt,
     DeliveryRecipient,
 )
+from scheduler.delivery.layout import Layout
 from scheduler.evaluator import Evaluation, SnapshotReader, SnapshotView, evaluate_condition
 from scheduler.models import (
     AlertPreference,
@@ -85,9 +87,11 @@ from scheduler.store import SqlAlchemySchedulerStore
 from scheduler.strategy_messages import (
     first_alertable,
     hit_alert,
+    hit_alert_layout,
     in_scope,
     morning_list,
-    safe_body,
+    morning_list_layout,
+    safe_message,
 )
 from scheduler.strategy_store import STRATEGY_SOURCE_PREFIX, StrategySubscriptionStore
 from scheduler.templates import (
@@ -615,6 +619,7 @@ class SchedulerWorker:
         trigger_date: date,
         deep_link: dict[str, object],
         hold_external: bool = False,
+        layout: Layout | None = None,
     ) -> None:
         """Persist the in-app record (the dedupe guard, and the inbox entry) then route to each
         configured external channel. A redelivery of the same `(source_id, trigger_date, channel)`
@@ -622,7 +627,10 @@ class SchedulerWorker:
 
         During the user's quiet hours (`hold_external`) the inbox entry is still written at once
         (it is silent) but external channels are only recorded as held; `release_held` sends them
-        as one digest once the window closes."""
+        as one digest once the window closes.
+
+        `layout` is the structured twin of `body` (already scanned with it); only the Telegram row
+        stores it, so a retry sends the same layout and the inbox payload stays small."""
         selected = _channel_order(channels)
         recipient = await self._recipient_for(store, user)
         for channel_kind in selected:
@@ -634,7 +642,13 @@ class SchedulerWorker:
                 source_id=source_id,
                 channel=channel_kind,
                 trigger_date=trigger_date,
-                payload=_notification_payload(title, body, deep_link, held=held),
+                payload=_notification_payload(
+                    title,
+                    body,
+                    deep_link,
+                    held=held,
+                    layout=layout if channel_kind is DeliveryChannelKind.TELEGRAM else None,
+                ),
                 delivery_state="pending" if external else "sent",
             )
             if record is None:
@@ -655,6 +669,7 @@ class SchedulerWorker:
                 title=title,
                 body=_external_body(body),
                 deep_link=deep_link,
+                layout=layout,
             )
             await self._send_and_record(
                 store,
@@ -749,6 +764,7 @@ class SchedulerWorker:
             title=str(item.payload.get("title", "")),
             body=_external_body(str(item.payload.get("body", ""))),
             deep_link=deep_link,
+            layout=_stored_layout(item.payload.get("layout")),
         )
         return await self._send_and_record(
             store,
@@ -853,7 +869,15 @@ class SchedulerWorker:
             if limit is not None and sent >= limit:
                 break
             symbol, strategy = str(hit.get("symbol")), str(hit.get("strategy"))
-            title, body, plain = hit_alert(hit, watch_by_key.get((symbol, strategy)), masked=masked)
+            row = watch_by_key.get((symbol, strategy))
+            title, body, plain = hit_alert(hit, row, masked=masked)
+            text, layout = safe_message(
+                [
+                    (body, hit_alert_layout(hit, row, masked=masked)),
+                    (plain, hit_alert_layout(hit, row, masked=masked, with_headline=False)),
+                ],
+                f"{symbol} 你訂閱的條件全數成立，請開啟 Miru 查看。",
+            )
             await self._deliver(
                 store,
                 user=user,
@@ -861,10 +885,11 @@ class SchedulerWorker:
                 source_id=f"{STRATEGY_SOURCE_PREFIX}{subscription.id}:{symbol}:{strategy}{suffix}",
                 channels=channels,
                 title=title,
-                body=safe_body(body, plain, f"{symbol} 你訂閱的條件全數成立，請開啟 Miru 查看。"),
+                body=text,
                 trigger_date=today,
                 deep_link={"route": "watch", "symbol": symbol, "strategy": strategy},
                 hold_external=hold,
+                layout=layout,
             )
 
     async def _deliver_morning_list(  # noqa: PLR0913 — one argument per delivery dimension
@@ -882,6 +907,9 @@ class SchedulerWorker:
         if listing is None:
             return
         title, body = listing
+        text, layout = safe_message(
+            [(body, morning_list_layout(watch, today))], "今日盯盤清單已更新，請開啟 Miru 查看。"
+        )
         await self._deliver(
             store,
             user=user,
@@ -889,10 +917,11 @@ class SchedulerWorker:
             source_id=f"{STRATEGY_SOURCE_PREFIX}{subscription.id}:morning",
             channels=channels,
             title=title,
-            body=safe_body(body, body, "今日盯盤清單已更新，請開啟 Miru 查看。"),
+            body=text,
             trigger_date=today,
             deep_link={"route": "watch"},
             hold_external=hold,
+            layout=layout,
         )
 
     async def send_morning_digests(self, *, now: datetime | None = None) -> int:
@@ -1482,14 +1511,31 @@ def _channel_order(channels: tuple[DeliveryChannelKind, ...]) -> tuple[DeliveryC
 
 
 def _notification_payload(
-    title: str, body: str, deep_link: dict[str, object], *, held: bool
+    title: str,
+    body: str,
+    deep_link: dict[str, object],
+    *,
+    held: bool,
+    layout: Layout | None = None,
 ) -> dict[str, object]:
     return {
         "title": title,
         "body": body,
         "deep_link": deep_link,
         **({"held": True} if held else {}),
+        **({"layout": layout.model_dump(mode="json")} if layout is not None else {}),
     }
+
+
+def _stored_layout(raw: object) -> Layout | None:
+    """The layout a pending Telegram row was stored with, or None when it has none or the stored
+    shape no longer validates (the retry then sends the plain text)."""
+    if not isinstance(raw, dict):
+        return None
+    try:
+        return Layout.model_validate(raw)
+    except ValidationError:
+        return None
 
 
 def _met_map(state: dict[str, object]) -> dict[str, bool]:

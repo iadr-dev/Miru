@@ -4,7 +4,9 @@ recipient address is a non-retryable receipt, never a crash."""
 
 from __future__ import annotations
 
+import html
 import json
+import re
 
 import httpx
 import pytest
@@ -19,6 +21,7 @@ from scheduler.delivery.channels import (
     PushChannel,
     TelegramChannel,
 )
+from scheduler.delivery.layout import Layout, LayoutBlock, fit_html, render_text
 from scheduler.delivery.transport import HttpxTransport, TransportResult
 from scheduler.models import DeliveryChannelKind
 from schemas.alerts import NON_ADVICE_FOOTER
@@ -495,3 +498,130 @@ async def test_a_network_failure_is_retryable_with_no_description(
 ) -> None:
     result = await _post_through_httpx(monkeypatch, httpx.ConnectError("down"))
     assert (result.ok, result.retryable, result.description) == (False, True, "")
+
+
+_PARSE_ERROR = "Bad Request: can't parse entities: Unsupported start tag"
+_RECIPIENT = DeliveryRecipient(user_id="u1", telegram_chat_id="12345")
+
+
+def _layout_notification(*, name: str = "事欣科") -> DeliveryNotification:
+    return DeliveryNotification(
+        notification_id="n1",
+        title="標題",
+        body=f"4916 {name} 條件全數成立\n{NON_ADVICE_FOOTER}",
+        layout=Layout(
+            blocks=(
+                LayoutBlock(head=f"🔔 4916 {name}", lines=("09:30 條件全數成立", "• 量比 14.25")),
+                LayoutBlock(head="📖 名詞", lines=("波動率擠壓：布林通道寬度收斂。",), fold=True),
+            )
+        ),
+    )
+
+
+def _telegram_json(notification: DeliveryNotification) -> dict[str, object]:
+    channel = TelegramChannel(Settings(telegram_bot_token="t"))
+    return channel.build_request(notification, _RECIPIENT).json
+
+
+def _strip_tags(markup: str) -> str:
+    return html.unescape(re.sub(r"</?(?:b|i|blockquote)(?: expandable)?>", "", markup))
+
+
+def test_a_layout_is_sent_as_html_that_reads_like_its_text() -> None:
+    notification = _layout_notification()
+    assert notification.layout is not None
+    payload = _telegram_json(notification)
+    text = str(payload["text"])
+    assert payload["parse_mode"] == "HTML"
+    assert text.startswith("<b>🔔 4916 事欣科</b>\n09:30 條件全數成立\n• 量比 14.25\n\n")
+    assert (
+        "<blockquote expandable><b>📖 名詞</b>\n波動率擠壓：布林通道寬度收斂。</blockquote>" in text
+    )
+    assert text.endswith(f"<i>{NON_ADVICE_FOOTER}</i>")
+    assert _strip_tags(text) == render_text(notification.layout, NON_ADVICE_FOOTER)
+
+
+def test_a_stock_name_with_markup_characters_is_escaped_not_interpreted() -> None:
+    text = str(_telegram_json(_layout_notification(name="A&B <C> 'D'"))["text"])
+    assert "A&amp;B &lt;C&gt; 'D'" in text
+    assert "<C>" not in text
+    assert set(re.findall(r"</?(\w+)", text)) == {"b", "i", "blockquote"}
+
+
+def test_a_notification_without_a_layout_is_sent_as_plain_text() -> None:
+    payload = _telegram_json(_notification())
+    assert "parse_mode" not in payload
+    assert payload["text"] == f"排程摘要\n{_notification().body}"
+
+
+async def test_telegram_resends_as_plain_text_once_when_the_markup_is_rejected() -> None:
+    transport = _FakeTransport(_telegram_error(400, _PARSE_ERROR), TransportResult(ok=True))
+    channel = TelegramChannel(Settings(telegram_bot_token="t"), transport)
+    receipt = await channel.send(_layout_notification(), _RECIPIENT)
+    assert receipt.delivered is True
+    assert [c[2].get("parse_mode") for c in transport.calls] == ["HTML", None]
+    assert transport.calls[1][2]["text"] == f"標題\n{_layout_notification().body}"
+    assert transport.calls[1][2]["chat_id"] == "12345"
+
+
+async def test_a_second_rejection_is_final_and_a_transient_failure_keeps_the_retry_path() -> None:
+    twice = _FakeTransport(_telegram_error(400, _PARSE_ERROR), _telegram_error(400, _PARSE_ERROR))
+    receipt = await TelegramChannel(Settings(telegram_bot_token="t"), twice).send(
+        _layout_notification(), _RECIPIENT
+    )
+    assert (receipt.delivered, receipt.retryable, len(twice.calls)) == (False, False, 2)
+
+    flaky = _FakeTransport(TransportResult(ok=False, status=500, retryable=True))
+    receipt = await TelegramChannel(Settings(telegram_bot_token="t"), flaky).send(
+        _layout_notification(), _RECIPIENT
+    )
+    assert (receipt.delivered, receipt.retryable, len(flaky.calls)) == (False, True, 1)
+
+
+async def test_other_400s_skip_the_plain_resend_and_a_403_still_unlinks() -> None:
+    other = _FakeTransport(_telegram_error(400, "Bad Request: message is too long"))
+    await TelegramChannel(Settings(telegram_bot_token="t"), other).send(
+        _layout_notification(), _RECIPIENT
+    )
+    assert len(other.calls) == 1
+    blocked = _FakeTransport(_telegram_error(403, _BLOCKED))
+    receipt = await TelegramChannel(Settings(telegram_bot_token="t"), blocked).send(
+        _layout_notification(), _RECIPIENT
+    )
+    assert receipt.address_gone is True
+
+
+def _long_layout(rows: int) -> Layout:
+    stocks = tuple(f"{i} 名稱 & <{i}>　上軌 1,000.5" for i in range(rows))
+    return Layout(
+        blocks=(
+            LayoutBlock(head="📋 清單", lines=("市場寬度 35%",)),
+            LayoutBlock(head="波動率擠壓", lines=stocks),
+            LayoutBlock(head="📖 名詞", lines=("定義 " * 40,), fold=True),
+        )
+    )
+
+
+@pytest.mark.parametrize("rows", [5, 400, 2000])
+def test_a_trimmed_html_message_keeps_its_limit_balanced_tags_and_footer(rows: int) -> None:
+    text = fit_html(_long_layout(rows), NON_ADVICE_FOOTER, pointer="…（完整內容請見 Miru）")
+    assert text is not None
+    assert _units(text) <= 4096
+    assert text.endswith(f"<i>{NON_ADVICE_FOOTER}</i>")
+    assert text.startswith("<b>📋 清單</b>")
+    for tag in ("b", "i", "blockquote"):
+        assert len(re.findall(rf"<{tag}[ >]", text)) == len(re.findall(rf"</{tag}>", text))
+    assert not re.search(r"&(?![a-z]+;)", text)
+    assert ("完整內容請見 Miru" in text) is (rows > 5)
+
+
+def test_plain_text_is_sent_when_the_first_block_alone_cannot_fit() -> None:
+    layout = Layout(blocks=(LayoutBlock(head="字" * 5000),))
+    assert fit_html(layout, NON_ADVICE_FOOTER, pointer="…") is None
+    notification = DeliveryNotification(
+        notification_id="n1", title="t", body="字" * 5000 + f"\n{NON_ADVICE_FOOTER}", layout=layout
+    )
+    payload = _telegram_json(notification)
+    assert "parse_mode" not in payload
+    assert _units(str(payload["text"])) <= 4096
+    assert str(payload["text"]).endswith(NON_ADVICE_FOOTER)

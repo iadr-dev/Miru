@@ -17,6 +17,7 @@ from db.models import NotificationRow
 from ingest.leader import AlwaysLeader, NeverLeader
 from scheduler.delivery.base import DeliveryNotification, DeliveryReceipt, DeliveryRecipient
 from scheduler.delivery.channels import InAppChannel
+from scheduler.delivery.layout import Layout, LayoutBlock
 from scheduler.models import DeliveryChannelKind, NotificationSource
 from scheduler.quota import AllowAllQuotaGate
 from scheduler.store import SqlAlchemySchedulerStore
@@ -387,3 +388,47 @@ async def test_the_recipient_carries_the_app_url_only_when_it_is_https(session_f
     )
     assert await _app_url_seen_by_telegram(session_factory, "http://localhost:3000") is None
     assert await _app_url_seen_by_telegram(session_factory, None) is None
+
+
+class _LayoutProbe(_ScriptedTelegram):
+    def __init__(self, *outcomes: DeliveryReceipt) -> None:
+        super().__init__(*outcomes)
+        self.layouts: list[Layout | None] = []
+
+    async def send(self, notification, recipient):  # type: ignore[no-untyped-def]
+        self.layouts.append(notification.layout)
+        return await super().send(notification, recipient)
+
+
+async def test_a_retried_telegram_message_keeps_its_layout_and_the_inbox_row_has_none(
+    session_factory,
+) -> None:
+    user = await insert_user(session_factory, tier=Tier.PRO)
+    await _link_telegram(session_factory, user)
+    layout = Layout(blocks=(LayoutBlock(head="標題", lines=("a & b",)),))
+    probe = _LayoutProbe(
+        _telegram_receipt(delivered=False, retryable=True, gone=False),
+        _telegram_receipt(delivered=True, retryable=False, gone=False),
+    )
+    worker = _telegram_worker(session_factory, probe)
+    async with session_factory() as session:
+        await worker._deliver(
+            SqlAlchemySchedulerStore(session),
+            user=await SqlAlchemyUserStore(session).get(user_id=user),
+            source=NotificationSource.ALERT,
+            source_id="strategy-1",
+            channels=(DeliveryChannelKind.TELEGRAM,),
+            title="t",
+            body="b",
+            trigger_date=date(2026, 10, 13),
+            deep_link={"route": "watch"},
+            layout=layout,
+        )
+        await session.commit()
+
+    await worker.retry_pending_deliveries(now=datetime.now(UTC) + timedelta(hours=1))
+
+    assert probe.layouts == [layout, layout]
+    async with session_factory() as session:
+        rows = (await session.execute(select(NotificationRow))).scalars().all()
+    assert {r.channel: "layout" in r.payload for r in rows} == {"in_app": False, "telegram": True}

@@ -16,13 +16,15 @@ from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from scheduler.delivery.layout import Layout
 from scheduler.models import DeliveryChannelKind
 
 
 class DeliveryNotification(BaseModel):
     """The channel-agnostic notification a `DeliveryChannel` renders. `deep_link` mirrors the
     native-push payload shape so a tap resolves to the right surface; non-push channels ignore
-    it or embed it as a URL."""
+    it or embed it as a URL. `layout` is the optional structured twin of `body` for a channel that
+    can lay a message out (Telegram); every other channel sends `title`/`body` as before."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -30,6 +32,7 @@ class DeliveryNotification(BaseModel):
     title: str
     body: str = Field(min_length=1)
     deep_link: dict[str, object] = Field(default_factory=dict)
+    layout: Layout | None = None
 
 
 class DeliveryRecipient(BaseModel):
