@@ -69,6 +69,48 @@ export function toNotificationView(notification: Notification): NotificationView
   };
 }
 
+export type LayoutBlock = NotificationLayout["blocks"][number];
+
+/** How many lines a row may show before it is clamped. A heading is one line, a folded block is one
+ * line (its summary, heading included) however many items it holds, and every other line counts
+ * as one. */
+export const ROW_LINE_BUDGET = 6;
+
+function blockCost(block: LayoutBlock): number {
+  if (block.fold) {
+    return 1;
+  }
+  return (block.head === "" ? 0 : 1) + block.lines.length;
+}
+
+/** The top of a layout that fits `budget` lines, and how many lines were left out. A block that
+ * does not fit whole keeps its heading and as many lines as still fit; a folded block is never
+ * split. */
+export function clampBlocks(
+  blocks: readonly LayoutBlock[],
+  budget: number,
+): { shown: LayoutBlock[]; hiddenLineCount: number } {
+  const shown: LayoutBlock[] = [];
+  let left = budget;
+  let hiddenLineCount = 0;
+  for (const block of blocks) {
+    const cost = blockCost(block);
+    if (hiddenLineCount === 0 && cost <= left) {
+      shown.push(block);
+      left -= cost;
+    } else if (hiddenLineCount === 0 && !block.fold && left > 0) {
+      const head = block.head === "" ? 0 : 1;
+      const keep = Math.max(left - head, 0);
+      shown.push({ ...block, lines: block.lines.slice(0, keep) });
+      hiddenLineCount += block.lines.length - keep;
+      left = 0;
+    } else {
+      hiddenLineCount += cost;
+    }
+  }
+  return { shown, hiddenLineCount };
+}
+
 /** "9+" past nine so the badge never outgrows its circle. */
 export function badgeLabel(count: number): string {
   return count > 9 ? "9+" : String(count);

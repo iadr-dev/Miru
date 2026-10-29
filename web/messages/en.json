@@ -899,7 +899,9 @@
       "manage": "Manage alerts",
       "unread": "{count} unread notifications",
       "unreadItem": "Unread",
-      "foldCount": "{count} items"
+      "foldCount": "{count} items",
+      "showAll": "Show all",
+      "showLess": "Show less"
     },
     "tier": {
       "free": "Free",

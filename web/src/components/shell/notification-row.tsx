@@ -2,13 +2,17 @@
 
 import { CaretDownIcon } from "@phosphor-icons/react";
 import { useFormatter, useTranslations } from "next-intl";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { cn } from "@/lib/cn";
 import { parseServerDate } from "@/lib/parse-server-date";
-import type { NotificationLayout } from "@/types/settings";
-import type { NotificationView } from "./notification-payload";
+import {
+  clampBlocks,
+  type LayoutBlock,
+  type NotificationView,
+  ROW_LINE_BUDGET,
+} from "./notification-payload";
 
-type Block = NotificationLayout["blocks"][number];
+type Block = LayoutBlock;
 
 const WRAP = "[overflow-wrap:anywhere]";
 const OPEN_BUTTON = cn(
@@ -84,9 +88,11 @@ function PlainBlock({ block, lead }: { block: Block; lead: ReactNode }): ReactNo
 }
 
 /** One inbox entry. The whole row opens the notification through a stretched button (the heading),
- * so there is no nested interactive element; a fold block is the one thing layered above it. The
- * layout is drawn from React text nodes only. Without a usable layout the title and plain body
- * are shown as before. */
+ * so there is no nested interactive element; a fold block and the show-all control are the things
+ * layered above it. A layout taller than the line budget shows only its top, ending in a control
+ * that reveals the rest; the non-advice footer stays visible either way. The
+ * layout is drawn from React text nodes only. Without a usable layout the title and plain body are
+ * shown as before. */
 export function NotificationRow({
   item,
   onOpen,
@@ -96,12 +102,17 @@ export function NotificationRow({
 }): ReactNode {
   const t = useTranslations("shell.notifications");
   const format = useFormatter();
+  const [expanded, setExpanded] = useState(false);
   const open = (): void => onOpen(item);
   const blocks = item.layout?.blocks ?? [];
-  const leadHead = blocks[0]?.head ?? "";
+  const clamp = clampBlocks(blocks, ROW_LINE_BUDGET);
+  const clamped = clamp.hiddenLineCount > 0;
+  const shown = clamped && !expanded ? clamp.shown : blocks;
+  const first = blocks[0];
+  const headLeads = first !== undefined && !first.fold && first.head !== "";
   const openButton = (
     <button type="button" onClick={open} className={cn(OPEN_BUTTON, "font-semibold")}>
-      {leadHead || item.title}
+      {headLeads ? first.head : item.title}
     </button>
   );
 
@@ -115,19 +126,33 @@ export function NotificationRow({
       <div className="flex min-w-0 flex-1 flex-col gap-2">
         {item.layout ? (
           <>
-            {leadHead ? null : openButton}
-            {keyed(blocks, (b) => `${b.head}|${b.lines.length}|${b.fold}`).map(
-              ({ key, item: block }) =>
+            {headLeads ? null : openButton}
+            {keyed(shown, (b) => `${b.head}|${b.lines.length}|${b.fold}`).map(
+              ({ key, item: block }, index) =>
                 block.fold ? (
                   <FoldBlock key={key} block={block} />
                 ) : (
                   <PlainBlock
                     key={key}
                     block={block}
-                    lead={block === blocks[0] && leadHead ? openButton : null}
+                    lead={index === 0 && headLeads ? openButton : null}
                   />
                 ),
             )}
+            {clamped ? (
+              <button
+                type="button"
+                aria-expanded={expanded}
+                onClick={() => setExpanded(!expanded)}
+                className={cn(
+                  "!outline-none relative z-10 inline-flex min-h-11 items-center self-start",
+                  "rounded-[var(--radius-button)] px-2 font-medium text-[12px] text-[var(--accent)]",
+                  "focus-visible:ring-2 focus-visible:ring-[var(--accent)]",
+                )}
+              >
+                {expanded ? t("showLess") : t("showAll")}
+              </button>
+            ) : null}
             {item.footer ? (
               <p className={cn("text-[11px] text-[var(--text-muted)]", WRAP)}>{item.footer}</p>
             ) : null}

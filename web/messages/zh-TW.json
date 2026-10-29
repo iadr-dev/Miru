@@ -899,7 +899,9 @@
       "manage": "管理提醒",
       "unread": "{count} 則未讀通知",
       "unreadItem": "未讀",
-      "foldCount": "{count} 筆"
+      "foldCount": "{count} 筆",
+      "showAll": "顯示全部",
+      "showLess": "收合"
     },
     "tier": {
       "free": "免費",
