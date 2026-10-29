@@ -37,7 +37,6 @@ from typing import cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import structlog
-from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from accounts.byok import ByokKeyRequiredError, resolve_byok_override
@@ -66,7 +65,7 @@ from scheduler.delivery.base import (
     DeliveryReceipt,
     DeliveryRecipient,
 )
-from scheduler.delivery.layout import Layout, render_text
+from scheduler.delivery.layout import Layout, render_text, trim_layout
 from scheduler.evaluator import Evaluation, SnapshotReader, SnapshotView, evaluate_condition
 from scheduler.models import (
     AlertPreference,
@@ -90,6 +89,7 @@ from scheduler.notification_messages import (
     report_preview,
     safe_alert_message,
 )
+from scheduler.notification_payload import read_layout
 from scheduler.quota import QuotaGate, UsageQuotaGate
 from scheduler.retention import prune_stream_events
 from scheduler.store import SqlAlchemySchedulerStore
@@ -138,7 +138,14 @@ _RETRY_LEASE = timedelta(minutes=10)
 _DIGEST_FROM = time(8, 0)
 _DIGEST_UNTIL = time(12, 0)
 _DIGEST_LOOKBACK = timedelta(hours=24)
-_LAYOUT_CHANNELS = frozenset({DeliveryChannelKind.TELEGRAM, DeliveryChannelKind.LINE})
+_LAYOUT_CHANNELS = frozenset(
+    {
+        DeliveryChannelKind.IN_APP,
+        DeliveryChannelKind.TELEGRAM,
+        DeliveryChannelKind.LINE,
+        DeliveryChannelKind.EMAIL,
+    }
+)
 
 
 def _user_zone(name: str | None) -> ZoneInfo:
@@ -640,9 +647,10 @@ class SchedulerWorker:
         (it is silent) but external channels are only recorded as held; `release_held` sends them
         as one digest once the window closes.
 
-        `layout` is the structured twin of `body`; only the Telegram and LINE rows store it, so a
-        retry sends the same layout and the inbox payload stays small. It reaches a channel only
-        if the text it renders passes the same output scan as the body."""
+        `layout` is the structured twin of `body`. The inbox, Telegram, LINE and email rows store
+        it (cut to a bounded size), so a retry sends the same layout and the bell can draw it; the
+        push row does not. It reaches a channel only if the text it renders passes the same output
+        scan as the body."""
         layout = _scanned_layout(layout)
         selected = _channel_order(channels)
         recipient = await self._recipient_for(store, user)
@@ -777,7 +785,7 @@ class SchedulerWorker:
             title=str(item.payload.get("title", "")),
             body=_external_body(str(item.payload.get("body", ""))),
             deep_link=deep_link,
-            layout=_stored_layout(item.payload.get("layout")),
+            layout=read_layout(item.payload.get("layout")),
         )
         return await self._send_and_record(
             store,
@@ -1477,22 +1485,15 @@ def _notification_payload(
 
 
 def _scanned_layout(layout: Layout | None) -> Layout | None:
-    """`layout` if the text it renders passes the output scan, else None (plain text is sent)."""
+    """`layout`, cut to the size a stored row keeps, if the text it renders passes the output scan,
+    else None (plain text is sent)."""
     if layout is None:
         return None
-    clean = check_output(render_text(layout, NON_ADVICE_FOOTER), has_market_data=False).reason
-    return layout if clean is None else None
-
-
-def _stored_layout(raw: object) -> Layout | None:
-    """The layout a pending Telegram or LINE row was stored with, or None when it has none or the
-    stored shape no longer validates (the retry then sends the plain text)."""
-    if not isinstance(raw, dict):
+    bounded = trim_layout(layout, NON_ADVICE_FOOTER)
+    if bounded is None:
         return None
-    try:
-        return Layout.model_validate(raw)
-    except ValidationError:
-        return None
+    clean = check_output(render_text(bounded, NON_ADVICE_FOOTER), has_market_data=False).reason
+    return bounded if clean is None else None
 
 
 def _met_map(state: dict[str, object]) -> dict[str, bool]:

@@ -6137,6 +6137,23 @@ export interface components {
       /** Volume */
       volume: number;
     };
+    /**
+     * DeepLink
+     * @description Where opening the notification goes. Each route is one the web app has a page for.
+     */
+    DeepLink: {
+      /**
+       * Route
+       * @enum {string}
+       */
+      route: "stock" | "thread" | "watch" | "notifications";
+      /** Strategy */
+      strategy?: string | null;
+      /** Symbol */
+      symbol?: string | null;
+      /** Thread Id */
+      thread_id?: string | null;
+    };
     /** DeleteAccountRequest */
     DeleteAccountRequest: {
       /** Confirm */
@@ -10371,6 +10388,33 @@ export interface components {
      * @enum {string}
      */
     Kind: "supplies" | "competes";
+    /** Layout */
+    Layout: {
+      /** Blocks */
+      blocks: components["schemas"]["LayoutBlock"][];
+    };
+    /**
+     * LayoutBlock
+     * @description `head` renders bold; each of `lines` is one line under it; a `fold` block is one expandable
+     *     quote, collapsed by Telegram past a few lines.
+     */
+    LayoutBlock: {
+      /**
+       * Fold
+       * @default false
+       */
+      fold: boolean;
+      /**
+       * Head
+       * @default
+       */
+      head: string;
+      /**
+       * Lines
+       * @default []
+       */
+      lines: string[];
+    };
     /** LineLink */
     LineLink: {
       /** Add Friend Url */
@@ -11227,35 +11271,6 @@ export interface components {
       title: string;
     };
     /**
-     * Notification
-     * @description One delivered (or in-app persisted) notification record. `dedupe_key` encodes
-     *     `(source_id, trigger_date, channel)`; `(user_id, dedupe_key)` is unique, which is what makes
-     *     redelivery a no-op under at-least-once execution.
-     */
-    Notification: {
-      channel: components["schemas"]["DeliveryChannelKind"];
-      /** Dedupe Key */
-      dedupe_key: string;
-      /**
-       * Delivered At
-       * Format: date-time
-       */
-      delivered_at: string;
-      /** Id */
-      id: string;
-      /** Payload */
-      payload?: {
-        [key: string]: unknown;
-      };
-      /** Read At */
-      read_at?: string | null;
-      source: components["schemas"]["NotificationSource"];
-      /** Source Id */
-      source_id: string;
-      /** User Id */
-      user_id: string;
-    };
-    /**
      * NotificationBadge
      * @description The lightweight counts the mobile tab-island + top-bar bell dots read.
      */
@@ -11277,6 +11292,56 @@ export interface components {
       unread_threads: number;
     };
     /**
+     * NotificationItem
+     * @description One inbox entry. `payload` is the typed read of the stored object: the plain `title` and
+     *     `body` always, and the `layout` when the notification was stored with one.
+     */
+    NotificationItem: {
+      channel: components["schemas"]["DeliveryChannelKind"];
+      /** Dedupe Key */
+      dedupe_key: string;
+      /**
+       * Delivered At
+       * Format: date-time
+       */
+      delivered_at: string;
+      /** Id */
+      id: string;
+      payload: components["schemas"]["NotificationPayload"];
+      /** Read At */
+      read_at?: string | null;
+      source: components["schemas"]["NotificationSource"];
+      /** Source Id */
+      source_id: string;
+      /** User Id */
+      user_id: string;
+    };
+    /** NotificationPayload */
+    NotificationPayload: {
+      /**
+       * Body
+       * @default
+       */
+      body: string;
+      deep_link?: components["schemas"]["DeepLink"] | null;
+      /**
+       * Footer
+       * @default
+       */
+      footer: string;
+      /**
+       * Held
+       * @default false
+       */
+      held: boolean;
+      layout?: components["schemas"]["Layout"] | null;
+      /**
+       * Title
+       * @default
+       */
+      title: string;
+    };
+    /**
      * NotificationSource
      * @enum {string}
      */
@@ -11284,7 +11349,7 @@ export interface components {
     /** NotificationsResponse */
     NotificationsResponse: {
       /** Notifications */
-      notifications: components["schemas"]["Notification"][];
+      notifications: components["schemas"]["NotificationItem"][];
     };
     /** OAuthAccount */
     OAuthAccount: {

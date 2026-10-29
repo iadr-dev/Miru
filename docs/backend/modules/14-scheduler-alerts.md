@@ -407,7 +407,7 @@ rendered per channel behind the existing `DeliveryChannel` protocol (`scheduler/
 |---|---|---|
 | In-app | `notifications` row | bell inbox + unread badge + mark-read; same-batch fires bundled |
 | Browser (`push`) | Web Push (RFC 8030) + VAPID (`vapid_public_key`/`vapid_private_key`/`vapid_subject`), via `pywebpush` in a worker thread | `/me/devices` with `platform=web`; the token is the JSON-encoded `PushSubscription` (endpoint + keys). The payload `{title, body, url, id}` is encrypted to the browser and shown by `web/public/sw.js`; a tap opens `url`. A 404/410 from the push service (or a token that is not a subscription) is reported in `DeliveryReceipt.stale_tokens` and the worker unregisters it. The permission prompt only appears when the user presses 「開啟」 on 設定 → 通知 |
-| Email | Resend HTTP API (`resend_api_key`, `email_from_address` on a Resend-verified domain) | transactional (the user set the alert/schedule): plain text + a small accessible HTML copy (declared `lang`, `<title>`, escaped body), the non-advice footer, and the notification id as the `Idempotency-Key` so a retry after a timeout cannot double-send. Reachable when the account has an email. Bounces and complaints are handled (below), and every email carries a one-click unsubscribe |
+| Email | Resend HTTP API (`resend_api_key`, `email_from_address` on a Resend-verified domain) | transactional (the user set the alert/schedule): plain text + a small accessible HTML copy (declared `lang`, `<title>`, escaped body; structured from the layout when there is one, see Email delivery), the non-advice footer, and the notification id as the `Idempotency-Key` so a retry after a timeout cannot double-send. Reachable when the account has an email. Bounces and complaints are handled (below), and every email carries a one-click unsubscribe |
 | LINE | Messaging API push (`line_messaging_channel_access_token`; the older `LINE_MESSAGING_ACCESS_TOKEN` name also works) | recipient = the LINE user id from an explicit link (below), else the LINE sign-in id ([12](12-multi-user-tiers.md)); a push to someone who has not added the official account is a permanent 4xx receipt. **The free LINE plan caps messages per month (200 on the configured account) — a push over the cap fails with 429** |
 | Telegram | bot API (`telegram_bot_token`, `telegram_bot_username`) | bound by the one-time-token flow below |
 
@@ -498,10 +498,14 @@ messages, fired rule alerts, the 晨間摘要, scheduled reports and the daily r
   otherwise the next candidate (the version without the quoted 重訊 subject) is tried, then the
   body alone without a layout, then the fixed line. What Telegram receives is therefore scanned the
   same as the plain body, and `NON_ADVICE_FOOTER` is always the last block.
-- **Persistence:** only the Telegram and LINE `notifications` rows store `payload.layout` (the in-app
-  row stays small), so a retry sends the same layout. A stored layout that no longer validates degrades
-  to the plain text. A quiet-hours digest joins the stored plain bodies and has no layout: it goes as plain text.
-  `_deliver` also drops a layout whose rendered text fails `check_output` (plain text is sent).
+- **Persistence:** the in-app, Telegram, LINE and email `notifications` rows store `payload.layout`
+  (the push row does not), so a retry sends the same layout and the bell can draw it. `_deliver` first
+  cuts the layout with `trim_layout` to `STORED_MAX_UNITS` (5000 UTF-16 units of its `render_text`,
+  the LINE limit, so no channel loses content it could show), using the same line-then-block cut and
+  `…（完整內容請見 Miru）` pointer as the channels, and then drops it if the rendered text fails
+  `check_output` (plain text is sent). A stored layout that no longer validates degrades to the plain
+  text, on a retry and in the inbox alike (`notification_payload.read_layout`). A quiet-hours digest
+  joins the stored plain bodies and has no layout: it goes as plain text.
 - **Markup rejected:** a 400 whose description contains "parse entities" is answered once, in the
   same `send`, with the plain text (`formatted=False`) through the same `OutboundTransport`; that
   second answer is the receipt, so `_delivery_outcome` and the unlink-on-403 rule apply to it
@@ -535,6 +539,28 @@ Telegram HTML (`fit_text`): lines leave from the end of the last block, `…（�
 added, the first block and footer stay; a plain text is cut at a line boundary by the same routine
 Telegram uses. LINE has no expandable quote, so a `fold` block shows as a normal block cut to 3
 lines (`…（其餘請見 Miru）` when more). Webhook replies are unchanged.
+
+**Email delivery.** Subject, `Idempotency-Key` (the notification id), `List-Unsubscribe` headers and
+the one-click unsubscribe line are unchanged. With a `layout` the text part is exactly `render_text`
+(plus the unsubscribe line) and the HTML part is built from the same blocks by `render_email_html`:
+the first heading is the page's `h1`, later ones `h2`, each line its own `<p>`, a `fold` block shown
+as a normal block (a mail client cannot expand it), the footer last, then the unsubscribe line. Every
+string goes through `html.escape`; the document declares `lang`, a `<title>` and a viewport, uses
+no image and no colour-only meaning. The title is the `h1` only when the layout opens without a
+heading. Without a layout the HTML is the plain body in paragraphs, as before.
+
+**In-app inbox.** `GET /notifications` returns each row's `payload` as the typed `NotificationPayload`
+(`scheduler/notification_payload.py`): `title`, `body`, `deep_link` (route one of `stock`, `thread`,
+`watch`, `notifications`), `held`, `layout` and `footer` (the non-advice footer, served with a layout
+so the web app carries no governance copy). `read_payload` degrades field by field: a mistyped field
+takes its default, an unknown route gives no link, an invalid layout is `null`. The bell draws a
+layout as a bold heading, one line per row, a `fold` block as a collapsed native `<details>`, and the
+footer in muted small text; without a layout it shows the title and plain body. All text is React text
+nodes. The inbox is a popover (not a menu) so the disclosure is reachable by keyboard.
+
+The plain body of a scheduled report is built from the same `plain_lines` as its layout (up to three
+short lines and `完整報告請見 Miru`), so the inbox and email fallback never carry raw markdown or a
+sentence cut mid-way.
 
 **What each layout says** (`scheduler/notification_messages.py`, fact phrasing only):
 

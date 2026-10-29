@@ -3722,6 +3722,59 @@
     "title": "DayTradingRow",
     "type": "object"
    },
+   "DeepLink": {
+    "description": "Where opening the notification goes. Each route is one the web app has a page for.",
+    "properties": {
+     "route": {
+      "enum": [
+       "stock",
+       "thread",
+       "watch",
+       "notifications"
+      ],
+      "title": "Route",
+      "type": "string"
+     },
+     "strategy": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Strategy"
+     },
+     "symbol": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Symbol"
+     },
+     "thread_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Thread Id"
+     }
+    },
+    "required": [
+     "route"
+    ],
+    "title": "DeepLink",
+    "type": "object"
+   },
    "DeleteAccountRequest": {
     "properties": {
      "confirm": {
@@ -14946,6 +14999,49 @@
     "title": "Kind",
     "type": "string"
    },
+   "Layout": {
+    "additionalProperties": false,
+    "properties": {
+     "blocks": {
+      "items": {
+       "$ref": "#/components/schemas/LayoutBlock"
+      },
+      "title": "Blocks",
+      "type": "array"
+     }
+    },
+    "required": [
+     "blocks"
+    ],
+    "title": "Layout",
+    "type": "object"
+   },
+   "LayoutBlock": {
+    "additionalProperties": false,
+    "description": "`head` renders bold; each of `lines` is one line under it; a `fold` block is one expandable\nquote, collapsed by Telegram past a few lines.",
+    "properties": {
+     "fold": {
+      "default": false,
+      "title": "Fold",
+      "type": "boolean"
+     },
+     "head": {
+      "default": "",
+      "title": "Head",
+      "type": "string"
+     },
+     "lines": {
+      "default": [],
+      "items": {
+       "type": "string"
+      },
+      "title": "Lines",
+      "type": "array"
+     }
+    },
+    "title": "LayoutBlock",
+    "type": "object"
+   },
    "LineLink": {
     "additionalProperties": false,
     "properties": {
@@ -16891,9 +16987,32 @@
     "title": "NewsFeedItemOut",
     "type": "object"
    },
-   "Notification": {
+   "NotificationBadge": {
     "additionalProperties": false,
-    "description": "One delivered (or in-app persisted) notification record. `dedupe_key` encodes\n`(source_id, trigger_date, channel)`; `(user_id, dedupe_key)` is unique, which is what makes\nredelivery a no-op under at-least-once execution.",
+    "description": "The lightweight counts the mobile tab-island + top-bar bell dots read.",
+    "properties": {
+     "pending_alerts": {
+      "default": 0,
+      "title": "Pending Alerts",
+      "type": "integer"
+     },
+     "unread_notifications": {
+      "default": 0,
+      "title": "Unread Notifications",
+      "type": "integer"
+     },
+     "unread_threads": {
+      "default": 0,
+      "title": "Unread Threads",
+      "type": "integer"
+     }
+    },
+    "title": "NotificationBadge",
+    "type": "object"
+   },
+   "NotificationItem": {
+    "additionalProperties": false,
+    "description": "One inbox entry. `payload` is the typed read of the stored object: the plain `title` and\n`body` always, and the `layout` when the notification was stored with one.",
     "properties": {
      "channel": {
       "$ref": "#/components/schemas/DeliveryChannelKind"
@@ -16912,9 +17031,7 @@
       "type": "string"
      },
      "payload": {
-      "additionalProperties": true,
-      "title": "Payload",
-      "type": "object"
+      "$ref": "#/components/schemas/NotificationPayload"
      },
      "read_at": {
       "anyOf": [
@@ -16947,32 +17064,57 @@
      "source_id",
      "channel",
      "dedupe_key",
+     "payload",
      "delivered_at"
     ],
-    "title": "Notification",
+    "title": "NotificationItem",
     "type": "object"
    },
-   "NotificationBadge": {
+   "NotificationPayload": {
     "additionalProperties": false,
-    "description": "The lightweight counts the mobile tab-island + top-bar bell dots read.",
     "properties": {
-     "pending_alerts": {
-      "default": 0,
-      "title": "Pending Alerts",
-      "type": "integer"
+     "body": {
+      "default": "",
+      "title": "Body",
+      "type": "string"
      },
-     "unread_notifications": {
-      "default": 0,
-      "title": "Unread Notifications",
-      "type": "integer"
+     "deep_link": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/DeepLink"
+       },
+       {
+        "type": "null"
+       }
+      ]
      },
-     "unread_threads": {
-      "default": 0,
-      "title": "Unread Threads",
-      "type": "integer"
+     "footer": {
+      "default": "",
+      "title": "Footer",
+      "type": "string"
+     },
+     "held": {
+      "default": false,
+      "title": "Held",
+      "type": "boolean"
+     },
+     "layout": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Layout"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "title": {
+      "default": "",
+      "title": "Title",
+      "type": "string"
      }
     },
-    "title": "NotificationBadge",
+    "title": "NotificationPayload",
     "type": "object"
    },
    "NotificationSource": {
@@ -16988,7 +17130,7 @@
     "properties": {
      "notifications": {
       "items": {
-       "$ref": "#/components/schemas/Notification"
+       "$ref": "#/components/schemas/NotificationItem"
       },
       "title": "Notifications",
       "type": "array"

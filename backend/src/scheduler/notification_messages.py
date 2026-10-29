@@ -49,19 +49,6 @@ def safe_alert_message(evaluation: Evaluation, as_of: date) -> tuple[str, Layout
     )
 
 
-_REPORT_PREVIEW_CHARS = 160
-
-
-def report_preview(text: str) -> str:
-    """A scheduled report can be thousands of characters; the notification is a pointer to the
-    thread (its deep link), so it carries only the opening of the report, cut at a line break when
-    one is near. The full text, tables and charts live in the schedule's thread."""
-    flat = " ".join(line.strip() for line in text.strip().splitlines() if line.strip())
-    if len(flat) <= _REPORT_PREVIEW_CHARS:
-        return flat
-    return f"{flat[:_REPORT_PREVIEW_CHARS].rstrip()}…（完整報告請見對話）"
-
-
 _REPORT_HEADING = "📰 排程摘要"
 _REPORT_BULLETS = 3
 _BULLET_CHARS = 80
@@ -120,9 +107,7 @@ def _short(line: str) -> str:
     return f"{line[:_BULLET_CHARS].rstrip()}…"
 
 
-def report_layout(report: str) -> Layout:
-    """A scheduled report as a heading, up to three short lines from its opening, and a pointer to
-    the full report in Miru."""
+def _report_bullets(report: str) -> tuple[str, ...]:
     bullets: list[str] = []
     for line in plain_lines(report):
         if len(bullets) == _REPORT_BULLETS:
@@ -130,9 +115,21 @@ def report_layout(report: str) -> Layout:
         if line.endswith(("：", ":")):
             continue
         bullets.append(f"• {_short(line)}")
+    return tuple(bullets)
+
+
+def report_preview(report: str) -> str:
+    """The plain body of a scheduled report: the same short lines the layout shows, then the
+    pointer to the full report, so it never carries raw markdown or a sentence cut mid-way."""
+    return "\n".join([*_report_bullets(report), _OPEN_REPORT])
+
+
+def report_layout(report: str) -> Layout:
+    """A scheduled report as a heading, up to three short lines from its opening, and a pointer to
+    the full report in Miru."""
     return Layout(
         blocks=(
-            LayoutBlock(head=_REPORT_HEADING, lines=tuple(bullets)),
+            LayoutBlock(head=_REPORT_HEADING, lines=_report_bullets(report)),
             LayoutBlock(lines=(_OPEN_REPORT,)),
         )
     )

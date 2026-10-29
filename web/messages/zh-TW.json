@@ -897,7 +897,9 @@
       "empty": "目前沒有通知",
       "markAllRead": "全部標為已讀",
       "manage": "管理提醒",
-      "unread": "{count} 則未讀通知"
+      "unread": "{count} 則未讀通知",
+      "unreadItem": "未讀",
+      "foldCount": "{count} 筆"
     },
     "tier": {
       "free": "免費",

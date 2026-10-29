@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from accounts.models import User
 from api.dependencies import (
@@ -20,8 +20,10 @@ from scheduler.models import (
     DeliveryChannelKind,
     Notification,
     NotificationBadge,
+    NotificationSource,
     QuietHours,
 )
+from scheduler.notification_payload import NotificationPayload, read_payload
 from scheduler.store import (
     SchedulerStore,
 )
@@ -29,8 +31,39 @@ from scheduler.store import (
 router = APIRouter()
 
 
+class NotificationItem(BaseModel):
+    """One inbox entry. `payload` is the typed read of the stored object: the plain `title` and
+    `body` always, and the `layout` when the notification was stored with one."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    id: str
+    user_id: str
+    source: NotificationSource
+    source_id: str
+    channel: DeliveryChannelKind
+    dedupe_key: str
+    payload: NotificationPayload
+    delivered_at: datetime
+    read_at: datetime | None = None
+
+
+def _item(notification: Notification) -> NotificationItem:
+    return NotificationItem(
+        id=notification.id,
+        user_id=notification.user_id,
+        source=notification.source,
+        source_id=notification.source_id,
+        channel=notification.channel,
+        dedupe_key=notification.dedupe_key,
+        payload=read_payload(notification.payload),
+        delivered_at=notification.delivered_at,
+        read_at=notification.read_at,
+    )
+
+
 class NotificationsResponse(BaseModel):
-    notifications: list[Notification]
+    notifications: list[NotificationItem]
 
 
 @router.get("/notifications")
@@ -43,7 +76,7 @@ async def list_notifications(
     notifications = await store.list_notifications(
         user_id=user.id, limit=limit, unread_only=unread_only
     )
-    return NotificationsResponse(notifications=notifications)
+    return NotificationsResponse(notifications=[_item(n) for n in notifications])
 
 
 class MarkReadRequest(BaseModel):

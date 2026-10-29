@@ -1203,4 +1203,16 @@ async def test_a_fired_rule_carries_the_stock_name_and_grouped_numbers_in_the_in
         f"{NON_ADVICE_FOOTER}"
     )
     assert note.payload["title"] == "2330 - 收盤價高於 1000"
-    assert "layout" not in note.payload
+    assert note.payload["layout"] == {
+        "blocks": [
+            {
+                "head": "🔔 2330 台積電",
+                "lines": [
+                    "收盤價 1,020，高於設定值 1,000",
+                    "條件：收盤價高於 1,000",
+                    "資料日期：2026-10-27",
+                ],
+                "fold": False,
+            }
+        ]
+    }

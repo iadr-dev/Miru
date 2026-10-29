@@ -36,8 +36,11 @@ from scheduler.delivery.base import (
 from scheduler.delivery.layout import (
     LINE_MAX_UNITS,
     TELEGRAM_MAX_UNITS,
+    TRIM_POINTER,
     fit_html,
     fit_text,
+    render_email_html,
+    render_text,
     utf16_units,
 )
 from scheduler.delivery.push_endpoint import subscription_endpoint_allowed
@@ -90,7 +93,7 @@ def _line_text(notification: DeliveryNotification) -> str:
     """The LINE text: the layout as markup-free text when there is one (and it fits), else the
     title and body, either way within LINE's 5000 characters."""
     laid_out = (
-        fit_text(notification.layout, NON_ADVICE_FOOTER, pointer=_TRIM_POINTER)
+        fit_text(notification.layout, NON_ADVICE_FOOTER, pointer=TRIM_POINTER)
         if notification.layout is not None
         else None
     )
@@ -138,7 +141,6 @@ class InAppChannel:
 
 
 _OPEN_IN_APP = "在 Miru 開啟"
-_TRIM_POINTER = "…（完整內容請見 Miru）"
 
 
 def _fit_plain(text: str, limit: int) -> str:
@@ -149,7 +151,7 @@ def _fit_plain(text: str, limit: int) -> str:
         return text
     has_footer = NON_ADVICE_FOOTER in text
     head = text.replace(NON_ADVICE_FOOTER, "").rstrip() if has_footer else text
-    tail = f"\n{_TRIM_POINTER}\n{NON_ADVICE_FOOTER}" if has_footer else f"\n{_TRIM_POINTER}"
+    tail = f"\n{TRIM_POINTER}\n{NON_ADVICE_FOOTER}" if has_footer else f"\n{TRIM_POINTER}"
     budget = limit - utf16_units(tail)
     kept: list[str] = []
     used = 0
@@ -269,7 +271,7 @@ class TelegramChannel:
         if recipient.telegram_chat_id is None:
             raise ChannelNotConfiguredError("no Telegram chat id for recipient")
         html_text = (
-            fit_html(notification.layout, NON_ADVICE_FOOTER, pointer=_TRIM_POINTER)
+            fit_html(notification.layout, NON_ADVICE_FOOTER, pointer=TRIM_POINTER)
             if formatted and notification.layout is not None
             else None
         )
@@ -333,20 +335,18 @@ class EmailChannel:
     ) -> OutboundRequest:
         if recipient.email_address is None:
             raise ChannelNotConfiguredError("no email address for recipient")
-        text = (
-            notification.body
-            if NON_ADVICE_FOOTER in notification.body
-            else f"{notification.body}\n\n{NON_ADVICE_FOOTER}"
-        )
         link = recipient.unsubscribe_url
-        if link is not None:
-            text = f"{text}\n\n不想再收到電子郵件通知？一鍵取消：{link}"
+        unsubscribe = _UNSUBSCRIBE_LINE.format(link=link) if link is not None else None
+        text, body_html = _email_parts(notification)
+        if unsubscribe is not None:
+            text = f"{text}\n\n{unsubscribe}"
+            body_html += f"<p>{html.escape(unsubscribe)}</p>"
         payload: dict[str, object] = {
             "from": self._from or "",
             "to": [recipient.email_address],
             "subject": notification.title,
             "text": text,
-            "html": _email_html(notification.title, text),
+            "html": _email_document(notification.title, body_html, headed=_has_lead(notification)),
         }
         if link is not None:
             # RFC 8058: the mail client shows its own "unsubscribe" button and POSTs to the link.
@@ -377,18 +377,53 @@ class EmailChannel:
         )
 
 
-def _email_html(title: str, text: str) -> str:
-    """A minimal, accessible HTML copy: declared language, a <title>, real paragraphs, no images
-    and no colour-only meaning — it reads the same as the plain-text part."""
-    paragraphs = "".join(
+_UNSUBSCRIBE_LINE = "不想再收到電子郵件通知？一鍵取消：{link}"
+
+
+def _has_lead(notification: DeliveryNotification) -> bool:
+    """Whether the laid-out body opens with a heading of its own (which then serves as the page's
+    `h1`), so the email document need not add the title as one."""
+    if notification.layout is None:
+        return False
+    first = next((b for b in notification.layout.blocks if b.head or b.lines), None)
+    return first is not None and bool(first.head)
+
+
+def _email_parts(notification: DeliveryNotification) -> tuple[str, str]:
+    """(the plain-text part, the HTML inside `<body>`) of an email. A notification with a layout is
+    its rendered text and structured HTML, the same strings in the same order; any other is the
+    body with the footer, as paragraphs."""
+    if notification.layout is not None:
+        return (
+            render_text(notification.layout, NON_ADVICE_FOOTER),
+            render_email_html(notification.layout, NON_ADVICE_FOOTER),
+        )
+    text = (
+        notification.body
+        if NON_ADVICE_FOOTER in notification.body
+        else f"{notification.body}\n\n{NON_ADVICE_FOOTER}"
+    )
+    return text, _paragraphs(text)
+
+
+def _paragraphs(text: str) -> str:
+    return "".join(
         f"<p>{html.escape(block).replace(chr(10), '<br>')}</p>"
         for block in text.split("\n\n")
         if block.strip()
     )
+
+
+def _email_document(title: str, body_html: str, *, headed: bool) -> str:
+    """A minimal, accessible HTML copy: declared language, a <title>, real headings and
+    paragraphs, no images and no colour-only meaning. It reads the same as the plain-text part."""
+    heading = "" if headed else f"<h1>{html.escape(title)}</h1>"
     return (
         '<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8">'
-        f"<title>{html.escape(title)}</title></head><body>"
-        f"<h1>{html.escape(title)}</h1>{paragraphs}</body></html>"
+        '<meta name="viewport" content="width=device-width, initial-scale=1">'
+        f"<title>{html.escape(title)}</title></head>"
+        f'<body style="margin:0;padding:16px;max-width:640px;font-family:sans-serif;color:#111111">'
+        f"{heading}{body_html}</body></html>"
     )
 
 
