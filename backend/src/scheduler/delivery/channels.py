@@ -161,6 +161,47 @@ _HTTP_FORBIDDEN = 403
 _CHAT_NOT_FOUND = "chat not found"
 
 
+_TELEGRAM_MAX_UNITS = 4096
+_TRIM_POINTER = "…（完整內容請見 Miru）"
+
+
+def _utf16_units(text: str) -> int:
+    return len(text.encode("utf-16-le")) // 2
+
+
+def _fit_telegram(text: str) -> str:
+    """`text` as one Telegram message. Telegram rejects more than 4096 UTF-16 code units (an emoji
+    is two), so a longer text is cut at a line boundary, then a pointer to the full content and the
+    non-advice footer, which always survives the cut, are appended."""
+    if _utf16_units(text) <= _TELEGRAM_MAX_UNITS:
+        return text
+    has_footer = NON_ADVICE_FOOTER in text
+    head = text.replace(NON_ADVICE_FOOTER, "").rstrip() if has_footer else text
+    tail = f"\n{_TRIM_POINTER}\n{NON_ADVICE_FOOTER}" if has_footer else f"\n{_TRIM_POINTER}"
+    budget = _TELEGRAM_MAX_UNITS - _utf16_units(tail)
+    kept: list[str] = []
+    used = 0
+    for line in head.split("\n"):
+        cost = _utf16_units(line) + (1 if kept else 0)
+        if used + cost > budget:
+            break
+        kept.append(line)
+        used += cost
+    if not kept:
+        kept.append(_cut_units(head, budget))
+    return "\n".join(kept).rstrip() + tail
+
+
+def _cut_units(text: str, budget: int) -> str:
+    """The longest prefix of `text` within `budget` UTF-16 units, never splitting a character."""
+    used = 0
+    for index, char in enumerate(text):
+        used += _utf16_units(char)
+        if used > budget:
+            return text[:index]
+    return text
+
+
 def _never_gone(result: TransportResult) -> bool:
     del result
     return False
@@ -193,7 +234,10 @@ class TelegramChannel:
             method="POST",
             url=f"https://api.telegram.org/bot{self._token or ''}/sendMessage",
             headers={"Content-Type": _JSON_CONTENT_TYPE},
-            json={"chat_id": recipient.telegram_chat_id, "text": _text(notification)},
+            json={
+                "chat_id": recipient.telegram_chat_id,
+                "text": _fit_telegram(_text(notification)),
+            },
         )
 
     async def send(

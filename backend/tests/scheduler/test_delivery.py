@@ -21,6 +21,7 @@ from scheduler.delivery.channels import (
 )
 from scheduler.delivery.transport import HttpxTransport, TransportResult
 from scheduler.models import DeliveryChannelKind
+from schemas.alerts import NON_ADVICE_FOOTER
 from tests.http_support import OwnedLease
 
 
@@ -273,6 +274,68 @@ async def test_no_unsubscribe_header_without_a_link() -> None:
         _notification(), DeliveryRecipient(user_id="u1", email_address="a@example.test")
     )
     assert "headers" not in transport.calls[0][2]
+
+
+_TELEGRAM_LIMIT = 4096
+_POINTER = "…（完整內容請見 Miru）"
+
+
+def _units(text: str) -> int:
+    return len(text.encode("utf-16-le")) // 2
+
+
+def _telegram_text(body: str, *, title: str = "排程摘要") -> str:
+    channel = TelegramChannel(Settings(telegram_bot_token="bot-tok"))
+    request = channel.build_request(
+        DeliveryNotification(notification_id="n1", title=title, body=body),
+        DeliveryRecipient(user_id="u1", telegram_chat_id="12345"),
+    )
+    return str(request.json["text"])
+
+
+def test_a_short_telegram_message_is_sent_whole() -> None:
+    body = f"短訊息\n{NON_ADVICE_FOOTER}"
+    assert _telegram_text(body) == f"排程摘要\n{body}"
+
+
+def test_a_long_telegram_message_is_cut_at_a_line_and_keeps_the_footer() -> None:
+    lines = [f"第 {i} 行 📈 台積電外資買超連 3 日" for i in range(600)]
+    text = _telegram_text("\n".join(lines) + f"\n{NON_ADVICE_FOOTER}")
+    assert _units(text) <= _TELEGRAM_LIMIT
+    assert text.endswith(f"{_POINTER}\n{NON_ADVICE_FOOTER}")
+    kept = text.removesuffix(f"\n{_POINTER}\n{NON_ADVICE_FOOTER}").split("\n")[1:]
+    assert kept == lines[: len(kept)]
+    assert 0 < len(kept) < len(lines)
+    assert _TELEGRAM_LIMIT - _units(text) < _units(lines[len(kept)]) + 1  # as much as fits was kept
+
+
+def test_the_limit_counts_utf16_units_so_emoji_cost_two() -> None:
+    body = "📈" * 3000 + f"\n{NON_ADVICE_FOOTER}"
+    text = _telegram_text(body)
+    assert _units(text) <= _TELEGRAM_LIMIT
+    assert len(text) < _TELEGRAM_LIMIT  # code points, not units, would have fit more
+    assert text.endswith(NON_ADVICE_FOOTER)
+
+
+def test_one_enormous_line_is_cut_on_a_character_boundary() -> None:
+    text = _telegram_text("字" * 9000 + f"\n{NON_ADVICE_FOOTER}")
+    assert _units(text) <= _TELEGRAM_LIMIT
+    assert text.endswith(f"{_POINTER}\n{NON_ADVICE_FOOTER}")
+
+
+def test_a_message_exactly_at_the_limit_is_untouched() -> None:
+    title = "題"
+    fixed = _units(f"{title}\n\n{NON_ADVICE_FOOTER}")
+    body = "字" * (_TELEGRAM_LIMIT - fixed)
+    text = _telegram_text(f"{body}\n{NON_ADVICE_FOOTER}", title=title)
+    assert _units(text) == _TELEGRAM_LIMIT
+    assert _POINTER not in text
+
+
+def test_a_long_message_without_a_footer_still_fits() -> None:
+    text = _telegram_text("\n".join("字" * 50 for _ in range(200)))
+    assert _units(text) <= _TELEGRAM_LIMIT
+    assert text.endswith(_POINTER)
 
 
 _BLOCKED = "Forbidden: bot was blocked by the user"
