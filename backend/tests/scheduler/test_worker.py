@@ -11,7 +11,7 @@ import pytest
 
 from accounts.entitlements import TierLimits
 from accounts.hooks import EntitlementResolver
-from agent.guardrails import REDACTION_NOTICE_EN, check_output
+from agent.guardrails import REDACTION_NOTICE_EN, REDACTION_NOTICE_ZH, check_output
 from agent.loop import RichCard
 from conversation.models import MessageBlockType
 from conversation.store import SqlAlchemyConversationStore
@@ -307,7 +307,9 @@ async def test_scheduled_run_output_passes_non_trading_guardrail(session_factory
     assert verdict.redacted_text is not None
     assert "should buy" not in verdict.redacted_text.lower()
     assert "strong buy" not in verdict.redacted_text.lower()
-    assert REDACTION_NOTICE_EN in verdict.redacted_text
+    assert REDACTION_NOTICE_EN in verdict.redacted_text or (
+        REDACTION_NOTICE_ZH in verdict.redacted_text
+    )
 
 
 async def test_redelivery_is_idempotent(session_factory) -> None:
@@ -460,7 +462,7 @@ async def test_a_scheduled_report_keeps_its_chart_cards_and_sends_a_short_notifi
     assert kinds.index(MessageBlockType.RICH_CARD) < kinds.index(MessageBlockType.TEXT)
     body = str(notifications[0].payload.get("body", ""))
     assert len(body) < 260
-    assert "完整報告請見對話" in body
+    assert "完整報告請見 Miru" in body
 
 
 class _InputRecordingOrchestrator(_StubOrchestrator):

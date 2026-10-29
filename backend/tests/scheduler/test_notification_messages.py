@@ -176,9 +176,35 @@ def test_a_very_long_report_still_yields_at_most_three_short_bullets() -> None:
     assert len(_text(layout)) < 400
 
 
-def test_the_report_plain_preview_is_unchanged() -> None:
-    assert report_preview("一\n二") == "一 二"
-    assert report_preview("字" * 300) == "字" * 160 + "…（完整報告請見對話）"
+@pytest.mark.parametrize(
+    ("report", "expected"),
+    [
+        ("一\n二", "• 一\n• 二\n完整報告請見 Miru"),
+        ("", "完整報告請見 Miru"),
+        ("| a | b |\n|---|---|\n---", "完整報告請見 Miru"),
+        ("字" * 300, "• " + "字" * 80 + "…\n完整報告請見 Miru"),
+        (
+            _HEAVY,
+            "• 2330 台積電 個股報告\n"
+            "• 一、基本識別\n"
+            "• 營收年增 12.3%，連續三季成長。其餘細節見下表。\n"
+            "完整報告請見 Miru",
+        ),
+    ],
+)
+def test_the_report_plain_preview_is_the_layout_lines_and_the_pointer(
+    report: str, expected: str
+) -> None:
+    assert report_preview(report) == expected
+    layout = report_layout(report)
+    assert report_preview(report).split("\n") == [*layout.blocks[0].lines, *layout.blocks[1].lines]
+
+
+def test_the_report_plain_preview_leaks_no_markdown_and_ends_on_a_whole_line() -> None:
+    preview = report_preview(_HEAVY)
+    for leaked in ("**", "###", "|", "---", "](", "```", "_斜"):
+        assert leaked not in preview
+    assert all(len(line) <= 90 for line in preview.split("\n"))
 
 
 def _titles(n: int) -> list[str]:
