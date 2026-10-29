@@ -128,6 +128,101 @@ describe("NotificationRow with a layout", () => {
   });
 });
 
+function plainPayload(lineCount: number): unknown {
+  return {
+    title: "清單",
+    body: "…",
+    layout: {
+      blocks: [
+        {
+          head: "📋 清單",
+          lines: Array.from({ length: lineCount }, (_, i) => `第 ${i + 1} 行`),
+          fold: false,
+        },
+      ],
+    },
+    footer: FOOTER,
+  };
+}
+
+describe("NotificationRow clamp", () => {
+  it("shows a tall row's top and a collapsed control, hiding the rest and the footer", () => {
+    renderRow(view(plainPayload(10)));
+    const control = screen.getByRole("button", { name: "顯示全部" });
+    expect(control.getAttribute("aria-expanded")).toBe("false");
+    expect(control.className).toContain("min-h-11");
+    expect(control.className).toContain("focus-visible:ring-2");
+    expect(screen.getByText("第 5 行")).toBeTruthy();
+    expect(screen.queryByText("第 6 行")).toBeNull();
+    expect(screen.queryByText(FOOTER)).toBeNull();
+  });
+
+  it("expands to every line and the footer, then collapses again", () => {
+    renderRow(view(plainPayload(10)));
+    fireEvent.click(screen.getByRole("button", { name: "顯示全部" }));
+    const control = screen.getByRole("button", { name: "收合" });
+    expect(control.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByText("第 10 行")).toBeTruthy();
+    expect(screen.getByText(FOOTER)).toBeTruthy();
+    fireEvent.click(control);
+    expect(screen.queryByText("第 10 行")).toBeNull();
+    expect(screen.queryByText(FOOTER)).toBeNull();
+    expect(screen.getByRole("button", { name: "顯示全部" }).getAttribute("aria-expanded")).toBe(
+      "false",
+    );
+  });
+
+  it("does not open the notification when the control is toggled", () => {
+    const onOpen = renderRow(view(plainPayload(10)));
+    fireEvent.click(screen.getByRole("button", { name: "顯示全部" }));
+    fireEvent.click(screen.getByRole("button", { name: "收合" }));
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  it("keeps the heading as the only open button while clamped", () => {
+    const onOpen = renderRow(view(plainPayload(10)));
+    fireEvent.click(screen.getByRole("button", { name: "📋 清單" }));
+    expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows a short row whole with no control", () => {
+    renderRow(view(plainPayload(3)));
+    expect(screen.queryByRole("button", { name: "顯示全部" })).toBeNull();
+    expect(screen.getByText("第 3 行")).toBeTruthy();
+    expect(screen.getByText(FOOTER)).toBeTruthy();
+  });
+
+  it("shows a row exactly at the budget whole with no control", () => {
+    renderRow(view(plainPayload(5)));
+    expect(screen.queryByRole("button", { name: "顯示全部" })).toBeNull();
+    expect(screen.getByText("第 5 行")).toBeTruthy();
+  });
+
+  it("clamps a long morning list to its heading and fold, footer behind the control", () => {
+    const longMorning = {
+      ...morningPayload,
+      layout: {
+        blocks: [
+          ...morningPayload.layout.blocks,
+          { head: "量能放大", lines: stocks, fold: true },
+          { head: "站上均線", lines: stocks, fold: true },
+          { head: "籌碼轉強", lines: stocks, fold: true },
+          { head: "突破整理", lines: stocks, fold: true },
+          { head: "跌深反彈", lines: stocks, fold: true },
+        ],
+      },
+    };
+    const { container } = renderWithIntl(
+      <ul>
+        <NotificationRow item={view(longMorning)} onOpen={vi.fn()} />
+      </ul>,
+    );
+    expect(container.querySelectorAll("details")).toHaveLength(5);
+    expect(screen.getByRole("button", { name: "顯示全部" })).toBeTruthy();
+    expect(screen.queryByText(FOOTER)).toBeNull();
+  });
+});
+
 describe("NotificationRow whose first block is a fold with a head", () => {
   const foldFirst = {
     title: "今日盯盤清單",

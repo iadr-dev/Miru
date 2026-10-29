@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { type Notification, notificationSchema } from "@/types/settings";
-import { badgeLabel, deepLinkHref, toNotificationView } from "./notification-payload";
+import { badgeLabel, clampBlocks, deepLinkHref, toNotificationView } from "./notification-payload";
 
 const wire = {
   id: "n1",
@@ -102,5 +102,40 @@ describe("badgeLabel", () => {
     expect(badgeLabel(3)).toBe("3");
     expect(badgeLabel(9)).toBe("9");
     expect(badgeLabel(10)).toBe("9+");
+  });
+});
+
+describe("clampBlocks", () => {
+  const lines = (n: number): string[] => Array.from({ length: n }, (_, i) => `l${i}`);
+
+  it("returns everything when the layout fits the budget exactly", () => {
+    const blocks = [{ head: "h", lines: lines(5), fold: false }];
+    expect(clampBlocks(blocks, 6)).toEqual({ shown: blocks, hiddenLineCount: 0 });
+  });
+
+  it("keeps the heading and the first lines of a block that does not fit", () => {
+    const { shown, hiddenLineCount } = clampBlocks(
+      [{ head: "h", lines: lines(10), fold: false }],
+      6,
+    );
+    expect(shown).toEqual([{ head: "h", lines: lines(5), fold: false }]);
+    expect(hiddenLineCount).toBe(5);
+  });
+
+  it("counts a fold as one line and never splits it", () => {
+    const blocks = [
+      { head: "a", lines: [], fold: false },
+      { head: "b", lines: lines(29), fold: true },
+      { head: "c", lines: lines(29), fold: true },
+    ];
+    expect(clampBlocks(blocks, 2)).toEqual({ shown: blocks.slice(0, 2), hiddenLineCount: 1 });
+  });
+
+  it("hides whole blocks after the budget is spent", () => {
+    const blocks = [
+      { head: "a", lines: lines(5), fold: false },
+      { head: "b", lines: lines(2), fold: false },
+    ];
+    expect(clampBlocks(blocks, 6)).toEqual({ shown: blocks.slice(0, 1), hiddenLineCount: 3 });
   });
 });
