@@ -8,7 +8,9 @@ string reaches the HTML through `html.escape`, so the markup is limited to `<b>`
 
 Trimming works on the blocks and renders afterwards, so a cut can never land inside a tag or an
 entity, and the footer is rendered last whatever is dropped. LINE gets `render_text`: the same
-blocks, blank lines between them, no markup.
+blocks, blank lines between them, no markup. Email gets `render_email_html`: the same blocks as
+headings and one paragraph per line, a folded block shown like any other. The in-app inbox stores
+a layout trimmed by `trim_layout` and the web app draws it.
 """
 
 from __future__ import annotations
@@ -22,6 +24,8 @@ TELEGRAM_MAX_UNITS = 4096
 LINE_MAX_UNITS = 5000
 LINE_FOLD_LINES = 3
 LINE_FOLD_MORE = "…（其餘請見 Miru）"
+TRIM_POINTER = "…（完整內容請見 Miru）"
+STORED_MAX_UNITS = LINE_MAX_UNITS
 _BLOCK_GAP = "\n\n"
 
 
@@ -69,16 +73,17 @@ def render_text(layout: Layout, footer: str) -> str:
     return _BLOCK_GAP.join([*(p for p in parts if p), footer])
 
 
-def _fit(
+def _trim(
     layout: Layout, footer: str, *, pointer: str, limit: int, render: Callable[[Layout, str], str]
-) -> str | None:
+) -> Layout | None:
     blocks = list(layout.blocks)
     trimmed = False
     while True:
-        shown = (*blocks, LayoutBlock(lines=(pointer,))) if trimmed else tuple(blocks)
-        text = render(Layout(blocks=shown), footer)
-        if utf16_units(text) <= limit:
-            return text
+        shown = Layout(
+            blocks=(*blocks, LayoutBlock(lines=(pointer,))) if trimmed else tuple(blocks)
+        )
+        if utf16_units(render(shown, footer)) <= limit:
+            return shown
         if not blocks:
             return None
         last = blocks[-1]
@@ -91,6 +96,21 @@ def _fit(
         trimmed = True
 
 
+def _fit(
+    layout: Layout, footer: str, *, pointer: str, limit: int, render: Callable[[Layout, str], str]
+) -> str | None:
+    shown = _trim(layout, footer, pointer=pointer, limit=limit, render=render)
+    return None if shown is None else render(shown, footer)
+
+
+def trim_layout(
+    layout: Layout, footer: str, *, pointer: str = TRIM_POINTER, limit: int = STORED_MAX_UNITS
+) -> Layout | None:
+    """The layout cut, the way `fit_html` cuts, until its plain text fits `limit` UTF-16 units, or
+    None when even the first block alone does not. This is the copy the inbox and email keep."""
+    return _trim(layout, footer, pointer=pointer, limit=limit, render=render_text)
+
+
 def fit_html(
     layout: Layout, footer: str, *, pointer: str, limit: int = TELEGRAM_MAX_UNITS
 ) -> str | None:
@@ -98,6 +118,34 @@ def fit_html(
     None when even the first block alone does not fit. Lines are dropped from the end of the last
     block, then empty blocks, with `pointer` marking the cut; the first block and footer stay."""
     return _fit(layout, footer, pointer=pointer, limit=limit, render=render_html)
+
+
+_EMAIL_HEAD_STYLE = "margin:0 0 6px;font-size:{size}px;line-height:1.4"
+_EMAIL_LINE_STYLE = "margin:0 0 4px;font-size:15px;line-height:1.6"
+_EMAIL_BLOCK_STYLE = "margin:0 0 18px"
+_EMAIL_FOOTER_STYLE = "margin:0;font-size:12px;line-height:1.5;color:#555555"
+
+
+def _email_block(block: LayoutBlock, *, lead: bool) -> str:
+    rows: list[str] = []
+    if block.head:
+        tag, size = ("h1", 20) if lead else ("h2", 17)
+        style = _EMAIL_HEAD_STYLE.format(size=size)
+        rows.append(f'<{tag} style="{style}">{html.escape(block.head)}</{tag}>')
+    rows.extend(
+        f'<p style="{_EMAIL_LINE_STYLE}">{html.escape(line)}</p>' for line in block.lines if line
+    )
+    return f'<div style="{_EMAIL_BLOCK_STYLE}">{"".join(rows)}</div>'
+
+
+def render_email_html(layout: Layout, footer: str) -> str:
+    """The layout as the inside of an email body: the first heading is the page's `h1`, later ones
+    `h2`, each line its own paragraph, the footer last. A folded block reads like any other (a mail
+    client cannot expand it), and every string is escaped."""
+    shown = [b for b in layout.blocks if b.head or b.lines]
+    parts = [_email_block(b, lead=i == 0) for i, b in enumerate(shown)]
+    parts.append(f'<p style="{_EMAIL_FOOTER_STYLE}">{html.escape(footer)}</p>')
+    return "".join(parts)
 
 
 def line_view(layout: Layout) -> Layout:
@@ -125,13 +173,17 @@ __all__ = [
     "LINE_FOLD_LINES",
     "LINE_FOLD_MORE",
     "LINE_MAX_UNITS",
+    "STORED_MAX_UNITS",
     "TELEGRAM_MAX_UNITS",
+    "TRIM_POINTER",
     "Layout",
     "LayoutBlock",
     "fit_html",
     "fit_text",
     "line_view",
+    "render_email_html",
     "render_html",
     "render_text",
+    "trim_layout",
     "utf16_units",
 ]
