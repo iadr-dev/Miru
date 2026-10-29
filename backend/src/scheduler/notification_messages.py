@@ -101,9 +101,10 @@ def plain_lines(markdown: str) -> list[str]:
     return lines
 
 
-def _short(line: str) -> str | None:
-    """`line` if it is short, else its first sentence or last clause that fits, else None. A cut
-    falls on punctuation or a space, never inside a word."""
+def _short(line: str) -> str:
+    """`line` if it is short, else its first sentence or last clause that fits, else the text up
+    to the last space, else its first `_BULLET_CHARS` characters (an unbroken run, such as Chinese
+    with no punctuation). A line is never dropped."""
     if len(line) <= _BULLET_CHARS:
         return line
     window = line[: _BULLET_CHARS + 1]
@@ -114,7 +115,9 @@ def _short(line: str) -> str | None:
     if clause and clause[-1] > 0:
         return f"{line[: clause[-1]]}…"
     space = window.rfind(" ")
-    return f"{line[:space].rstrip()}…" if space > 0 else None
+    if space > 0:
+        return f"{line[:space].rstrip()}…"
+    return f"{line[:_BULLET_CHARS].rstrip()}…"
 
 
 def report_layout(report: str) -> Layout:
@@ -126,8 +129,7 @@ def report_layout(report: str) -> Layout:
             break
         if line.endswith(("：", ":")):
             continue
-        if (short := _short(line)) is not None:
-            bullets.append(f"• {short}")
+        bullets.append(f"• {_short(line)}")
     return Layout(
         blocks=(
             LayoutBlock(head=_REPORT_HEADING, lines=tuple(bullets)),

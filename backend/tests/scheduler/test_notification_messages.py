@@ -159,10 +159,10 @@ def test_a_report_with_nothing_readable_has_only_the_heading_and_the_pointer(rep
             "alpha beta gamma " * 8,
             ["• alpha beta gamma alpha beta gamma alpha beta gamma alpha beta gamma alpha beta…"],
         ),
-        ("字" * 200, []),
+        ("字" * 200, ["• " + "字" * 80 + "…"]),
     ],
 )
-def test_a_long_line_is_cut_at_a_sentence_or_clause_never_inside_a_word(
+def test_a_long_line_is_cut_at_a_sentence_clause_or_space_and_never_dropped(
     line: str, expected: list[str]
 ) -> None:
     assert list(report_layout(line).blocks[0].lines) == expected
