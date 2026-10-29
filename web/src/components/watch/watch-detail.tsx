@@ -23,7 +23,15 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { keyLevel, STRATEGY_COLOR, tint } from "@/components/watch/watch-format";
+import {
+  assertNeverStatus,
+  guardReason,
+  keyLevel,
+  STRATEGY_COLOR,
+  tint,
+  type WatchStatus,
+  watchStatus,
+} from "@/components/watch/watch-format";
 import { usePriceHistory } from "@/hooks/use-stock-data";
 import { Link } from "@/i18n/navigation";
 import { cn } from "@/lib/cn";
@@ -90,6 +98,7 @@ export function WatchDetail({
             <span className="ml-1.5 font-normal text-[var(--text-muted)]">{item.latest_slot}</span>
           ) : null}
         </h4>
+        <StatusLine status={watchStatus(item)} />
         {triggers.length === 0 ? (
           <p className="text-[12.5px] text-[var(--text-muted)]">{t("detail.notChecked")}</p>
         ) : (
@@ -110,6 +119,32 @@ export function WatchDetail({
       {masked ? <p className="text-[11.5px] text-[var(--text-muted)]">{t("masked")}</p> : null}
     </div>
   );
+}
+
+function StatusLine({ status }: Readonly<{ status: WatchStatus }>): ReactNode {
+  const t = useTranslations("watch");
+  switch (status.kind) {
+    case "notChecked":
+      return null;
+    case "triggersPending":
+      return <StatusText>{t("detail.statusTriggersPending", status)}</StatusText>;
+    case "awaitingConfirmation":
+      return <StatusText>{t("detail.statusAwaiting")}</StatusText>;
+    case "blockedByGuard":
+      return (
+        <StatusText>
+          {t("detail.statusBlocked", { reason: guardReason(t, status.guard) })}
+        </StatusText>
+      );
+    case "alerted":
+      return <StatusText>{t("detail.statusAlerted", { time: status.time })}</StatusText>;
+    default:
+      return assertNeverStatus(status);
+  }
+}
+
+function StatusText({ children }: Readonly<{ children: ReactNode }>): ReactNode {
+  return <p className="mb-1.5 text-[12.5px] text-[var(--text-muted)]">{children}</p>;
 }
 
 function ConditionList({

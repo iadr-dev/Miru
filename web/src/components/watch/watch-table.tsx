@@ -3,7 +3,16 @@
 import { BellRingingIcon, SealCheckIcon } from "@phosphor-icons/react";
 import { useLocale, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
-import { distanceToLevel, keyLevel, tint, triggersMet } from "@/components/watch/watch-format";
+import {
+  assertNeverStatus,
+  distanceToLevel,
+  guardReason,
+  keyLevel,
+  tint,
+  triggersMet,
+  type WatchStatus,
+  watchStatus,
+} from "@/components/watch/watch-format";
 import { cn } from "@/lib/cn";
 import { formatNumber } from "@/lib/format-number";
 import type { StrategyWatchItem } from "@/types/strategy-watch";
@@ -120,6 +129,7 @@ export function WatchTable({
                     </span>
                   ) : null}
                 </span>
+                <ShortStatus status={watchStatus(item)} />
               </td>
               <td className="py-2 pl-2 text-right font-num text-[var(--text-muted)] tabular-nums">
                 {item.days_on_list}
@@ -130,6 +140,28 @@ export function WatchTable({
       </tbody>
     </table>
   );
+}
+
+function ShortStatus({ status }: Readonly<{ status: WatchStatus }>): ReactNode {
+  const t = useTranslations("watch");
+  switch (status.kind) {
+    case "notChecked":
+    case "triggersPending":
+    case "alerted":
+      return null;
+    case "awaitingConfirmation":
+      return <ShortText>{t("status.awaitingShort")}</ShortText>;
+    case "blockedByGuard":
+      return (
+        <ShortText>{t("status.blockedShort", { reason: guardReason(t, status.guard) })}</ShortText>
+      );
+    default:
+      return assertNeverStatus(status);
+  }
+}
+
+function ShortText({ children }: Readonly<{ children: ReactNode }>): ReactNode {
+  return <span className="mt-0.5 block text-[11px] text-[var(--text-muted)]">{children}</span>;
 }
 
 export function ConditionDots({

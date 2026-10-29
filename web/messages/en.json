@@ -4171,7 +4171,15 @@
       "closeConfirmed": "Close confirmed",
       "allMet": "All conditions met",
       "notChecked": "Not checked yet",
-      "conditionsMet": "{met}/{total} conditions met"
+      "conditionsMet": "{met}/{total} conditions met",
+      "awaitingShort": "Awaiting the next check",
+      "blockedShort": "No alert: {reason}",
+      "guardFailed": {
+        "after_opening_window": "alerts are not sent before 09:30",
+        "market_not_falling": "the market is down more than 1%",
+        "above_average_price": "the price is below the day's average",
+        "not_near_limit_up": "the stock is up 9% or more, near the daily limit"
+      }
     },
     "levels": {
       "upper_band": "Upper band",
@@ -4214,6 +4222,10 @@
       "openStock": "Open stock page",
       "daysOnList": "On the list for {days} sessions",
       "notChecked": "Not checked intraday yet.",
+      "statusTriggersPending": "{met}/{total} trigger conditions met; the rest are not met yet",
+      "statusAwaiting": "All trigger conditions met; waiting for the next check to confirm",
+      "statusBlocked": "All trigger conditions met, but {reason}",
+      "statusAlerted": "All trigger conditions met; alerted at {time}",
       "close": "Close"
     },
     "context": {

@@ -41,6 +41,7 @@ def _hit(  # noqa: PLR0913
     strategy: str = "volatility_squeeze",
     alertable: object = False,
     all_met: object = False,
+    confirmed: object = False,
     price: object = 872.0,
     conditions: object | None = None,
 ) -> dict[str, object]:
@@ -50,6 +51,7 @@ def _hit(  # noqa: PLR0913
         "slot": slot,
         "price": price,
         "all_met": all_met,
+        "confirmed": confirmed,
         "alertable": alertable,
         "conditions": _conditions() if conditions is None else conditions,
     }
@@ -73,6 +75,7 @@ def test_a_row_without_hits_gets_the_defaults(tmp_path: Path) -> None:
     assert item.price is None
     assert item.conditions == ()
     assert item.all_met is False
+    assert item.confirmed is False
     assert item.alerted_at is None
     assert item.close_confirmed is False
 
@@ -121,6 +124,28 @@ def test_all_met_needs_an_actual_true(tmp_path: Path) -> None:
     [yes] = _items(tmp_path, [_row()], [_hit("09:40", all_met=True)])
     assert truthy.all_met is False
     assert yes.all_met is True
+
+
+def test_confirmed_follows_the_latest_check_and_needs_an_actual_true(tmp_path: Path) -> None:
+    hits = [
+        _hit("09:40", all_met=True, confirmed=True),
+        _hit("09:50", all_met=True, confirmed=False),
+    ]
+    [latest_unconfirmed] = _items(tmp_path, [_row()], hits)
+    [latest_confirmed] = _items(tmp_path, [_row()], [_hit("10:00", all_met=True, confirmed=True)])
+    [truthy] = _items(tmp_path, [_row()], [_hit("10:00", all_met=True, confirmed=1)])
+    assert latest_unconfirmed.confirmed is False
+    assert latest_confirmed.confirmed is True
+    assert truthy.confirmed is False
+
+
+def test_confirmed_survives_masking_and_a_close_slot_never_sets_it(tmp_path: Path) -> None:
+    [masked] = _items(
+        tmp_path, [_row()], [_hit("09:40", all_met=True, confirmed=True)], masked=True
+    )
+    [close_only] = _items(tmp_path, [_row()], [_hit("close", all_met=True, confirmed=True)])
+    assert masked.confirmed is True
+    assert close_only.confirmed is False
 
 
 def test_alerted_at_is_the_earliest_alertable_intraday_slot(tmp_path: Path) -> None:

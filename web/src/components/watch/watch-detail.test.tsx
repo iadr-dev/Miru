@@ -50,6 +50,7 @@ function item(over: Partial<StrategyWatchItem> = {}): StrategyWatchItem {
       { key: "after_opening_window", kind: "guard", met: true, observed: null, required: null },
     ],
     all_met: false,
+    confirmed: false,
     alerted_at: null,
     close_confirmed: false,
     ...over,
@@ -95,6 +96,93 @@ describe("WatchDetail", () => {
     expect(container.innerHTML).toMatchSnapshot();
   });
 
+  it("says how many triggers are met while some are not", () => {
+    renderWithIntl(<WatchDetail item={item()} masked={false} />);
+    expect(screen.getByText("觸發條件 1/2 成立，其餘尚未成立")).toBeTruthy();
+  });
+
+  it("says it is waiting for the next check when every trigger holds for the first time", () => {
+    renderWithIntl(
+      <WatchDetail
+        item={item({
+          conditions: [
+            { key: "price_above_upper_band", kind: "trigger", met: true, observed: 1, required: 1 },
+            {
+              key: "after_opening_window",
+              kind: "guard",
+              met: true,
+              observed: null,
+              required: null,
+            },
+          ],
+          all_met: true,
+        })}
+        masked={false}
+      />,
+    );
+    expect(screen.getByText("觸發條件全數成立，尚待下一次檢查確認")).toBeTruthy();
+  });
+
+  it("names the intraday check that failed", () => {
+    renderWithIntl(
+      <WatchDetail
+        item={item({
+          conditions: [
+            { key: "price_above_upper_band", kind: "trigger", met: true, observed: 1, required: 1 },
+            {
+              key: "above_average_price",
+              kind: "guard",
+              met: false,
+              observed: null,
+              required: null,
+            },
+          ],
+          all_met: true,
+          confirmed: true,
+        })}
+        masked={false}
+      />,
+    );
+    expect(screen.getByText("觸發條件全數成立，但價格低於當日均價")).toBeTruthy();
+  });
+
+  it.each([
+    ["after_opening_window", "觸發條件全數成立，但09:30 前不發送通知"],
+    ["market_not_falling", "觸發條件全數成立，但大盤跌幅超過 1%"],
+    ["above_average_price", "觸發條件全數成立，但價格低於當日均價"],
+    ["not_near_limit_up", "觸發條件全數成立，但漲幅 9% 以上，已接近漲停"],
+    ["price_above_upper_band", "觸發條件全數成立，但價格高於布林上軌"],
+  ])("phrases the failed %s guard as a fact", (key, text) => {
+    renderWithIntl(
+      <WatchDetail
+        item={item({
+          conditions: [
+            { key: "price_above_upper_band", kind: "trigger", met: true, observed: 1, required: 1 },
+            { key, kind: "guard", met: false, observed: null, required: null },
+          ],
+          all_met: true,
+          confirmed: true,
+        })}
+        masked={false}
+      />,
+    );
+    expect(screen.getByText(text)).toBeTruthy();
+  });
+
+  it("says when and that an alert was sent", () => {
+    renderWithIntl(<WatchDetail item={item({ alerted_at: "09:50" })} masked={false} />);
+    expect(screen.getByText("觸發條件全數成立，已於 09:50 通知")).toBeTruthy();
+  });
+
+  it("adds no status line before the first check", () => {
+    renderWithIntl(
+      <WatchDetail item={item({ conditions: [], latest_slot: null })} masked={false} />,
+    );
+    expect(document.querySelectorAll("section[aria-labelledby='watch-triggers'] > p")).toHaveLength(
+      1,
+    );
+  });
+
   it("falls back to the symbol when the stock has no name", () => {
     renderWithIntl(<WatchDetail item={item({ name: null })} masked={false} />);
     expect(screen.getAllByText("2330").length).toBeGreaterThan(0);
@@ -138,7 +226,7 @@ describe("WatchDetail", () => {
         masked={false}
       />,
     );
-    expect(screen.getAllByText(/\//)).toHaveLength(1);
+    expect(screen.getAllByText(/ \/ /)).toHaveLength(1);
   });
 
   it("draws the chart with the trigger level and the floor when history has loaded", () => {

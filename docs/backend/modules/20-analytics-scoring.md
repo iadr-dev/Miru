@@ -799,6 +799,10 @@ previous slot (`confirmed`) and every guard: not before 09:30, market change > �
 or above the day's average price (not for divergence), not within 1% of 漲停 (squeeze). Rows that are
 not alertable are the near-miss log: stored and shown, never sent. The snapshot must be dated today,
 otherwise the slot is skipped.
+`get_strategy_watch` carries the latest check's `all_met` and `confirmed` on each item (with
+`alerted_at`), so the page can state in plain facts why a stock whose triggers all held has no alert:
+the next check has not confirmed it yet, or a named guard failed. It is display only; the near-miss
+rows are still never sent.
 The 今日流程 timeline marks the checks as paused ("盤中檢查暫停") when, during the session on today's
 list, no slot has landed for 25 minutes (two missed slots) - whatever the cause (both sources down,
 ingest not running) - instead of reading as "not started".

@@ -13199,6 +13199,11 @@ export interface components {
        */
       conditions: components["schemas"]["StrategyCondition"][];
       /**
+       * Confirmed
+       * @default false
+       */
+      confirmed: boolean;
+      /**
        * Days On List
        * @default 1
        */
