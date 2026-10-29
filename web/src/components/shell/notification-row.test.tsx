@@ -3,7 +3,12 @@ import { cleanup, fireEvent, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { renderWithIntl } from "@/test/render";
 import { notificationSchema } from "@/types/settings";
-import { type NotificationView, toNotificationView } from "./notification-payload";
+import {
+  clampBlocks,
+  type NotificationView,
+  ROW_LINE_BUDGET,
+  toNotificationView,
+} from "./notification-payload";
 import { NotificationRow } from "./notification-row";
 
 afterEach(cleanup);
@@ -148,7 +153,7 @@ function plainPayload(lineCount: number): unknown {
 describe("NotificationRow clamp", () => {
   it("shows a tall row's top and a collapsed control, hiding the rest but not the footer", () => {
     renderRow(view(plainPayload(10)));
-    const control = screen.getByRole("button", { name: "顯示全部" });
+    const control = screen.getByRole("button", { name: /^顯示全部/ });
     expect(control.getAttribute("aria-expanded")).toBe("false");
     expect(control.className).toContain("min-h-11");
     expect(control.className).toContain("focus-visible:ring-2");
@@ -157,9 +162,41 @@ describe("NotificationRow clamp", () => {
     expect(screen.getByText(FOOTER)).toBeTruthy();
   });
 
+  it("says how many lines are hidden, and drops the count once expanded", () => {
+    renderRow(view(plainPayload(10)));
+    const hidden = clampBlocks(
+      [
+        {
+          head: "📋 清單",
+          lines: Array.from({ length: 10 }, (_, i) => `第 ${i + 1} 行`),
+          fold: false,
+        },
+      ],
+      ROW_LINE_BUDGET,
+    ).hiddenLineCount;
+    expect(hidden).toBeGreaterThan(0);
+    const control = screen.getByRole("button", { name: `顯示全部（還有 ${hidden} 行）` });
+    fireEvent.click(control);
+    expect(control.textContent).toBe("收合");
+  });
+
+  it("counts more hidden lines for a taller row", () => {
+    const { unmount } = renderWithIntl(
+      <ul>
+        <NotificationRow item={view(plainPayload(10))} onOpen={vi.fn()} />
+      </ul>,
+    );
+    const short = screen.getByRole("button", { name: /^顯示全部/ }).textContent;
+    unmount();
+    renderRow(view(plainPayload(14)));
+    const tall = screen.getByRole("button", { name: /^顯示全部/ }).textContent;
+    expect(tall).not.toBe(short);
+    expect(short).toMatch(/^顯示全部（還有 \d+ 行）$/);
+  });
+
   it("expands to every line, then collapses again, with the footer throughout", () => {
     renderRow(view(plainPayload(10)));
-    fireEvent.click(screen.getByRole("button", { name: "顯示全部" }));
+    fireEvent.click(screen.getByRole("button", { name: /^顯示全部/ }));
     const control = screen.getByRole("button", { name: "收合" });
     expect(control.getAttribute("aria-expanded")).toBe("true");
     expect(screen.getByText("第 10 行")).toBeTruthy();
@@ -167,14 +204,14 @@ describe("NotificationRow clamp", () => {
     fireEvent.click(control);
     expect(screen.queryByText("第 10 行")).toBeNull();
     expect(screen.getByText(FOOTER)).toBeTruthy();
-    expect(screen.getByRole("button", { name: "顯示全部" }).getAttribute("aria-expanded")).toBe(
+    expect(screen.getByRole("button", { name: /^顯示全部/ }).getAttribute("aria-expanded")).toBe(
       "false",
     );
   });
 
   it("does not open the notification when the control is toggled", () => {
     const onOpen = renderRow(view(plainPayload(10)));
-    fireEvent.click(screen.getByRole("button", { name: "顯示全部" }));
+    fireEvent.click(screen.getByRole("button", { name: /^顯示全部/ }));
     fireEvent.click(screen.getByRole("button", { name: "收合" }));
     expect(onOpen).not.toHaveBeenCalled();
   });
@@ -187,14 +224,14 @@ describe("NotificationRow clamp", () => {
 
   it("shows a short row whole with no control", () => {
     renderRow(view(plainPayload(3)));
-    expect(screen.queryByRole("button", { name: "顯示全部" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^顯示全部/ })).toBeNull();
     expect(screen.getByText("第 3 行")).toBeTruthy();
     expect(screen.getByText(FOOTER)).toBeTruthy();
   });
 
   it("shows a row exactly at the budget whole with no control", () => {
     renderRow(view(plainPayload(5)));
-    expect(screen.queryByRole("button", { name: "顯示全部" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^顯示全部/ })).toBeNull();
     expect(screen.getByText("第 5 行")).toBeTruthy();
   });
 
@@ -218,7 +255,7 @@ describe("NotificationRow clamp", () => {
       </ul>,
     );
     expect(container.querySelectorAll("details")).toHaveLength(5);
-    expect(screen.getByRole("button", { name: "顯示全部" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^顯示全部/ })).toBeTruthy();
     expect(screen.getByText(FOOTER)).toBeTruthy();
   });
 });

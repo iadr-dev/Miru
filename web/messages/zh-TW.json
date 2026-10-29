@@ -900,7 +900,7 @@
       "unread": "{count} 則未讀通知",
       "unreadItem": "未讀",
       "foldCount": "{count} 筆",
-      "showAll": "顯示全部",
+      "showAll": "顯示全部（還有 {count} 行）",
       "showLess": "收合"
     },
     "tier": {

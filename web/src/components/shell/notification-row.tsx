@@ -150,7 +150,7 @@ export function NotificationRow({
                   "focus-visible:ring-2 focus-visible:ring-[var(--accent)]",
                 )}
               >
-                {expanded ? t("showLess") : t("showAll")}
+                {expanded ? t("showLess") : t("showAll", { count: clamp.hiddenLineCount })}
               </button>
             ) : null}
             {item.footer ? (
