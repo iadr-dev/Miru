@@ -16,10 +16,11 @@ from __future__ import annotations
 import re
 import unicodedata
 from datetime import date, timedelta
-from typing import Protocol
+from typing import NamedTuple, Protocol
 
 from pydantic import BaseModel, ConfigDict
 
+from ingest.jobs import STOCK_INFO_JOB
 from scheduler.templates import (
     AttentionListEntry,
     ClosePrice,
@@ -37,6 +38,7 @@ from scheduler.templates import (
     history_days_of,
     investor_label,
 )
+from schemas.alerts import format_number
 from schemas.enums import Market
 
 Row = dict[str, object]
@@ -45,6 +47,7 @@ Row = dict[str, object]
 # weekends and long holidays, bounded so a sparse store can never trigger an unbounded scan.
 _LOOKBACK_FACTOR = 3
 _LOOKBACK_PAD = 10
+_ROSTER_DAYS = 30
 
 
 class SnapshotReader(Protocol):
@@ -53,13 +56,43 @@ class SnapshotReader(Protocol):
     def has_partition(self, dataset: str, market: str, run_date: date) -> bool: ...
 
 
+class _Outcome(NamedTuple):
+    """What a template found: whether the rule holds and the fact, before the stock's name and the
+    rule's own wording are added."""
+
+    met: bool
+    fact: str
+    plain_fact: str | None = None
+
+
 class Evaluation(BaseModel):
+    """One symbol's result. `message` is the fact-phrased notification text; `plain_message` is the
+    same without any third-party text, for when the output scan rejects a quote. `name` is empty
+    when the symbol has none on file (a US ticker)."""
+
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     met: bool
-    message: str
-    # A version of `message` without any third-party text, for when the scan rejects the quote.
-    plain_message: str | None = None
+    symbol: str
+    name: str
+    fact: str
+    condition_text: str
+    plain_fact: str | None = None
+
+    @property
+    def subject(self) -> str:
+        return f"{self.symbol} {self.name}" if self.name else self.symbol
+
+    @property
+    def message(self) -> str:
+        return self._compose(self.fact)
+
+    @property
+    def plain_message(self) -> str | None:
+        return None if self.plain_fact is None else self._compose(self.plain_fact)
+
+    def _compose(self, fact: str) -> str:
+        return f"{self.subject} {fact}（你設定的條件：{self.condition_text}）"
 
 
 class SnapshotView:
@@ -69,6 +102,7 @@ class SnapshotView:
     def __init__(self, reader: SnapshotReader) -> None:
         self._reader = reader
         self._cache: dict[tuple[str, str, date], dict[str, list[Row]]] = {}
+        self._roster_day: dict[tuple[Market, date], date | None] = {}
 
     def latest_partition_date(
         self, dataset: str, market: Market, *, on_or_before: date, max_back_days: int = 10
@@ -87,6 +121,24 @@ class SnapshotView:
                 indexed.setdefault(str(row.get("symbol")), []).append(row)
             self._cache[key] = indexed
         return self._cache[key].get(symbol, [])
+
+    def stock_name(self, market: Market, symbol: str, *, on_or_before: date) -> str:
+        """The symbol's name in the newest stock-info roster on or before `on_or_before`; empty when
+        there is no roster or the symbol is not on it (the roster covers Taiwan only)."""
+        if market is not Market.TW:
+            return ""
+        key = (market, on_or_before)
+        if key not in self._roster_day:
+            self._roster_day[key] = self.latest_partition_date(
+                STOCK_INFO_JOB.dataset,
+                market,
+                on_or_before=on_or_before,
+                max_back_days=_ROSTER_DAYS,
+            )
+        day = self._roster_day[key]
+        rows = self.rows(STOCK_INFO_JOB.dataset, market, day, symbol) if day is not None else []
+        name = rows[0].get("name") if rows else None
+        return name if isinstance(name, str) else ""
 
     def prior_dates(self, dataset: str, market: Market, before: date, count: int) -> list[date]:
         """Up to `count` most recent dates before `before` that have a partition, newest first."""
@@ -123,19 +175,15 @@ def _net(rows: list[Row], investor: str) -> float:
     return total
 
 
-def _message(symbol: str, fact: str, condition: ConditionModel) -> str:
-    return f"{symbol} {fact}（你設定的條件：{describe(condition)}）"
-
-
-def _eval_close(c: ClosePrice, symbol: str, close: float) -> Evaluation:
+def _eval_close(c: ClosePrice, close: float) -> _Outcome:
     met = close > c.value if c.comparator == "above" else close < c.value
     relation = "高於" if c.comparator == "above" else "低於"
-    return Evaluation(
-        met=met, message=_message(symbol, f"收盤價 {close:g}，{relation}設定值 {c.value:g}", c)
+    return _Outcome(
+        met, f"收盤價 {format_number(close)}，{relation}設定值 {format_number(c.value)}"
     )
 
 
-def evaluate_condition(  # noqa: PLR0911 — one early return per template kind
+def evaluate_condition(
     condition: ConditionModel,
     *,
     symbol: str,
@@ -143,13 +191,32 @@ def evaluate_condition(  # noqa: PLR0911 — one early return per template kind
     as_of: date,
     view: SnapshotView,
 ) -> Evaluation | None:
+    outcome = _outcome(condition, symbol=symbol, market=market, as_of=as_of, view=view)
+    if outcome is None:
+        return None
+    return Evaluation(
+        met=outcome.met,
+        symbol=symbol,
+        name=view.stock_name(market, symbol, on_or_before=as_of),
+        fact=outcome.fact,
+        condition_text=describe(condition, grouped=True),
+        plain_fact=outcome.plain_fact,
+    )
+
+
+def _outcome(  # noqa: PLR0911 — one early return per template kind
+    condition: ConditionModel,
+    *,
+    symbol: str,
+    market: Market,
+    as_of: date,
+    view: SnapshotView,
+) -> _Outcome | None:
     dataset = dataset_of(condition, market)
     today = view.rows(dataset, market, as_of, symbol)
 
     if isinstance(condition, AttentionListEntry):
-        return _eval_attention(
-            condition, symbol=symbol, market=market, as_of=as_of, view=view, today=today
-        )
+        return _eval_attention(condition, market=market, as_of=as_of, view=view, today=today)
 
     if isinstance(condition, DispositionListEntry):
         return _eval_disposition(condition, symbol=symbol, market=market, as_of=as_of, view=view)
@@ -168,7 +235,7 @@ def evaluate_condition(  # noqa: PLR0911 — one early return per template kind
 
     if isinstance(condition, ClosePrice):
         close = _num(today[0], "close")
-        return None if close is None else _eval_close(condition, symbol, close)
+        return None if close is None else _eval_close(condition, close)
 
     if isinstance(condition, DailyChange):
         return _eval_daily_change(
@@ -183,21 +250,20 @@ def evaluate_condition(  # noqa: PLR0911 — one early return per template kind
     return _eval_streak(condition, symbol=symbol, market=market, as_of=as_of, view=view)
 
 
-def _eval_attention(  # noqa: PLR0913 — one argument per evaluation dimension
+def _eval_attention(
     condition: AttentionListEntry,
     *,
-    symbol: str,
     market: Market,
     as_of: date,
     view: SnapshotView,
     today: list[Row],
-) -> Evaluation | None:
+) -> _Outcome | None:
     # The partition is the day's flag list, so presence IS the observation; a symbol that is
     # absent is a legitimate "not flagged" (met=False), not missing data.
     dataset = dataset_of(condition, market)
     if not view.latest_partition_date(dataset, market, on_or_before=as_of, max_back_days=0):
         return None
-    return Evaluation(met=bool(today), message=_message(symbol, "列入注意股名單", condition))
+    return _Outcome(bool(today), "列入注意股名單")
 
 
 def _eval_daily_change(  # noqa: PLR0913 — one argument per evaluation dimension
@@ -208,7 +274,7 @@ def _eval_daily_change(  # noqa: PLR0913 — one argument per evaluation dimensi
     as_of: date,
     view: SnapshotView,
     today: list[Row],
-) -> Evaluation | None:
+) -> _Outcome | None:
     dataset = dataset_of(condition, market)
     close = _num(today[0], "close")
     prior = view.prior_dates(dataset, market, as_of, history_days_of(condition))
@@ -221,10 +287,7 @@ def _eval_daily_change(  # noqa: PLR0913 — one argument per evaluation dimensi
         if condition.direction == "up"
         else (change <= -condition.percent)
     )
-    return Evaluation(
-        met=met,
-        message=_message(symbol, f"單日變動 {change:+.2f}%（前一交易日收盤 {prev:g}）", condition),
-    )
+    return _Outcome(met, f"單日變動 {change:+.2f}%（前一交易日收盤 {format_number(prev)}）")
 
 
 def _eval_volume_surge(  # noqa: PLR0913 — one argument per evaluation dimension
@@ -235,7 +298,7 @@ def _eval_volume_surge(  # noqa: PLR0913 — one argument per evaluation dimensi
     as_of: date,
     view: SnapshotView,
     today: list[Row],
-) -> Evaluation | None:
+) -> _Outcome | None:
     dataset = dataset_of(condition, market)
     volume = _num(today[0], "volume")
     prior = view.prior_dates(dataset, market, as_of, condition.window)
@@ -248,9 +311,8 @@ def _eval_volume_surge(  # noqa: PLR0913 — one argument per evaluation dimensi
     if volume is None or len(history) < condition.window // 2 or sum(history) == 0:
         return None
     ratio = volume / (sum(history) / len(history))
-    return Evaluation(
-        met=ratio >= condition.multiple,
-        message=_message(symbol, f"成交量為近 {len(history)} 日均量的 {ratio:.1f} 倍", condition),
+    return _Outcome(
+        ratio >= condition.multiple, f"成交量為近 {len(history)} 日均量的 {ratio:.1f} 倍"
     )
 
 
@@ -266,7 +328,7 @@ def _eval_disposition(
     market: Market,
     as_of: date,
     view: SnapshotView,
-) -> Evaluation | None:
+) -> _Outcome | None:
     """處置股 is a per-day snapshot list, so an ingested partition with the symbol absent is a real
     "not listed"; only a day with no partition at all is unevaluable (same contract as 注意股)."""
     dataset = dataset_of(condition, market)
@@ -274,11 +336,11 @@ def _eval_disposition(
         return None
     today = view.rows(dataset, market, as_of, symbol)
     if not today:
-        return Evaluation(met=False, message=_message(symbol, "未列入處置股名單", condition))
+        return _Outcome(False, "未列入處置股名單")
     row = today[0]
     start, end = _day_text(row.get("period_start")), _day_text(row.get("period_end"))
     span = f"，處置期間 {start} 至 {end}" if start and end else ""
-    return Evaluation(met=True, message=_message(symbol, f"列入處置股名單{span}", condition))
+    return _Outcome(True, f"列入處置股名單{span}")
 
 
 def _eval_month_revenue(
@@ -288,7 +350,7 @@ def _eval_month_revenue(
     market: Market,
     as_of: date,
     view: SnapshotView,
-) -> Evaluation | None:
+) -> _Outcome | None:
     """Monthly revenue is an event feed: on most days the day's partition simply has no row for a
     symbol. The row counts only if it is dated the evaluation day itself — this does not rely on
     the upstream returning a single day, so a feed that also echoes later rows cannot make an old
@@ -299,11 +361,11 @@ def _eval_month_revenue(
     today = view.rows(dataset, market, as_of, symbol)
     todays = [r for r in today if _day_text(r.get("trade_date")) == as_of.isoformat()]
     if not todays:
-        return Evaluation(met=False, message=_message(symbol, "本日未公布月營收", condition))
+        return _Outcome(False, "本日未公布月營收")
     row = todays[0]
     year, month = row.get("revenue_year"), row.get("revenue_month")
     label = f"{year} 年 {month} 月" if year and month else "最新"
-    return Evaluation(met=True, message=_message(symbol, f"公布{label}月營收", condition))
+    return _Outcome(True, f"公布{label}月營收")
 
 
 # The issuer's subject line is third-party text. It is quoted as data, clipped, and stripped of
@@ -342,7 +404,7 @@ def _eval_announcement(
     market: Market,
     as_of: date,
     view: SnapshotView,
-) -> Evaluation | None:
+) -> _Outcome | None:
     """MOPS 重大訊息 is an event feed: most days a symbol has no row. Only rows announced on the
     evaluation day itself count, so a feed that echoes older filings cannot make one look new. The
     message states that filings exist and quotes the latest subject - it never characterises it."""
@@ -357,16 +419,12 @@ def _eval_announcement(
         and needle in str(r.get("subject", "")).casefold()
     ]
     if not todays:
-        return Evaluation(met=False, message=_message(symbol, "本日無符合的重大訊息", condition))
+        return _Outcome(False, "本日無符合的重大訊息")
     latest = max(todays, key=lambda r: str(r.get("announced_time", "")))
     subject = _quoted_subject(latest.get("subject"))
     count = f"{len(todays)} 則" if len(todays) > 1 else "1 則"
     quote = f"，最新主旨：「{subject}」" if subject else ""
-    return Evaluation(
-        met=True,
-        message=_message(symbol, f"公布 {count}重大訊息{quote}", condition),
-        plain_message=_message(symbol, f"公布 {count}重大訊息", condition),
-    )
+    return _Outcome(True, f"公布 {count}重大訊息{quote}", f"公布 {count}重大訊息")
 
 
 def _eval_single_row(
@@ -375,18 +433,18 @@ def _eval_single_row(
     market: Market,
     as_of: date,
     view: SnapshotView,
-) -> Evaluation | None:
+) -> _Outcome | None:
     """Templates computed from one row of the day's partition: no history, and a symbol with no row
     for the day (no margin account, or not an ETF with a NAV) is unevaluable, never "not met"."""
     rows = view.rows(dataset_of(condition, market), market, as_of, symbol)
     if not rows:
         return None
     if isinstance(condition, MarginBalanceChange):
-        return _eval_margin(condition, symbol, rows[0])
-    return _eval_premium(condition, symbol, rows[0])
+        return _eval_margin(condition, rows[0])
+    return _eval_premium(condition, rows[0])
 
 
-def _eval_margin(condition: MarginBalanceChange, symbol: str, row: Row) -> Evaluation | None:
+def _eval_margin(condition: MarginBalanceChange, row: Row) -> _Outcome | None:
     prefix = "margin_purchase" if condition.side == "margin" else "short_sale"
     today = _num(row, f"{prefix}_today_balance")
     prior = _num(row, f"{prefix}_yesterday_balance")
@@ -397,15 +455,10 @@ def _eval_margin(condition: MarginBalanceChange, symbol: str, row: Row) -> Evalu
         change >= condition.percent if condition.direction == "up" else change <= -condition.percent
     )
     label = "融資" if condition.side == "margin" else "融券"
-    return Evaluation(
-        met=met,
-        message=_message(
-            symbol, f"{label}餘額由 {prior:,.0f} 變為 {today:,.0f}（{change:+.2f}%）", condition
-        ),
-    )
+    return _Outcome(met, f"{label}餘額由 {prior:,.0f} 變為 {today:,.0f}（{change:+.2f}%）")
 
 
-def _eval_premium(condition: EtfPremiumDiscount, symbol: str, row: Row) -> Evaluation | None:
+def _eval_premium(condition: EtfPremiumDiscount, row: Row) -> _Outcome | None:
     pct = _num(row, "premium_discount_pct")
     if pct is None:
         return None  # the issuer published no estimate for this fund today
@@ -414,12 +467,12 @@ def _eval_premium(condition: EtfPremiumDiscount, symbol: str, row: Row) -> Evalu
     )
     close, nav = _num(row, "close_price"), _num(row, "estimated_nav")
     detail = (
-        f"（成交價 {close:g}、預估淨值 {nav:g}）" if close is not None and nav is not None else ""
+        f"（成交價 {format_number(close)}、預估淨值 {format_number(nav)}）"
+        if close is not None and nav is not None
+        else ""
     )
     # The NAV is the issuer's provisional estimate relayed by TWSE, so the wording says so.
-    return Evaluation(
-        met=met, message=_message(symbol, f"預估折溢價幅度 {pct:+.2f}%{detail}", condition)
-    )
+    return _Outcome(met, f"預估折溢價幅度 {pct:+.2f}%{detail}")
 
 
 def _eval_streak(
@@ -429,7 +482,7 @@ def _eval_streak(
     market: Market,
     as_of: date,
     view: SnapshotView,
-) -> Evaluation:
+) -> _Outcome:
     sign = 1 if condition.direction == "buy" else -1
     side = "淨買超" if condition.direction == "buy" else "淨賣超"
     label = investor_label(condition.investor)
@@ -450,7 +503,7 @@ def _eval_streak(
     fact = f"{label}連續 {streak} 日{side}" if streak else f"{label}當日未{side}"
     if met:
         fact += f"，累計 {cumulative:,.0f} 股"
-    return Evaluation(met=met, message=_message(symbol, fact, condition))
+    return _Outcome(met, fact)
 
 
 __all__ = ["Evaluation", "SnapshotReader", "SnapshotView", "evaluate_condition"]

@@ -625,3 +625,107 @@ def test_plain_text_is_sent_when_the_first_block_alone_cannot_fit() -> None:
     assert "parse_mode" not in payload
     assert _units(str(payload["text"])) <= 4096
     assert str(payload["text"]).endswith(NON_ADVICE_FOOTER)
+
+
+_LINE_LIMIT = 5000
+_LINE_RECIPIENT = DeliveryRecipient(user_id="u1", line_user_id="Uabc")
+
+
+def _line_text(notification: DeliveryNotification) -> str:
+    channel = LineMessagingChannel(Settings(line_messaging_channel_access_token="tok"))
+    messages = channel.build_request(notification, _LINE_RECIPIENT).json["messages"]
+    assert isinstance(messages, list) and len(messages) == 1
+    assert messages[0]["type"] == "text"
+    return str(messages[0]["text"])
+
+
+def _with_layout(layout: Layout) -> DeliveryNotification:
+    return DeliveryNotification(
+        notification_id="n1", title="t", body=f"純文字\n{NON_ADVICE_FOOTER}", layout=layout
+    )
+
+
+def test_line_sends_the_layout_as_markup_free_text_with_blocks_apart() -> None:
+    notification = _layout_notification(name="A&B <C>")
+    assert notification.layout is not None
+    text = _line_text(notification)
+    assert text == render_text(notification.layout, NON_ADVICE_FOOTER)
+    assert text.startswith("🔔 4916 A&B <C>\n09:30 條件全數成立\n• 量比 14.25\n\n📖 名詞\n")
+    assert text.endswith(f"\n\n{NON_ADVICE_FOOTER}")
+    assert "<b>" not in text and "&amp;" not in text
+
+
+def test_line_without_a_layout_keeps_the_title_and_body_text() -> None:
+    assert _line_text(_notification()) == f"排程摘要\n{_notification().body}"
+
+
+def test_line_shows_a_folded_block_as_a_normal_one_cut_to_a_few_lines() -> None:
+    definitions = tuple(f"定義 {i}" for i in range(6))
+    layout = Layout(
+        blocks=(
+            LayoutBlock(head="🔔 標題", lines=("一行",)),
+            LayoutBlock(head="📖 名詞", lines=definitions, fold=True),
+        )
+    )
+    text = _line_text(_with_layout(layout))
+    assert "定義 0\n定義 1\n定義 2\n…（其餘請見 Miru）" in text
+    assert "定義 3" not in text
+    short = Layout(blocks=(LayoutBlock(head="📖 名詞", lines=definitions[:3], fold=True),))
+    assert "其餘請見" not in _line_text(_with_layout(short))
+
+
+@pytest.mark.parametrize("rows", [5, 400, 2000])
+def test_a_trimmed_line_message_keeps_its_limit_first_block_and_footer(rows: int) -> None:
+    text = _line_text(_with_layout(_long_layout(rows)))
+    assert _units(text) <= _LINE_LIMIT
+    assert text.startswith("📋 清單\n市場寬度 35%")
+    assert text.endswith(f"\n\n{NON_ADVICE_FOOTER}")
+    assert ("…（完整內容請見 Miru）" in text) is (rows > 5)
+    if rows > 5:
+        assert re.search(r"\n[^\n]+\n\n…（完整內容請見 Miru）\n\n", text)
+
+
+def test_line_counts_utf16_units_so_emoji_cost_two() -> None:
+    layout = Layout(
+        blocks=(LayoutBlock(head="🔔 標題"), LayoutBlock(lines=tuple("📈" * 40 for _ in range(60))))
+    )
+    text = _line_text(_with_layout(layout))
+    assert _units(text) <= _LINE_LIMIT
+    assert len(text) < _LINE_LIMIT - 100  # code points alone would have fit more lines
+    assert text.endswith(NON_ADVICE_FOOTER)
+
+
+def test_a_line_message_exactly_at_the_limit_is_untouched() -> None:
+    fixed = _units(f"🔔\n\n\n\n{NON_ADVICE_FOOTER}")
+    layout = Layout(
+        blocks=(LayoutBlock(head="🔔"), LayoutBlock(lines=("字" * (_LINE_LIMIT - fixed),)))
+    )
+    text = _line_text(_with_layout(layout))
+    assert _units(text) == _LINE_LIMIT
+    assert "完整內容請見" not in text
+    over = Layout(
+        blocks=(LayoutBlock(head="🔔"), LayoutBlock(lines=("字" * (_LINE_LIMIT - fixed + 1),)))
+    )
+    assert "完整內容請見" in _line_text(_with_layout(over))
+
+
+def test_line_cuts_a_long_plain_text_at_a_line_and_keeps_the_footer() -> None:
+    lines = [f"第 {i} 行 📈 台積電外資買超連 3 日" for i in range(900)]
+    notification = DeliveryNotification(
+        notification_id="n1", title="標題", body="\n".join(lines) + f"\n{NON_ADVICE_FOOTER}"
+    )
+    text = _line_text(notification)
+    assert _units(text) <= _LINE_LIMIT
+    assert text.endswith(f"{_POINTER}\n{NON_ADVICE_FOOTER}")
+    kept = text.removesuffix(f"\n{_POINTER}\n{NON_ADVICE_FOOTER}").split("\n")[1:]
+    assert kept == lines[: len(kept)]
+
+
+def test_line_falls_back_to_plain_text_when_the_first_block_alone_cannot_fit() -> None:
+    layout = Layout(blocks=(LayoutBlock(head="字" * 6000),))
+    notification = DeliveryNotification(
+        notification_id="n1", title="t", body="字" * 6000 + f"\n{NON_ADVICE_FOOTER}", layout=layout
+    )
+    text = _line_text(notification)
+    assert _units(text) <= _LINE_LIMIT
+    assert text.endswith(NON_ADVICE_FOOTER)

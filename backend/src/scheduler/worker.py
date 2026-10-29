@@ -66,7 +66,7 @@ from scheduler.delivery.base import (
     DeliveryReceipt,
     DeliveryRecipient,
 )
-from scheduler.delivery.layout import Layout
+from scheduler.delivery.layout import Layout, render_text
 from scheduler.evaluator import Evaluation, SnapshotReader, SnapshotView, evaluate_condition
 from scheduler.models import (
     AlertPreference,
@@ -80,6 +80,15 @@ from scheduler.models import (
     ScheduleJob,
     StrategySubscription,
     TriggerMode,
+)
+from scheduler.notification_messages import (
+    brief_layout,
+    brief_preview,
+    digest_body,
+    digest_layout,
+    report_layout,
+    report_preview,
+    safe_alert_message,
 )
 from scheduler.quota import QuotaGate, UsageQuotaGate
 from scheduler.retention import prune_stream_events
@@ -97,7 +106,6 @@ from scheduler.strategy_store import STRATEGY_SOURCE_PREFIX, StrategySubscriptio
 from scheduler.templates import (
     EVENT_KINDS,
     NON_ADVICE_FOOTER,
-    ConditionModel,
     capability_of,
     describe,
     probe_dataset,
@@ -130,7 +138,7 @@ _RETRY_LEASE = timedelta(minutes=10)
 _DIGEST_FROM = time(8, 0)
 _DIGEST_UNTIL = time(12, 0)
 _DIGEST_LOOKBACK = timedelta(hours=24)
-_DIGEST_MAX_LINES = 8
+_LAYOUT_CHANNELS = frozenset({DeliveryChannelKind.TELEGRAM, DeliveryChannelKind.LINE})
 
 
 def _user_zone(name: str | None) -> ZoneInfo:
@@ -378,9 +386,10 @@ class SchedulerWorker:
                 source_id=job.id,
                 channels=job.delivery_channels,
                 title="排程摘要",
-                body=_notification_preview(result.final_text),
+                body=report_preview(result.final_text),
                 trigger_date=now.date(),
                 deep_link={"route": "thread", "thread_id": thread_id},
+                layout=report_layout(result.final_text),
             )
             await store.set_job_status(
                 job_id=job.id,
@@ -591,6 +600,7 @@ class SchedulerWorker:
         self._emit(
             EventKind.ALERT_FIRED, user_id=user.id, data={"alert_id": rule.id, "symbol": symbol}
         )
+        body, layout = safe_alert_message(evaluation, trigger_date)
         await self._deliver(
             store,
             user=user,
@@ -598,10 +608,11 @@ class SchedulerWorker:
             source_id=rule.id if rule.symbol else f"{rule.id}:{symbol}",
             channels=channels,
             title=f"{symbol} - {describe(rule.condition)}",
-            body=_safe_body(evaluation.message, rule.condition, symbol, evaluation.plain_message),
+            body=body,
             trigger_date=trigger_date,
             deep_link={"route": "stock", "symbol": symbol},
             hold_external=hold_external,
+            layout=layout,
         )
 
     # ---- shared internals ----
@@ -629,8 +640,10 @@ class SchedulerWorker:
         (it is silent) but external channels are only recorded as held; `release_held` sends them
         as one digest once the window closes.
 
-        `layout` is the structured twin of `body` (already scanned with it); only the Telegram row
-        stores it, so a retry sends the same layout and the inbox payload stays small."""
+        `layout` is the structured twin of `body`; only the Telegram and LINE rows store it, so a
+        retry sends the same layout and the inbox payload stays small. It reaches a channel only
+        if the text it renders passes the same output scan as the body."""
+        layout = _scanned_layout(layout)
         selected = _channel_order(channels)
         recipient = await self._recipient_for(store, user)
         for channel_kind in selected:
@@ -647,7 +660,7 @@ class SchedulerWorker:
                     body,
                     deep_link,
                     held=held,
-                    layout=layout if channel_kind is DeliveryChannelKind.TELEGRAM else None,
+                    layout=layout if channel_kind in _LAYOUT_CHANNELS else None,
                 ),
                 delivery_state="pending" if external else "sent",
             )
@@ -980,9 +993,10 @@ class SchedulerWorker:
                 source_id=source_id,
                 channels=prefs.channels,
                 title=f"晨間摘要 {local_day.isoformat()}",
-                body=_brief_preview(text),
+                body=brief_preview(text),
                 trigger_date=local_day,
                 deep_link={"route": "thread", "thread_id": thread_id},
+                layout=brief_layout(text),
             )
             return True
         recent = await store.recent_inbox(user_id=user_id, since=now - _DIGEST_LOOKBACK)
@@ -990,6 +1004,7 @@ class SchedulerWorker:
         active_jobs = sum(1 for j in await store.list_jobs(user_id=user_id) if j.enabled)
         if not recent and not (active_alerts or active_jobs):
             return False
+        titles = [str(item.payload.get("title", "")) for item in recent]
         await self._deliver(
             store,
             user=user,
@@ -997,9 +1012,10 @@ class SchedulerWorker:
             source_id=source_id,
             channels=prefs.channels,
             title=f"晨間摘要 {local_day.isoformat()}",
-            body=_digest_body(recent, active_alerts, active_jobs),
+            body=digest_body(titles, active_alerts, active_jobs),
             trigger_date=local_day,
             deep_link={"route": "notifications"},
+            layout=digest_layout(titles, active_alerts, active_jobs),
         )
         return True
 
@@ -1383,19 +1399,6 @@ def _delivery_outcome(
     return "pending", now + delay
 
 
-_PREVIEW_CHARS = 160
-
-
-def _notification_preview(text: str) -> str:
-    """A scheduled report can be thousands of characters; the notification is a pointer to the
-    thread (its deep link), so it carries only the opening of the report, cut at a line break when
-    one is near. The full text, tables and charts live in the schedule's thread."""
-    flat = " ".join(line.strip() for line in text.strip().splitlines() if line.strip())
-    if len(flat) <= _PREVIEW_CHARS:
-        return flat
-    return f"{flat[:_PREVIEW_CHARS].rstrip()}…（完整報告請見對話）"
-
-
 def _digest_day(prefs: AlertPreference | None, now: datetime) -> date | None:
     """The user's local date if a digest is due right now, else None: inside the 08:00-12:00 window
     of a Taiwan trading day, and not while their quiet hours are running."""
@@ -1411,70 +1414,16 @@ def _digest_day(prefs: AlertPreference | None, now: datetime) -> date | None:
     return local.date()
 
 
-def _digest_body(recent: Sequence[Notification], alerts: int, jobs: int) -> str:
-    """The morning recap, in fact phrasing with the non-advice footer. It lists the titles of what
-    fired in the last 24 hours (each already a fixed, scanned fact line) and the active counts."""
-    lines: list[str] = []
-    if recent:
-        lines.append(f"過去 24 小時共 {len(recent)} 則通知：")
-        for item in recent[-_DIGEST_MAX_LINES:]:
-            lines.append(f"・{item.payload.get('title', '')}")
-        if len(recent) > _DIGEST_MAX_LINES:
-            lines.append(f"…另有 {len(recent) - _DIGEST_MAX_LINES} 則較早的通知，請見通知紀錄。")
-    else:
-        lines.append("過去 24 小時沒有新的通知。")
-    lines.append(f"目前啟用中：{alerts} 個提醒、{jobs} 個排程。")
-    body = "\n".join(lines) + f"\n{NON_ADVICE_FOOTER}"
-    if check_output(body, has_market_data=False).reason == "trading_language_redacted":
-        return f"晨間摘要：目前啟用中 {alerts} 個提醒、{jobs} 個排程。\n{NON_ADVICE_FOOTER}"
-    return body
-
-
-def _brief_preview(report: str) -> str:
-    """The notification carries the lines that matter — the date headline and the top drivers —
-    not the whole report (which, with its tables, lives in the thread the notification opens)."""
-    lines = report.splitlines()
-    head = next((ln.strip("*") for ln in lines if ln.startswith("**【晨間摘要】")), "晨間摘要")
-    drivers: list[str] = []
-    in_block = False
-    for ln in lines:
-        if ln.startswith("### Top 3 Drivers"):
-            in_block = True
-        elif ln.startswith("###"):
-            in_block = False
-        elif in_block and ln[:2].rstrip(".").isdigit():
-            drivers.append(ln)
-    return "\n".join([head, *drivers[:3]])
-
-
 def _external_body(body: str) -> str:
     """What leaves the building on an external channel: the body with the non-advice footer (once),
     passed through the same output scan an interactive answer gets. Scheduled-report previews and
-    held digests reach this path without having gone through `_safe_body`, so the guarantee is made
-    here, where every external send passes. Fails closed to a fixed line if the scan trips."""
+    held digests reach this path without having gone through `safe_alert_message`, so the
+    guarantee is made here, where every external send passes. Fails closed to a fixed line if the
+    scan trips."""
     text = body if NON_ADVICE_FOOTER in body else f"{body}\n{NON_ADVICE_FOOTER}"
     if check_output(text, has_market_data=False).reason == "trading_language_redacted":
         return f"通知內容已更新，請開啟 Miru 查看。\n{NON_ADVICE_FOOTER}"
     return text
-
-
-def _safe_body(
-    message: str, condition: ConditionModel, symbol: str, plain_message: str | None = None
-) -> str:
-    """The notification body with the non-advice footer, passed through the same output scan an
-    interactive answer gets. The templates are fixed fact phrasing so this should never trip; if
-    it ever does, fail closed to a minimal template instead of sending flagged text."""
-    body = f"{message}\n{NON_ADVICE_FOOTER}"
-    if check_output(body, has_market_data=False).reason is None:
-        return body
-    # Any rewrite at all (trading language, a vendor name) means the text is not sent as is.
-    # A message that quotes third-party text retries once without the quote before giving up
-    # on the specifics - the fact that something was filed is still worth telling.
-    if plain_message is not None:
-        plain = f"{plain_message}\n{NON_ADVICE_FOOTER}"
-        if check_output(plain, has_market_data=False).reason is None:
-            return plain
-    return f"{symbol} 的條件已達成：{describe(condition)}\n{NON_ADVICE_FOOTER}"
 
 
 def as_utc(moment: datetime) -> datetime:
@@ -1527,9 +1476,17 @@ def _notification_payload(
     }
 
 
+def _scanned_layout(layout: Layout | None) -> Layout | None:
+    """`layout` if the text it renders passes the output scan, else None (plain text is sent)."""
+    if layout is None:
+        return None
+    clean = check_output(render_text(layout, NON_ADVICE_FOOTER), has_market_data=False).reason
+    return layout if clean is None else None
+
+
 def _stored_layout(raw: object) -> Layout | None:
-    """The layout a pending Telegram row was stored with, or None when it has none or the stored
-    shape no longer validates (the retry then sends the plain text)."""
+    """The layout a pending Telegram or LINE row was stored with, or None when it has none or the
+    stored shape no longer validates (the retry then sends the plain text)."""
     if not isinstance(raw, dict):
         return None
     try:

@@ -284,3 +284,25 @@ async def test_when_the_brief_tool_fails_the_plain_recap_is_sent_instead(session
     inbox = await _inbox(session_factory, user)
     digest = next(n for n in inbox if n.source is NotificationSource.DIGEST)
     assert "過去 24 小時共 1 則通知" in str(digest.payload["body"])
+
+
+async def test_the_recap_and_the_brief_hand_their_layout_to_the_channels(session_factory) -> None:
+    user = await _user(session_factory)
+    await _overnight_alert(session_factory, user)
+    recap_push = _RecordingPush()
+    await _recap_worker(session_factory, recap_push).send_morning_digests(now=_MONDAY_0830_TPE)
+    recap = recap_push.sent[0].layout
+    assert recap is not None
+    assert recap.blocks[0].head == "🗒 過去 24 小時 1 則通知"
+    assert recap.blocks[0].lines == ("• 2330 - 收盤價高於 600",)
+    assert recap.blocks[1].lines == ("目前啟用中：0 個提醒、1 個排程",)
+
+    await _user(session_factory)
+    brief_push = _RecordingPush()
+    worker = _worker(session_factory, brief_push, brief_tool=_BriefTool())
+    await worker.send_morning_digests(now=_MONDAY_0830_TPE)
+    brief = brief_push.sent[-1].layout
+    assert brief is not None
+    assert brief.blocks[0].head == "🌅 晨間摘要 2026-10-05（星期一）"
+    assert brief.blocks[0].lines[0] == "• 費城半導體指數 +2.4%（13,136.67）"
+    assert brief.blocks[-1].lines == ("完整報告請見 Miru",)

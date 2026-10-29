@@ -22,12 +22,14 @@ from ingest.jobs import (
     MATERIAL_ANNOUNCEMENTS_DATASET,
     MONTH_REVENUE_JOB,
     PRICE_EOD_JOB,
+    STOCK_INFO_JOB,
 )
 from ingest.leader import AlwaysLeader, NeverLeader
 from ingest.us_jobs import US_PRICE_EOD_DATASET
 from scheduler.delivery.channels import InAppChannel
-from scheduler.evaluator import SnapshotView, evaluate_condition
+from scheduler.evaluator import Evaluation, SnapshotView, evaluate_condition
 from scheduler.models import DeliveryChannelKind, TriggerMode
+from scheduler.notification_messages import safe_alert_message
 from scheduler.quota import AllowAllQuotaGate
 from scheduler.store import SqlAlchemySchedulerStore
 from scheduler.templates import (
@@ -45,8 +47,8 @@ from scheduler.templates import (
     dataset_of,
     probe_dataset,
 )
-from scheduler.worker import SchedulerContext, SchedulerWorker, _safe_body, as_utc
-from schemas.alerts import TW_ONLY_KINDS
+from scheduler.worker import SchedulerContext, SchedulerWorker, as_utc
+from schemas.alerts import NON_ADVICE_FOOTER, TW_ONLY_KINDS
 from schemas.enums import Capability, Market, Tier
 from tests.scheduler import clock
 from tests.scheduler.conftest import insert_user
@@ -257,14 +259,20 @@ def test_every_template_phrasing_passes_the_output_guardrail() -> None:
     for condition in conditions:
         result = evaluate(condition, r, day(0))
         assert result is not None
-        verdict = check_output(_safe_body(result.message, condition, "2330"), has_market_data=False)
+        verdict = check_output(safe_alert_message(result, day(0))[0], has_market_data=False)
         assert verdict.reason != "trading_language_redacted", result.message
 
 
-def test_safe_body_fails_closed_on_flagged_text() -> None:
-    body = _safe_body(
-        "建議買進 2330，目標價 700", ClosePrice(comparator="above", value=600), "2330"
+def test_safe_alert_message_fails_closed_on_flagged_text() -> None:
+    flagged = Evaluation(
+        met=True,
+        symbol="2330",
+        name="",
+        fact="建議買進 2330，目標價 700",
+        condition_text="收盤價高於 600",
     )
+    body, layout = safe_alert_message(flagged, day(0))
+    assert layout is None
     assert "買進" not in body
     assert "目標價" not in body
     assert "非投資建議" in body
@@ -697,7 +705,7 @@ def test_new_template_phrasing_passes_the_output_guardrail() -> None:
     for condition in (DispositionListEntry(), MonthRevenuePublished()):
         result = evaluate(condition, r, day(0))
         assert result is not None
-        verdict = check_output(_safe_body(result.message, condition, "2330"), has_market_data=False)
+        verdict = check_output(safe_alert_message(result, day(0))[0], has_market_data=False)
         assert verdict.reason != "trading_language_redacted", result.message
 
 
@@ -842,7 +850,7 @@ def test_margin_and_etf_phrasing_passes_the_output_guardrail() -> None:
     for condition, symbol in cases:
         result = evaluate(condition, r, day(0), symbol=symbol)
         assert result is not None
-        verdict = check_output(_safe_body(result.message, condition, symbol), has_market_data=False)
+        verdict = check_output(safe_alert_message(result, day(0))[0], has_market_data=False)
         assert verdict.reason != "trading_language_redacted", result.message
 
 
@@ -975,7 +983,7 @@ def test_announcement_phrasing_passes_the_output_guardrail() -> None:
     r.put(ANNOUNCEMENTS, day(0), [announcement_row("2330", day(0))])
     result = evaluate(MaterialAnnouncementPublished(), r, day(0))
     assert result is not None
-    body = _safe_body(result.message, MaterialAnnouncementPublished(), "2330")
+    body = safe_alert_message(result, day(0))[0]
     assert check_output(body, has_market_data=False).reason != "trading_language_redacted"
 
 
@@ -987,7 +995,7 @@ def test_a_subject_that_trips_the_scan_is_dropped_but_the_fact_is_kept() -> None
     result = evaluate(MaterialAnnouncementPublished(), r, day(0))
     assert result is not None
     assert result.plain_message is not None
-    body = _safe_body(result.message, MaterialAnnouncementPublished(), "2330", result.plain_message)
+    body = safe_alert_message(result, day(0))[0]
     assert "目標價" not in body
     assert "重大訊息" in body
     assert "非投資建議" in body
@@ -1178,3 +1186,21 @@ async def test_rule_state_records_met_map_fire_count_and_last_fired(session_fact
     assert stored.state["met"] == {"2330": False}
     assert stored.state["fire_count"] == 1
     assert stored.state["last_fired_at"] == now.isoformat()
+
+
+async def test_a_fired_rule_carries_the_stock_name_and_grouped_numbers_in_the_inbox_row(
+    session_factory,
+) -> None:
+    user = await insert_user(session_factory, tier=Tier.FREE)
+    await create_rule(session_factory, user, ClosePrice(comparator="above", value=1000))
+    reader = FakeReader()
+    reader.put(PRICE, day(0), [bar("2330", 1020.0)])
+    reader.put(STOCK_INFO_JOB.dataset, day(-1), [{"symbol": "2330", "name": "台積電"}])
+    await signal(make_worker(session_factory, reader), Capability.PRICE_EOD, day(0))
+    [note] = await notifications(session_factory, user)
+    assert str(note.payload["body"]) == (
+        "2330 台積電 收盤價 1,020，高於設定值 1,000（你設定的條件：收盤價高於 1,000）\n"
+        f"{NON_ADVICE_FOOTER}"
+    )
+    assert note.payload["title"] == "2330 - 收盤價高於 1000"
+    assert "layout" not in note.payload

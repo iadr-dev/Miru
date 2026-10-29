@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
 
+import pytest
 from sqlalchemy import select
 
 from accounts.hooks import EntitlementResolver
@@ -390,9 +391,10 @@ async def test_the_recipient_carries_the_app_url_only_when_it_is_https(session_f
     assert await _app_url_seen_by_telegram(session_factory, None) is None
 
 
-class _LayoutProbe(_ScriptedTelegram):
-    def __init__(self, *outcomes: DeliveryReceipt) -> None:
+class _LayoutProbe(_ScriptedChannel):
+    def __init__(self, kind: DeliveryChannelKind, *outcomes: DeliveryReceipt) -> None:
         super().__init__(*outcomes)
+        self.kind = kind
         self.layouts: list[Layout | None] = []
 
     async def send(self, notification, recipient):  # type: ignore[no-untyped-def]
@@ -400,24 +402,32 @@ class _LayoutProbe(_ScriptedTelegram):
         return await super().send(notification, recipient)
 
 
-async def test_a_retried_telegram_message_keeps_its_layout_and_the_inbox_row_has_none(
-    session_factory,
-) -> None:
-    user = await insert_user(session_factory, tier=Tier.PRO)
-    await _link_telegram(session_factory, user)
-    layout = Layout(blocks=(LayoutBlock(head="標題", lines=("a & b",)),))
-    probe = _LayoutProbe(
-        _telegram_receipt(delivered=False, retryable=True, gone=False),
-        _telegram_receipt(delivered=True, retryable=False, gone=False),
+def _layout_worker(session_factory, probe: _LayoutProbe) -> SchedulerWorker:
+    return SchedulerWorker(
+        SchedulerContext(
+            session_factory=session_factory,
+            orchestrator=None,  # type: ignore[arg-type]
+            router=None,  # type: ignore[arg-type]
+            channels={DeliveryChannelKind.IN_APP: InAppChannel(), probe.kind: probe},  # type: ignore[dict-item]
+            entitlement_resolver=EntitlementResolver(),
+            leader=AlwaysLeader(),
+            quota_gate=AllowAllQuotaGate(),
+        )
     )
-    worker = _telegram_worker(session_factory, probe)
+
+
+def _receipt(kind: DeliveryChannelKind, *, delivered: bool) -> DeliveryReceipt:
+    return DeliveryReceipt(channel=kind, delivered=delivered, retryable=not delivered)
+
+
+async def _deliver_layout(worker: SchedulerWorker, session_factory, user: str, *, kind, layout):
     async with session_factory() as session:
         await worker._deliver(
             SqlAlchemySchedulerStore(session),
             user=await SqlAlchemyUserStore(session).get(user_id=user),
             source=NotificationSource.ALERT,
             source_id="strategy-1",
-            channels=(DeliveryChannelKind.TELEGRAM,),
+            channels=(kind,),
             title="t",
             body="b",
             trigger_date=date(2026, 10, 13),
@@ -426,9 +436,66 @@ async def test_a_retried_telegram_message_keeps_its_layout_and_the_inbox_row_has
         )
         await session.commit()
 
-    await worker.retry_pending_deliveries(now=datetime.now(UTC) + timedelta(hours=1))
 
-    assert probe.layouts == [layout, layout]
+async def _payloads(session_factory) -> dict[str, dict[str, object]]:
     async with session_factory() as session:
         rows = (await session.execute(select(NotificationRow))).scalars().all()
-    assert {r.channel: "layout" in r.payload for r in rows} == {"in_app": False, "telegram": True}
+    return {r.channel: r.payload for r in rows}
+
+
+_LAYOUT_KINDS = [DeliveryChannelKind.TELEGRAM, DeliveryChannelKind.LINE]
+_LAYOUT = Layout(blocks=(LayoutBlock(head="標題", lines=("a & b",)),))
+
+
+@pytest.mark.parametrize("kind", _LAYOUT_KINDS)
+async def test_a_retried_message_keeps_its_layout_and_the_inbox_row_has_none(
+    session_factory, kind: DeliveryChannelKind
+) -> None:
+    user = await insert_user(session_factory, tier=Tier.PRO)
+    probe = _LayoutProbe(kind, _receipt(kind, delivered=False), _receipt(kind, delivered=True))
+    worker = _layout_worker(session_factory, probe)
+    await _deliver_layout(worker, session_factory, user, kind=kind, layout=_LAYOUT)
+
+    await worker.retry_pending_deliveries(now=datetime.now(UTC) + timedelta(hours=1))
+
+    assert probe.layouts == [_LAYOUT, _LAYOUT]
+    payloads = await _payloads(session_factory)
+    assert {channel: "layout" in payload for channel, payload in payloads.items()} == {
+        "in_app": False,
+        kind.value: True,
+    }
+
+
+@pytest.mark.parametrize("kind", _LAYOUT_KINDS)
+async def test_a_stored_layout_that_no_longer_validates_is_retried_as_plain_text(
+    session_factory, kind: DeliveryChannelKind
+) -> None:
+    user = await insert_user(session_factory, tier=Tier.PRO)
+    probe = _LayoutProbe(kind, _receipt(kind, delivered=False), _receipt(kind, delivered=True))
+    worker = _layout_worker(session_factory, probe)
+    await _deliver_layout(worker, session_factory, user, kind=kind, layout=_LAYOUT)
+    async with session_factory() as session:
+        row = (
+            await session.execute(select(NotificationRow).where(NotificationRow.channel == kind))
+        ).scalar_one()
+        row.payload = {**row.payload, "layout": {"blocks": [{"head": 5, "unknown": True}]}}
+        await session.commit()
+
+    await worker.retry_pending_deliveries(now=datetime.now(UTC) + timedelta(hours=1))
+
+    assert probe.layouts == [_LAYOUT, None]
+
+
+@pytest.mark.parametrize("kind", _LAYOUT_KINDS)
+async def test_a_layout_whose_text_trips_the_output_scan_is_never_sent_or_stored(
+    session_factory, kind: DeliveryChannelKind
+) -> None:
+    user = await insert_user(session_factory, tier=Tier.PRO)
+    probe = _LayoutProbe(kind, _receipt(kind, delivered=True))
+    flagged = Layout(blocks=(LayoutBlock(head="標題", lines=("建議買進 2330，目標價 1500",)),))
+    await _deliver_layout(
+        _layout_worker(session_factory, probe), session_factory, user, kind=kind, layout=flagged
+    )
+
+    assert probe.layouts == [None]
+    assert all("layout" not in payload for payload in (await _payloads(session_factory)).values())
