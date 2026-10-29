@@ -482,12 +482,13 @@ unknown, used or expired code gets the linking instructions. Other chatter is no
 reply is swallowed; neither the bot token nor a chat id is logged.
 
 **Telegram delivery.** One `sendMessage` per notification. A plain notification is plain text (no
-`parse_mode`). A notification that carries a `layout` (`scheduler/delivery/layout.py`; today the 策略盯盤
-messages) is sent as `parse_mode=HTML`:
+`parse_mode`). A notification that carries a `layout` (`scheduler/delivery/layout.py`; the 策略盯盤
+messages, fired rule alerts, the 晨間摘要, scheduled reports and the daily recap) is sent as `parse_mode=HTML`:
 
 - **Layout, not parsing:** `DeliveryNotification.title`/`body` stay the single plain source for the
-  inbox, email, LINE and push and for the output scan. `layout` is a typed twin the same builder
-  writes (`strategy_messages.morning_list_layout` / `hit_alert_layout`): blocks of a bold `head`,
+  inbox, email and push, as the fallback for LINE and Telegram, and for the output scan. `layout` is a typed twin the same builder
+  writes (`strategy_messages.morning_list_layout` / `hit_alert_layout`, and in `notification_messages.py`
+  `alert_layout` / `brief_layout` / `report_layout` / `digest_layout`): blocks of a bold `head`,
   `lines`, and an optional `fold` that renders as one `<blockquote expandable>`. No text is parsed
   to recover structure. Every string goes through `html.escape` and the only tags are `<b>`, `<i>`
   (the footer) and `<blockquote expandable>`, so a stock name containing `&`, `<` or `>` cannot
@@ -497,9 +498,10 @@ messages) is sent as `parse_mode=HTML`:
   otherwise the next candidate (the version without the quoted 重訊 subject) is tried, then the
   body alone without a layout, then the fixed line. What Telegram receives is therefore scanned the
   same as the plain body, and `NON_ADVICE_FOOTER` is always the last block.
-- **Persistence:** only the Telegram `notifications` row stores `payload.layout` (the in-app row
-  stays small), so a retry sends the same layout. A stored layout that no longer validates degrades
-  to the plain text. A quiet-hours digest joins the stored plain bodies and has no layout.
+- **Persistence:** only the Telegram and LINE `notifications` rows store `payload.layout` (the in-app
+  row stays small), so a retry sends the same layout. A stored layout that no longer validates degrades
+  to the plain text. A quiet-hours digest joins the stored plain bodies and has no layout: it goes as plain text.
+  `_deliver` also drops a layout whose rendered text fails `check_output` (plain text is sent).
 - **Markup rejected:** a 400 whose description contains "parse entities" is answered once, in the
   same `send`, with the plain text (`formatted=False`) through the same `OutboundTransport`; that
   second answer is the receipt, so `_delivery_outcome` and the unlink-on-403 rule apply to it
@@ -524,6 +526,29 @@ messages) is sent as `parse_mode=HTML`:
   from Settings. 429, 5xx, network errors and every other 4xx never unlink. Retry state stays in
   the database (`_delivery_outcome`); the httpx loggers are pinned above INFO so the bot token in
   the URL never reaches a log.
+
+**LINE delivery.** One text message per notification (`LineMessagingChannel`). With a `layout` the
+text is `render_text`: the Telegram blocks without markup, a blank line between blocks, the emoji
+headings and `NON_ADVICE_FOOTER` last. Without one it is title, a newline and body as before. LINE rejects
+text over 5000 characters, so the text is counted in UTF-16 units (conservative) and trimmed like the
+Telegram HTML (`fit_text`): lines leave from the end of the last block, `…（完整內容請見 Miru）` is
+added, the first block and footer stay; a plain text is cut at a line boundary by the same routine
+Telegram uses. LINE has no expandable quote, so a `fold` block shows as a normal block cut to 3
+lines (`…（其餘請見 Miru）` when more). Webhook replies are unchanged.
+
+**What each layout says** (`scheduler/notification_messages.py`, fact phrasing only):
+
+- *Rule alert:* `🔔 <代號> <名稱>`, the observed fact (numbers with thousands separators), `條件：…`,
+  `資料日期：…`. The name is read from the newest stock-info roster on or before the data day
+  (`SnapshotView.stock_name`; Taiwan only, omitted when absent). The plain body now also carries the
+  name and grouped numbers (`describe(condition, grouped=True)`); the notification title and every
+  other surface keep `describe` as it was.
+- *晨間摘要:* `🌅 晨間摘要 <日期>`, the three drivers cut to the fact before ` → `, `完整報告請見 Miru`.
+- *Scheduled report:* `📰 排程摘要`, up to three lines from the opening after stripping markdown
+  (heading marks, emphasis, list markers, links, table rows, rules, code), each cut at a sentence or
+  clause, never mid-word, then the pointer. A schedule has no stored name yet, so the heading is fixed.
+- *Daily recap:* `🗒 過去 24 小時 N 則通知`, one line per title (newest last, 8 at most), and
+  `目前啟用中：X 個提醒、Y 個排程`.
 
 - **Precedence:** `AlertPreference` holds default channels, quiet hours, daily cap, morning digest;
   a rule/job may override and the UI shows inherited values.
