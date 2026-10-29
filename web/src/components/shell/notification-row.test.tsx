@@ -146,7 +146,7 @@ function plainPayload(lineCount: number): unknown {
 }
 
 describe("NotificationRow clamp", () => {
-  it("shows a tall row's top and a collapsed control, hiding the rest and the footer", () => {
+  it("shows a tall row's top and a collapsed control, hiding the rest but not the footer", () => {
     renderRow(view(plainPayload(10)));
     const control = screen.getByRole("button", { name: "顯示全部" });
     expect(control.getAttribute("aria-expanded")).toBe("false");
@@ -154,10 +154,10 @@ describe("NotificationRow clamp", () => {
     expect(control.className).toContain("focus-visible:ring-2");
     expect(screen.getByText("第 5 行")).toBeTruthy();
     expect(screen.queryByText("第 6 行")).toBeNull();
-    expect(screen.queryByText(FOOTER)).toBeNull();
+    expect(screen.getByText(FOOTER)).toBeTruthy();
   });
 
-  it("expands to every line and the footer, then collapses again", () => {
+  it("expands to every line, then collapses again, with the footer throughout", () => {
     renderRow(view(plainPayload(10)));
     fireEvent.click(screen.getByRole("button", { name: "顯示全部" }));
     const control = screen.getByRole("button", { name: "收合" });
@@ -166,7 +166,7 @@ describe("NotificationRow clamp", () => {
     expect(screen.getByText(FOOTER)).toBeTruthy();
     fireEvent.click(control);
     expect(screen.queryByText("第 10 行")).toBeNull();
-    expect(screen.queryByText(FOOTER)).toBeNull();
+    expect(screen.getByText(FOOTER)).toBeTruthy();
     expect(screen.getByRole("button", { name: "顯示全部" }).getAttribute("aria-expanded")).toBe(
       "false",
     );
@@ -198,7 +198,7 @@ describe("NotificationRow clamp", () => {
     expect(screen.getByText("第 5 行")).toBeTruthy();
   });
 
-  it("clamps a long morning list to its heading and fold, footer behind the control", () => {
+  it("clamps a long morning list to its heading and fold, footer still shown", () => {
     const longMorning = {
       ...morningPayload,
       layout: {
@@ -219,7 +219,7 @@ describe("NotificationRow clamp", () => {
     );
     expect(container.querySelectorAll("details")).toHaveLength(5);
     expect(screen.getByRole("button", { name: "顯示全部" })).toBeTruthy();
-    expect(screen.queryByText(FOOTER)).toBeNull();
+    expect(screen.getByText(FOOTER)).toBeTruthy();
   });
 });
 

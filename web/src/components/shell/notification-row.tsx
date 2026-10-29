@@ -90,7 +90,7 @@ function PlainBlock({ block, lead }: { block: Block; lead: ReactNode }): ReactNo
 /** One inbox entry. The whole row opens the notification through a stretched button (the heading),
  * so there is no nested interactive element; a fold block and the show-all control are the things
  * layered above it. A layout taller than the line budget shows only its top, ending in a control
- * that reveals the rest; the non-advice footer appears with the rest, once the row is expanded. The
+ * that reveals the rest; the non-advice footer stays visible either way. The
  * layout is drawn from React text nodes only. Without a usable layout the title and plain body are
  * shown as before. */
 export function NotificationRow({
@@ -153,7 +153,7 @@ export function NotificationRow({
                 {expanded ? t("showLess") : t("showAll")}
               </button>
             ) : null}
-            {item.footer && (expanded || !clamped) ? (
+            {item.footer ? (
               <p className={cn("text-[11px] text-[var(--text-muted)]", WRAP)}>{item.footer}</p>
             ) : null}
           </>
