@@ -81,7 +81,15 @@ from scheduler.models import (
     StrategySubscription,
     TriggerMode,
 )
-from scheduler.notification_messages import safe_alert_message
+from scheduler.notification_messages import (
+    brief_layout,
+    brief_preview,
+    digest_body,
+    digest_layout,
+    report_layout,
+    report_preview,
+    safe_alert_message,
+)
 from scheduler.quota import QuotaGate, UsageQuotaGate
 from scheduler.retention import prune_stream_events
 from scheduler.store import SqlAlchemySchedulerStore
@@ -130,7 +138,6 @@ _RETRY_LEASE = timedelta(minutes=10)
 _DIGEST_FROM = time(8, 0)
 _DIGEST_UNTIL = time(12, 0)
 _DIGEST_LOOKBACK = timedelta(hours=24)
-_DIGEST_MAX_LINES = 8
 _LAYOUT_CHANNELS = frozenset({DeliveryChannelKind.TELEGRAM, DeliveryChannelKind.LINE})
 
 
@@ -379,9 +386,10 @@ class SchedulerWorker:
                 source_id=job.id,
                 channels=job.delivery_channels,
                 title="排程摘要",
-                body=_notification_preview(result.final_text),
+                body=report_preview(result.final_text),
                 trigger_date=now.date(),
                 deep_link={"route": "thread", "thread_id": thread_id},
+                layout=report_layout(result.final_text),
             )
             await store.set_job_status(
                 job_id=job.id,
@@ -985,9 +993,10 @@ class SchedulerWorker:
                 source_id=source_id,
                 channels=prefs.channels,
                 title=f"晨間摘要 {local_day.isoformat()}",
-                body=_brief_preview(text),
+                body=brief_preview(text),
                 trigger_date=local_day,
                 deep_link={"route": "thread", "thread_id": thread_id},
+                layout=brief_layout(text),
             )
             return True
         recent = await store.recent_inbox(user_id=user_id, since=now - _DIGEST_LOOKBACK)
@@ -995,6 +1004,7 @@ class SchedulerWorker:
         active_jobs = sum(1 for j in await store.list_jobs(user_id=user_id) if j.enabled)
         if not recent and not (active_alerts or active_jobs):
             return False
+        titles = [str(item.payload.get("title", "")) for item in recent]
         await self._deliver(
             store,
             user=user,
@@ -1002,9 +1012,10 @@ class SchedulerWorker:
             source_id=source_id,
             channels=prefs.channels,
             title=f"晨間摘要 {local_day.isoformat()}",
-            body=_digest_body(recent, active_alerts, active_jobs),
+            body=digest_body(titles, active_alerts, active_jobs),
             trigger_date=local_day,
             deep_link={"route": "notifications"},
+            layout=digest_layout(titles, active_alerts, active_jobs),
         )
         return True
 
@@ -1388,19 +1399,6 @@ def _delivery_outcome(
     return "pending", now + delay
 
 
-_PREVIEW_CHARS = 160
-
-
-def _notification_preview(text: str) -> str:
-    """A scheduled report can be thousands of characters; the notification is a pointer to the
-    thread (its deep link), so it carries only the opening of the report, cut at a line break when
-    one is near. The full text, tables and charts live in the schedule's thread."""
-    flat = " ".join(line.strip() for line in text.strip().splitlines() if line.strip())
-    if len(flat) <= _PREVIEW_CHARS:
-        return flat
-    return f"{flat[:_PREVIEW_CHARS].rstrip()}…（完整報告請見對話）"
-
-
 def _digest_day(prefs: AlertPreference | None, now: datetime) -> date | None:
     """The user's local date if a digest is due right now, else None: inside the 08:00-12:00 window
     of a Taiwan trading day, and not while their quiet hours are running."""
@@ -1414,42 +1412,6 @@ def _digest_day(prefs: AlertPreference | None, now: datetime) -> date | None:
     if _within_quiet_hours(prefs.quiet_hours, now, prefs.timezone):
         return None
     return local.date()
-
-
-def _digest_body(recent: Sequence[Notification], alerts: int, jobs: int) -> str:
-    """The morning recap, in fact phrasing with the non-advice footer. It lists the titles of what
-    fired in the last 24 hours (each already a fixed, scanned fact line) and the active counts."""
-    lines: list[str] = []
-    if recent:
-        lines.append(f"過去 24 小時共 {len(recent)} 則通知：")
-        for item in recent[-_DIGEST_MAX_LINES:]:
-            lines.append(f"・{item.payload.get('title', '')}")
-        if len(recent) > _DIGEST_MAX_LINES:
-            lines.append(f"…另有 {len(recent) - _DIGEST_MAX_LINES} 則較早的通知，請見通知紀錄。")
-    else:
-        lines.append("過去 24 小時沒有新的通知。")
-    lines.append(f"目前啟用中：{alerts} 個提醒、{jobs} 個排程。")
-    body = "\n".join(lines) + f"\n{NON_ADVICE_FOOTER}"
-    if check_output(body, has_market_data=False).reason == "trading_language_redacted":
-        return f"晨間摘要：目前啟用中 {alerts} 個提醒、{jobs} 個排程。\n{NON_ADVICE_FOOTER}"
-    return body
-
-
-def _brief_preview(report: str) -> str:
-    """The notification carries the lines that matter — the date headline and the top drivers —
-    not the whole report (which, with its tables, lives in the thread the notification opens)."""
-    lines = report.splitlines()
-    head = next((ln.strip("*") for ln in lines if ln.startswith("**【晨間摘要】")), "晨間摘要")
-    drivers: list[str] = []
-    in_block = False
-    for ln in lines:
-        if ln.startswith("### Top 3 Drivers"):
-            in_block = True
-        elif ln.startswith("###"):
-            in_block = False
-        elif in_block and ln[:2].rstrip(".").isdigit():
-            drivers.append(ln)
-    return "\n".join([head, *drivers[:3]])
 
 
 def _external_body(body: str) -> str:
