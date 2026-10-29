@@ -4171,7 +4171,9 @@
       "closeConfirmed": "收盤確認",
       "allMet": "條件全數成立",
       "notChecked": "尚未檢查",
-      "conditionsMet": "{met}/{total} 個條件成立"
+      "conditionsMet": "{met}/{total} 個條件成立",
+      "awaitingShort": "待下一次檢查確認",
+      "blockedShort": "未通過：{guard}"
     },
     "levels": {
       "upper_band": "布林上軌",
@@ -4214,6 +4216,10 @@
       "openStock": "開啟個股頁",
       "daysOnList": "已在清單 {days} 個交易日",
       "notChecked": "盤中尚未檢查這檔股票。",
+      "statusTriggersPending": "觸發條件 {met}/{total} 成立，其餘尚未成立",
+      "statusAwaiting": "觸發條件全數成立，尚待下一次檢查確認",
+      "statusBlocked": "觸發條件全數成立，盤中檢查未通過：{guard}",
+      "statusAlerted": "觸發條件全數成立，已於 {time} 通知",
       "close": "關閉"
     },
     "context": {

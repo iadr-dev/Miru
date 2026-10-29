@@ -57,6 +57,7 @@ export const strategyWatchItemSchema = z.object({
   price: level,
   conditions: z.array(strategyConditionSchema).default([]),
   all_met: z.boolean(),
+  confirmed: z.boolean(),
   alerted_at: z.string().nullable(),
   close_confirmed: z.boolean(),
 });

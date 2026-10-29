@@ -35,6 +35,29 @@ export function triggersMet(item: StrategyWatchItem): { met: number; total: numb
   return { met: triggers.filter((c) => c.met).length, total: triggers.length };
 }
 
+/** Where one stock stands, in plain facts: why it has (or has not) produced an alert. */
+export type WatchStatus =
+  | { kind: "notChecked" }
+  | { kind: "triggersPending"; met: number; total: number }
+  | { kind: "awaitingConfirmation" }
+  | { kind: "blockedByGuard"; guard: string }
+  | { kind: "alerted"; time: string };
+
+export function watchStatus(item: StrategyWatchItem): WatchStatus {
+  const { met, total } = triggersMet(item);
+  if (item.alerted_at !== null) return { kind: "alerted", time: item.alerted_at };
+  if (item.latest_slot === null || total === 0) return { kind: "notChecked" };
+  if (met < total) return { kind: "triggersPending", met, total };
+  const failedGuard = item.conditions.find((c) => c.kind === "guard" && !c.met);
+  if (failedGuard) return { kind: "blockedByGuard", guard: failedGuard.key };
+  if (!item.confirmed) return { kind: "awaitingConfirmation" };
+  return { kind: "alerted", time: item.latest_slot };
+}
+
+export function assertNeverStatus(status: never): never {
+  throw new Error(`Unhandled watch status: ${JSON.stringify(status)}`);
+}
+
 /** The strategy tab to open first: the one asked for, else the first with stocks on its list. */
 export function initialStrategy(
   counts: Record<string, number>,

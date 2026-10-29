@@ -4171,7 +4171,9 @@
       "closeConfirmed": "Close confirmed",
       "allMet": "All conditions met",
       "notChecked": "Not checked yet",
-      "conditionsMet": "{met}/{total} conditions met"
+      "conditionsMet": "{met}/{total} conditions met",
+      "awaitingShort": "Awaiting the next check",
+      "blockedShort": "Failed: {guard}"
     },
     "levels": {
       "upper_band": "Upper band",
@@ -4214,6 +4216,10 @@
       "openStock": "Open stock page",
       "daysOnList": "On the list for {days} sessions",
       "notChecked": "Not checked intraday yet.",
+      "statusTriggersPending": "{met}/{total} trigger conditions met; the rest are not met yet",
+      "statusAwaiting": "All trigger conditions met; waiting for the next check to confirm",
+      "statusBlocked": "All trigger conditions met; intraday check failed: {guard}",
+      "statusAlerted": "All trigger conditions met; alerted at {time}",
       "close": "Close"
     },
     "context": {

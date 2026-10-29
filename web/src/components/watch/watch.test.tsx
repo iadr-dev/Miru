@@ -17,6 +17,7 @@ import {
   keyLevel,
   previewItems,
   triggersMet,
+  watchStatus,
 } from "@/components/watch/watch-format";
 import { WatchTable } from "@/components/watch/watch-table";
 import { renderWithIntl } from "@/test/render";
@@ -25,6 +26,18 @@ import {
   type StrategyWatchItem,
   type StrategyWatchToday,
 } from "@/types/strategy-watch";
+
+const MET_TRIGGERS: StrategyWatchItem["conditions"] = [
+  { key: "price_above_upper_band", kind: "trigger", met: true, observed: 872, required: 868 },
+  { key: "volume_ratio_at_least", kind: "trigger", met: true, observed: 1.6, required: 1.5 },
+];
+const guard = (key: string, met: boolean): StrategyWatchItem["conditions"][number] => ({
+  key,
+  kind: "guard",
+  met,
+  observed: null,
+  required: null,
+});
 
 function item(overrides: Partial<StrategyWatchItem> = {}): StrategyWatchItem {
   return {
@@ -58,6 +71,7 @@ function item(overrides: Partial<StrategyWatchItem> = {}): StrategyWatchItem {
       { key: "after_opening_window", kind: "guard", met: true, observed: null, required: null },
     ],
     all_met: false,
+    confirmed: false,
     alerted_at: null,
     close_confirmed: false,
     ...overrides,
@@ -82,6 +96,53 @@ describe("watch-format", () => {
 
   it("counts triggers only, not guards", () => {
     expect(triggersMet(item())).toEqual({ met: 1, total: 2 });
+  });
+
+  it("reads a stock with no intraday check, or no triggers, as not checked", () => {
+    expect(watchStatus(item({ latest_slot: null, conditions: [] }))).toEqual({
+      kind: "notChecked",
+    });
+    expect(watchStatus(item({ conditions: [guard("after_opening_window", true)] }))).toEqual({
+      kind: "notChecked",
+    });
+  });
+
+  it("reports how many triggers are met while some are not", () => {
+    expect(watchStatus(item())).toEqual({ kind: "triggersPending", met: 1, total: 2 });
+  });
+
+  it("waits for the second check when every trigger holds for the first time", () => {
+    const status = watchStatus(
+      item({ conditions: [...MET_TRIGGERS, guard("after_opening_window", true)], all_met: true }),
+    );
+    expect(status).toEqual({ kind: "awaitingConfirmation" });
+  });
+
+  it("names the first failed guard once every trigger holds", () => {
+    const conditions = [
+      ...MET_TRIGGERS,
+      guard("after_opening_window", true),
+      guard("above_average_price", false),
+      guard("not_near_limit_up", false),
+    ];
+    for (const confirmed of [false, true]) {
+      expect(watchStatus(item({ conditions, all_met: true, confirmed }))).toEqual({
+        kind: "blockedByGuard",
+        guard: "above_average_price",
+      });
+    }
+  });
+
+  it("is alerted from the first alertable slot, even if the latest check no longer holds", () => {
+    expect(watchStatus(item({ alerted_at: "09:50" }))).toEqual({ kind: "alerted", time: "09:50" });
+  });
+
+  it("treats confirmed triggers with every guard met as alerted at the latest check", () => {
+    const conditions = [...MET_TRIGGERS, guard("after_opening_window", true)];
+    expect(watchStatus(item({ conditions, all_met: true, confirmed: true }))).toEqual({
+      kind: "alerted",
+      time: "10:00",
+    });
   });
 
   it("opens the asked-for tab, else the first with stocks", () => {
@@ -110,6 +171,29 @@ describe("WatchTable", () => {
     expect(screen.getByText("收盤確認")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /台積電/ }));
     expect(onSelect).toHaveBeenCalledWith("2330");
+  });
+
+  it("states why a stock whose triggers all held has no alert yet", () => {
+    const held = [...MET_TRIGGERS, guard("above_average_price", true)];
+    renderWithIntl(
+      <WatchTable
+        items={[
+          item({ symbol: "2330", conditions: held, all_met: true }),
+          item({
+            symbol: "2317",
+            conditions: [...MET_TRIGGERS, guard("above_average_price", false)],
+            all_met: true,
+            confirmed: true,
+          }),
+          item({ symbol: "2454" }),
+        ]}
+        caption="x"
+        selected={null}
+        onSelect={vi.fn()}
+      />,
+    );
+    expect(screen.getAllByText("待下一次檢查確認")).toHaveLength(1);
+    expect(screen.getAllByText("未通過：站上當日均價")).toHaveLength(1);
   });
 
   it("says when a strategy has no stock today", () => {
