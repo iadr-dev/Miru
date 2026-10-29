@@ -18,11 +18,19 @@ from db.models import NotificationRow
 from ingest.leader import AlwaysLeader, NeverLeader
 from scheduler.delivery.base import DeliveryNotification, DeliveryReceipt, DeliveryRecipient
 from scheduler.delivery.channels import InAppChannel
-from scheduler.delivery.layout import Layout, LayoutBlock
+from scheduler.delivery.layout import (
+    STORED_MAX_UNITS,
+    TRIM_POINTER,
+    Layout,
+    LayoutBlock,
+    render_text,
+    utf16_units,
+)
 from scheduler.models import DeliveryChannelKind, NotificationSource
 from scheduler.quota import AllowAllQuotaGate
 from scheduler.store import SqlAlchemySchedulerStore
 from scheduler.worker import SchedulerContext, SchedulerWorker
+from schemas.alerts import NON_ADVICE_FOOTER
 from schemas.enums import Tier
 from tests.scheduler.conftest import insert_user
 
@@ -443,12 +451,16 @@ async def _payloads(session_factory) -> dict[str, dict[str, object]]:
     return {r.channel: r.payload for r in rows}
 
 
-_LAYOUT_KINDS = [DeliveryChannelKind.TELEGRAM, DeliveryChannelKind.LINE]
+_LAYOUT_KINDS = [
+    DeliveryChannelKind.TELEGRAM,
+    DeliveryChannelKind.LINE,
+    DeliveryChannelKind.EMAIL,
+]
 _LAYOUT = Layout(blocks=(LayoutBlock(head="標題", lines=("a & b",)),))
 
 
 @pytest.mark.parametrize("kind", _LAYOUT_KINDS)
-async def test_a_retried_message_keeps_its_layout_and_the_inbox_row_has_none(
+async def test_a_retried_message_keeps_its_layout_and_the_inbox_row_stores_it_too(
     session_factory, kind: DeliveryChannelKind
 ) -> None:
     user = await insert_user(session_factory, tier=Tier.PRO)
@@ -461,9 +473,49 @@ async def test_a_retried_message_keeps_its_layout_and_the_inbox_row_has_none(
     assert probe.layouts == [_LAYOUT, _LAYOUT]
     payloads = await _payloads(session_factory)
     assert {channel: "layout" in payload for channel, payload in payloads.items()} == {
-        "in_app": False,
+        "in_app": True,
         kind.value: True,
     }
+    assert payloads["in_app"]["layout"] == _LAYOUT.model_dump(mode="json")
+
+
+async def test_a_push_row_never_stores_the_layout(session_factory) -> None:
+    kind = DeliveryChannelKind.PUSH
+    user = await insert_user(session_factory, tier=Tier.PRO)
+    probe = _LayoutProbe(kind, _receipt(kind, delivered=True))
+    await _deliver_layout(
+        _layout_worker(session_factory, probe), session_factory, user, kind=kind, layout=_LAYOUT
+    )
+
+    payloads = await _payloads(session_factory)
+    assert {channel: "layout" in payload for channel, payload in payloads.items()} == {
+        "in_app": True,
+        "push": False,
+    }
+
+
+async def test_a_very_long_layout_is_stored_and_sent_cut_to_the_same_bounded_copy(
+    session_factory,
+) -> None:
+    kind = DeliveryChannelKind.EMAIL
+    user = await insert_user(session_factory, tier=Tier.PRO)
+    probe = _LayoutProbe(kind, _receipt(kind, delivered=True))
+    long = Layout(
+        blocks=(
+            LayoutBlock(head="清單", lines=tuple(f"第 {i} 檔 {'字' * 40}" for i in range(400))),
+        )
+    )
+    await _deliver_layout(
+        _layout_worker(session_factory, probe), session_factory, user, kind=kind, layout=long
+    )
+
+    [sent] = probe.layouts
+    assert sent is not None
+    stored = (await _payloads(session_factory))["in_app"]["layout"]
+    assert stored == sent.model_dump(mode="json")
+    assert utf16_units(render_text(sent, NON_ADVICE_FOOTER)) <= STORED_MAX_UNITS
+    assert sent.blocks[-1].lines == (TRIM_POINTER,)
+    assert len(sent.blocks[0].lines) < 400
 
 
 @pytest.mark.parametrize("kind", _LAYOUT_KINDS)

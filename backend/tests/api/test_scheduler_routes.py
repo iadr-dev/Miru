@@ -5,14 +5,19 @@ device registration."""
 from __future__ import annotations
 
 import json
+import uuid
+from datetime import UTC, datetime
 from urllib.parse import quote
 
+import pytest
 from fastapi.testclient import TestClient
 
 from config.settings import Settings
+from db.models import NotificationRow
 from scheduler.caps import MAX_ALERT_RULES, MAX_SCHEDULES
+from schemas.alerts import NON_ADVICE_FOOTER
 from schemas.enums import Tier
-from tests.api.conftest import sign_in
+from tests.api.conftest import observe_db, sign_in
 
 
 def _alert_body() -> dict[str, object]:
@@ -257,6 +262,106 @@ class TestNotificationsAndPreferences:
         assert badge.json()["unread_notifications"] == 0
         listed = client.get("/api/v1/notifications", headers=headers)
         assert listed.json()["notifications"] == []
+
+    @pytest.mark.parametrize(
+        ("payload", "expected"),
+        [
+            (
+                {
+                    "title": "t",
+                    "body": "b",
+                    "deep_link": {"route": "stock", "symbol": "2330"},
+                    "layout": {"blocks": [{"head": "標題", "lines": ["a & b"], "fold": True}]},
+                },
+                {
+                    "title": "t",
+                    "body": "b",
+                    "deep_link": {
+                        "route": "stock",
+                        "symbol": "2330",
+                        "strategy": None,
+                        "thread_id": None,
+                    },
+                    "held": False,
+                    "layout": {"blocks": [{"head": "標題", "lines": ["a & b"], "fold": True}]},
+                    "footer": NON_ADVICE_FOOTER,
+                },
+            ),
+            (
+                {"title": "t", "body": "b", "deep_link": {"route": "watch"}},
+                {
+                    "title": "t",
+                    "body": "b",
+                    "deep_link": {
+                        "route": "watch",
+                        "symbol": None,
+                        "strategy": None,
+                        "thread_id": None,
+                    },
+                    "held": False,
+                    "layout": None,
+                    "footer": "",
+                },
+            ),
+            (
+                {
+                    "title": "t",
+                    "body": "b",
+                    "layout": {"blocks": [{"head": 5, "unknown": True}]},
+                    "deep_link": {"route": "somewhere-else"},
+                },
+                {
+                    "title": "t",
+                    "body": "b",
+                    "deep_link": None,
+                    "held": False,
+                    "layout": None,
+                    "footer": "",
+                },
+            ),
+            (
+                {"title": 3, "held": True},
+                {
+                    "title": "",
+                    "body": "",
+                    "deep_link": None,
+                    "held": True,
+                    "layout": None,
+                    "footer": "",
+                },
+            ),
+        ],
+        ids=["laid-out", "legacy-plain", "layout-no-longer-validates", "mistyped-fields"],
+    )
+    def test_the_inbox_serves_a_typed_payload_and_degrades_a_stored_one_that_no_longer_fits(
+        self,
+        client: TestClient,
+        settings: Settings,
+        payload: dict[str, object],
+        expected: dict[str, object],
+    ) -> None:
+        headers, user_id = sign_in(client, settings, tier=Tier.PRO)
+        state = client.app.state.app_state
+
+        async def _insert() -> None:
+            async with state.session_factory() as session:
+                session.add(
+                    NotificationRow(
+                        id=str(uuid.uuid4()),
+                        user_id=user_id,
+                        source="alert",
+                        source_id="a1",
+                        channel="in_app",
+                        dedupe_key="k1",
+                        payload=payload,
+                        delivered_at=datetime.now(UTC),
+                    )
+                )
+                await session.commit()
+
+        observe_db(client, _insert)
+        [item] = client.get("/api/v1/notifications", headers=headers).json()["notifications"]
+        assert item["payload"] == expected
 
     def test_put_alert_preferences(self, client: TestClient, settings: Settings) -> None:
         headers, _ = sign_in(client, settings, tier=Tier.PRO)
