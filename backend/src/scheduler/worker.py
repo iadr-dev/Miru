@@ -85,6 +85,7 @@ from scheduler.notification_messages import (
     brief_preview,
     digest_body,
     digest_layout,
+    held_layout,
     report_layout,
     report_preview,
     safe_alert_message,
@@ -1125,51 +1126,79 @@ class SchedulerWorker:
                     user = await self._load_user(session, user_id)
                     if user is None:
                         continue
-                    await self._send_digest(store, user, items)
+                    queued = await self._queue_held_digests(store, user, items)
                     released += await store.release_held_notifications(
                         ids=tuple(i.id for i in items)
                     )
-                    await session.commit()  # released at once: a later failure cannot re-send
+                    # The digest rows are durable and the held ones released BEFORE anything is
+                    # sent: a crash leaves pending rows the retry sweep delivers, never a re-send.
+                    await session.commit()
+                    recipient = await self._recipient_for(store, user)
+                    for record_id, channel, notification in queued:
+                        await self._send_and_record(
+                            store,
+                            user_id=user.id,
+                            record_id=record_id,
+                            channel=channel,
+                            notification=notification,
+                            recipient=recipient,
+                            attempts=0,
+                            track=True,
+                        )
                 except Exception:
                     await session.rollback()
                     logger.exception("held_release_failed", user_id=user_id)
         return released
 
-    async def _send_digest(
+    async def _queue_held_digests(
         self, store: SqlAlchemySchedulerStore, user: User, items: Sequence[Notification]
-    ) -> None:
-        recipient = await self._recipient_for(store, user)
+    ) -> list[tuple[str, DeliveryChannel, DeliveryNotification]]:
+        """One digest per channel for the parked `items`, recorded as pending rows (so a retry
+        resends the same layout) and returned, with the channel to send each on."""
         by_channel: dict[DeliveryChannelKind, list[Notification]] = {}
         for item in items:
             by_channel.setdefault(item.channel, []).append(item)
+        queued: list[tuple[str, DeliveryChannel, DeliveryNotification]] = []
         for kind, group in by_channel.items():
             channel = self._ctx.channels.get(kind)
             if channel is None:
                 continue
+            titles = [str(g.payload.get("title") or "通知") for g in group]
             # Each stored body already ends in the footer; join them bare and add it once.
             lines = [
-                f"{g.payload.get('title', '')}："
-                f"{str(g.payload.get('body', '')).replace(NON_ADVICE_FOOTER, '').strip()}"
-                for g in group
+                f"{title}：{str(g.payload.get('body', '')).replace(NON_ADVICE_FOOTER, '').strip()}"
+                for title, g in zip(titles, group, strict=True)
             ]
             joined = lines[0] if len(group) == 1 else "\n".join(f"・{line}" for line in lines)
-            body = _external_body(joined)
-            title = (
-                str(group[0].payload.get("title", "提醒"))
-                if len(group) == 1
-                else f"靜音期間的通知（{len(group)} 則）"
-            )
-            receipt = await channel.send(
-                DeliveryNotification(
-                    notification_id=group[-1].id,
-                    title=title,
-                    body=body,
-                    deep_link={"route": "notifications"},
+            title = titles[0] if len(group) == 1 else f"靜音期間的通知（{len(group)} 則）"
+            deep_link: dict[str, object] = {"route": "notifications"}
+            layout = _scanned_layout(held_layout(titles))
+            record = await store.record_notification(
+                user_id=user.id,
+                source=NotificationSource.DIGEST,
+                source_id=f"held:{group[-1].id}",
+                channel=kind,
+                trigger_date=datetime.now(UTC).date(),
+                payload=_notification_payload(
+                    title,
+                    joined,
+                    deep_link,
+                    held=False,
+                    layout=layout if kind in _LAYOUT_CHANNELS else None,
                 ),
-                recipient,
+                delivery_state="pending",
             )
-            self._log_receipt(receipt)
-            await self._prune_stale(store, user.id, receipt)
+            if record is None:
+                continue
+            notification = DeliveryNotification(
+                notification_id=record.id,
+                title=title,
+                body=_external_body(joined),
+                deep_link=deep_link,
+                layout=layout,
+            )
+            queued.append((record.id, channel, notification))
+        return queued
 
     async def _prune_stale(
         self, store: SqlAlchemySchedulerStore, user_id: str, receipt: DeliveryReceipt
