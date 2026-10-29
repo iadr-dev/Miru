@@ -336,11 +336,10 @@ class EmailChannel:
         if recipient.email_address is None:
             raise ChannelNotConfiguredError("no email address for recipient")
         link = recipient.unsubscribe_url
-        unsubscribe = _UNSUBSCRIBE_LINE.format(link=link) if link is not None else None
         text, body_html = _email_parts(notification)
-        if unsubscribe is not None:
-            text = f"{text}\n\n{unsubscribe}"
-            body_html += f"<p>{html.escape(unsubscribe)}</p>"
+        if link is not None:
+            text = f"{text}\n\n{_UNSUBSCRIBE_LINE.format(link=link)}"
+            body_html += _unsubscribe_html(link)
         payload: dict[str, object] = {
             "from": self._from or "",
             "to": [recipient.email_address],
@@ -377,7 +376,22 @@ class EmailChannel:
         )
 
 
-_UNSUBSCRIBE_LINE = "不想再收到電子郵件通知？一鍵取消：{link}"
+_UNSUBSCRIBE_PREFIX = "不想再收到電子郵件通知？一鍵取消："
+_UNSUBSCRIBE_LINE = _UNSUBSCRIBE_PREFIX + "{link}"
+_LINK_STYLE = "color:#0b57d0;text-decoration:underline"
+
+
+def _unsubscribe_html(link: str) -> str:
+    """The unsubscribe sentence as a paragraph. An https link is a real anchor (underlined, so the
+    link is not told by colour alone); any other scheme stays plain text, never a clickable href."""
+    prefix = html.escape(_UNSUBSCRIBE_PREFIX)
+    shown = html.escape(link)
+    if not link.startswith("https://"):
+        return f"<p>{prefix}{shown}</p>"
+    return (
+        f'<p>{prefix}<a href="{html.escape(link, quote=True)}" rel="noopener noreferrer" '
+        f'style="{_LINK_STYLE}">{shown}</a></p>'
+    )
 
 
 def _has_lead(notification: DeliveryNotification) -> bool:

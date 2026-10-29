@@ -161,7 +161,8 @@ def test_the_subject_headers_and_unsubscribe_line_do_not_change_with_a_layout() 
     assert str(laid_out["text"]).endswith(f"{NON_ADVICE_FOOTER}\n\n{_UNSUBSCRIBE}")
     document = str(laid_out["html"])
     assert document.index(NON_ADVICE_FOOTER) < document.index("一鍵取消")
-    assert html.escape(_UNSUBSCRIBE) in document
+    assert f'<a href="{_LINK}" rel="noopener noreferrer"' in document
+    assert _visible(document)[-2:] == ["不想再收到電子郵件通知？一鍵取消：", _LINK]
     assert "headers" not in _request(_ALERT)
 
 
@@ -187,3 +188,32 @@ def test_the_scheduled_report_plain_body_is_clean_text_for_an_email_without_a_la
     for leaked in ("##", "**", "|", "---"):
         assert leaked not in str(payload["text"])
     assert check_output(str(payload["text"]), has_market_data=False).reason is None
+
+
+_TRICKY = 'https://miru.example/u?a=1&b="2"&c=<x>\'y'
+
+
+def test_an_https_unsubscribe_link_is_an_escaped_anchor_with_the_same_text_part() -> None:
+    payload = _request(_ALERT, link=_TRICKY)
+    document = str(payload["html"])
+    escaped = html.escape(_TRICKY, quote=True)
+    assert f'<a href="{escaped}" rel="noopener noreferrer"' in document
+    assert f'underline">{escaped}</a>' in document
+    assert _TRICKY not in document
+    sentence = f"不想再收到電子郵件通知？一鍵取消：{_TRICKY}"
+    assert str(payload["text"]).endswith(f"{NON_ADVICE_FOOTER}\n\n{sentence}")
+    assert payload["headers"] == {
+        "List-Unsubscribe": f"<{_TRICKY}>",
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    }
+
+
+def test_an_http_unsubscribe_link_stays_plain_text() -> None:
+    link = "http://miru.local/unsub?a=1&b=2"
+    document = str(_request(_ALERT, link=link)["html"])
+    assert "<a " not in document
+    assert f"一鍵取消：{html.escape(link)}</p>" in document
+
+
+def test_no_unsubscribe_link_adds_no_anchor() -> None:
+    assert "<a " not in str(_request(_ALERT)["html"])
