@@ -15,6 +15,7 @@ shows against the user's own threshold and never tells anyone to act (governance
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from enum import StrEnum
 from typing import Annotated, Final, Literal
 
@@ -212,32 +213,47 @@ _FLAG_PHRASE: Final = {
 }
 
 
-def describe(condition: ConditionModel) -> str:
-    """The rule in plain fact phrasing — the UI preview line and the notification subject."""
-    return _price_phrase(condition) or _flow_phrase(condition) or _flag_phrase(condition)
+def format_number(value: float) -> str:
+    """`value` with thousands separators and no trailing zeros (`1,020`, `12.5`)."""
+    return f"{value:,.6f}".rstrip("0").rstrip(".")
 
 
-def _price_phrase(condition: ConditionModel) -> str | None:
+def describe(condition: ConditionModel, *, grouped: bool = False) -> str:
+    """The rule in plain fact phrasing — the UI preview line and the notification subject.
+    `grouped` writes its numbers with thousands separators, as the notification body does."""
+    number = format_number if grouped else _plain_number
+    return (
+        _price_phrase(condition, number)
+        or _flow_phrase(condition, number)
+        or _flag_phrase(condition)
+    )
+
+
+def _plain_number(value: float) -> str:
+    return f"{value:g}"
+
+
+def _price_phrase(condition: ConditionModel, number: Callable[[float], str]) -> str | None:
     if isinstance(condition, ClosePrice):
         relation = "高於" if condition.comparator == "above" else "低於"
-        return f"收盤價{relation} {condition.value:g}"
+        return f"收盤價{relation} {number(condition.value)}"
     if isinstance(condition, DailyChange):
         move = "漲幅" if condition.direction == "up" else "跌幅"
-        return f"單日{move}達 {condition.percent:g}%"
+        return f"單日{move}達 {number(condition.percent)}%"
     if isinstance(condition, VolumeSurge):
-        return f"成交量達近 {condition.window} 日均量的 {condition.multiple:g} 倍"
+        return f"成交量達近 {condition.window} 日均量的 {number(condition.multiple)} 倍"
     return None
 
 
-def _flow_phrase(condition: ConditionModel) -> str | None:
+def _flow_phrase(condition: ConditionModel, number: Callable[[float], str]) -> str | None:
     if isinstance(condition, InstitutionalStreak):
         side = "淨買超" if condition.direction == "buy" else "淨賣超"
         return f"{_INVESTOR_LABEL[condition.investor]}連續 {condition.days} 日{side}"
     if isinstance(condition, MarginBalanceChange):
-        return _margin_phrase(condition)
+        return _margin_phrase(condition, number)
     if isinstance(condition, EtfPremiumDiscount):
         side = "溢價" if condition.direction == "premium" else "折價"
-        return f"預估{side}幅度達 {condition.percent:g}%"
+        return f"預估{side}幅度達 {number(condition.percent)}%"
     return None
 
 
@@ -247,10 +263,10 @@ def _flag_phrase(condition: ConditionModel) -> str:
     return _FLAG_PHRASE[condition.kind]
 
 
-def _margin_phrase(condition: MarginBalanceChange) -> str:
+def _margin_phrase(condition: MarginBalanceChange, number: Callable[[float], str]) -> str:
     label = "融資" if condition.side == "margin" else "融券"
     move = "增加" if condition.direction == "up" else "減少"
-    return f"{label}餘額單日{move}達 {condition.percent:g}%"
+    return f"{label}餘額單日{move}達 {number(condition.percent)}%"
 
 
 def investor_label(investor: str) -> str:
@@ -278,6 +294,7 @@ __all__ = [
     "TriggerMode",
     "VolumeSurge",
     "describe",
+    "format_number",
     "investor_label",
     "supports_market",
 ]

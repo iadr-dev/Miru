@@ -81,6 +81,7 @@ from scheduler.models import (
     StrategySubscription,
     TriggerMode,
 )
+from scheduler.notification_messages import safe_alert_message
 from scheduler.quota import QuotaGate, UsageQuotaGate
 from scheduler.retention import prune_stream_events
 from scheduler.store import SqlAlchemySchedulerStore
@@ -97,7 +98,6 @@ from scheduler.strategy_store import STRATEGY_SOURCE_PREFIX, StrategySubscriptio
 from scheduler.templates import (
     EVENT_KINDS,
     NON_ADVICE_FOOTER,
-    ConditionModel,
     capability_of,
     describe,
     probe_dataset,
@@ -592,6 +592,7 @@ class SchedulerWorker:
         self._emit(
             EventKind.ALERT_FIRED, user_id=user.id, data={"alert_id": rule.id, "symbol": symbol}
         )
+        body, layout = safe_alert_message(evaluation, trigger_date)
         await self._deliver(
             store,
             user=user,
@@ -599,10 +600,11 @@ class SchedulerWorker:
             source_id=rule.id if rule.symbol else f"{rule.id}:{symbol}",
             channels=channels,
             title=f"{symbol} - {describe(rule.condition)}",
-            body=_safe_body(evaluation.message, rule.condition, symbol, evaluation.plain_message),
+            body=body,
             trigger_date=trigger_date,
             deep_link={"route": "stock", "symbol": symbol},
             hold_external=hold_external,
+            layout=layout,
         )
 
     # ---- shared internals ----
@@ -1453,31 +1455,13 @@ def _brief_preview(report: str) -> str:
 def _external_body(body: str) -> str:
     """What leaves the building on an external channel: the body with the non-advice footer (once),
     passed through the same output scan an interactive answer gets. Scheduled-report previews and
-    held digests reach this path without having gone through `_safe_body`, so the guarantee is made
-    here, where every external send passes. Fails closed to a fixed line if the scan trips."""
+    held digests reach this path without having gone through `safe_alert_message`, so the
+    guarantee is made here, where every external send passes. Fails closed to a fixed line if the
+    scan trips."""
     text = body if NON_ADVICE_FOOTER in body else f"{body}\n{NON_ADVICE_FOOTER}"
     if check_output(text, has_market_data=False).reason == "trading_language_redacted":
         return f"通知內容已更新，請開啟 Miru 查看。\n{NON_ADVICE_FOOTER}"
     return text
-
-
-def _safe_body(
-    message: str, condition: ConditionModel, symbol: str, plain_message: str | None = None
-) -> str:
-    """The notification body with the non-advice footer, passed through the same output scan an
-    interactive answer gets. The templates are fixed fact phrasing so this should never trip; if
-    it ever does, fail closed to a minimal template instead of sending flagged text."""
-    body = f"{message}\n{NON_ADVICE_FOOTER}"
-    if check_output(body, has_market_data=False).reason is None:
-        return body
-    # Any rewrite at all (trading language, a vendor name) means the text is not sent as is.
-    # A message that quotes third-party text retries once without the quote before giving up
-    # on the specifics - the fact that something was filed is still worth telling.
-    if plain_message is not None:
-        plain = f"{plain_message}\n{NON_ADVICE_FOOTER}"
-        if check_output(plain, has_market_data=False).reason is None:
-            return plain
-    return f"{symbol} 的條件已達成：{describe(condition)}\n{NON_ADVICE_FOOTER}"
 
 
 def as_utc(moment: datetime) -> datetime:
