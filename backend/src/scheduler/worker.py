@@ -113,7 +113,12 @@ from scheduler.templates import (
 from scheduler.triggers import UnresolvableTriggerError, market_timezone, next_run_after
 from scheduler.unsubscribe import unsubscribe_url
 from schemas.enums import Capability, Market
-from schemas.schedule_templates import MAX_TARGETS, WATCHLIST_INPUT, is_weekly_review
+from schemas.schedule_templates import (
+    MAX_TARGETS,
+    WATCHLIST_INPUT,
+    is_weekly_review,
+    schedule_label,
+)
 from tools.base import Tool, dispatch_tool
 from tools.morning_brief_models import GetMorningBriefOutput, MorningBriefInput
 from usage.llm_usage import write_model_usage
@@ -392,11 +397,11 @@ class SchedulerWorker:
                 source=NotificationSource.SCHEDULE,
                 source_id=job.id,
                 channels=job.delivery_channels,
-                title="排程摘要",
+                title=schedule_label(job.action.skill_ref),
                 body=report_preview(result.final_text),
                 trigger_date=now.date(),
                 deep_link={"route": "thread", "thread_id": thread_id},
-                layout=report_layout(result.final_text),
+                layout=report_layout(result.final_text, schedule_label(job.action.skill_ref)),
             )
             await store.set_job_status(
                 job_id=job.id,
@@ -1333,7 +1338,7 @@ class SchedulerWorker:
             source=NotificationSource.SCHEDULE,
             source_id=job.id,
             channels=job.delivery_channels,
-            title="自選股週回顧",
+            title=schedule_label(job.action.skill_ref),
             body=NOTHING_TO_REVIEW,
             trigger_date=now.date(),
             deep_link={"route": "notifications"},

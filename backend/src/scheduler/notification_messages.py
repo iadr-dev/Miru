@@ -16,6 +16,7 @@ from scheduler.delivery.layout import Layout, LayoutBlock
 from scheduler.evaluator import Evaluation
 from scheduler.strategy_messages import safe_message
 from schemas.alerts import NON_ADVICE_FOOTER
+from schemas.schedule_templates import DEFAULT_SCHEDULE_LABEL
 
 _OPEN_REPORT = "完整報告請見 Miru"
 
@@ -49,7 +50,6 @@ def safe_alert_message(evaluation: Evaluation, as_of: date) -> tuple[str, Layout
     )
 
 
-_REPORT_HEADING = "📰 排程摘要"
 _REPORT_BULLETS = 3
 _BULLET_CHARS = 80
 _RULE_LINE = re.compile(r"[-*_=:|\s]{3,}")
@@ -124,12 +124,12 @@ def report_preview(report: str) -> str:
     return "\n".join([*_report_bullets(report), _OPEN_REPORT])
 
 
-def report_layout(report: str) -> Layout:
-    """A scheduled report as a heading, up to three short lines from its opening, and a pointer to
-    the full report in Miru."""
+def report_layout(report: str, label: str = DEFAULT_SCHEDULE_LABEL) -> Layout:
+    """A scheduled report as a heading naming the schedule (`label`), up to three short lines from
+    its opening, and a pointer to the full report in Miru."""
     return Layout(
         blocks=(
-            LayoutBlock(head=_REPORT_HEADING, lines=_report_bullets(report)),
+            LayoutBlock(head=f"📰 {label}", lines=_report_bullets(report)),
             LayoutBlock(lines=(_OPEN_REPORT,)),
         )
     )

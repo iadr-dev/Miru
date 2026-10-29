@@ -151,6 +151,21 @@ async def test_a_review_runs_the_skill_with_its_mode_and_links_the_thread(sessio
     assert refreshed.next_run is not None
 
 
+async def test_a_review_notification_is_titled_and_headed_by_the_schedule_label(
+    session_factory,
+) -> None:
+    user = await insert_user(session_factory, tier=Tier.FREE)
+    await _seed_watchlist(session_factory, user, ["2330"])
+    await _review_job(session_factory, user)
+
+    await _worker(session_factory, _InputRecordingOrchestrator()).run_due_jobs()
+
+    async with session_factory() as session:
+        (note,) = await SqlAlchemySchedulerStore(session).list_notifications(user_id=user)
+    assert note.payload["title"] == "自選股週回顧"
+    assert note.payload["layout"]["blocks"][0]["head"] == "📰 自選股週回顧"  # type: ignore[index]
+
+
 async def test_an_empty_watchlist_gets_one_calm_line_and_is_not_an_error(session_factory) -> None:
     user = await insert_user(session_factory, tier=Tier.FREE)
     await _seed_watchlist(session_factory, user, [])

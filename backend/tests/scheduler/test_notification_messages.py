@@ -18,6 +18,11 @@ from scheduler.notification_messages import (
     report_preview,
 )
 from schemas.alerts import NON_ADVICE_FOOTER
+from schemas.schedule_templates import (
+    DEFAULT_SCHEDULE_LABEL,
+    SCHEDULE_TEMPLATES,
+    schedule_label,
+)
 
 
 def _text(layout: Layout) -> str:
@@ -138,6 +143,35 @@ def test_a_heavy_markdown_report_becomes_three_clean_bullets_and_a_pointer() -> 
     )
     for leaked in ("**", "###", "|", "---", "](", "```"):
         assert leaked not in _text(layout)
+
+
+@pytest.mark.parametrize(
+    ("skill_ref", "heading"),
+    [
+        ("stock-report-tw", "📰 台股個股報告"),
+        ("chip-flow-review", "📰 籌碼回顧"),
+        ("watchlist-review", "📰 自選股週回顧"),
+        ("etf-report", "📰 ETF 報告"),
+        ("some-user-skill", "📰 排程摘要"),
+    ],
+)
+def test_a_report_is_headed_by_its_schedule_label_and_unknown_skills_keep_the_generic_one(
+    skill_ref: str, heading: str
+) -> None:
+    layout = report_layout(_HEAVY, schedule_label(skill_ref))
+    assert layout.blocks[0].head == heading
+    assert _text(layout).startswith(f"{heading}\n• ")
+    assert _scan_clean(_text(layout))
+
+
+def test_every_template_has_a_label_and_a_skill_has_one_label() -> None:
+    labels: dict[str, set[str]] = {}
+    for template in SCHEDULE_TEMPLATES.values():
+        assert template.label
+        assert _scan_clean(f"📰 {template.label}")
+        labels.setdefault(template.skill_ref, set()).add(template.label)
+    assert all(len(found) == 1 for found in labels.values())
+    assert schedule_label("") == DEFAULT_SCHEDULE_LABEL == "排程摘要"
 
 
 @pytest.mark.parametrize(
