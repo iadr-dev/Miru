@@ -14,6 +14,7 @@ from datetime import date, time
 from typing import cast
 
 from governance.textscan import check_output
+from scheduler.delivery.layout import Layout, LayoutBlock, render_text
 from schemas.alerts import NON_ADVICE_FOOTER
 from schemas.strategy_watch import (
     CONDITION_NAME,
@@ -67,7 +68,10 @@ def _definition(key: str) -> str:
     return f"{STRATEGY_LABEL.get(key, key)}：{text}" if text else ""
 
 
-def _sector_line(rows: Sequence[Row]) -> str:
+_SECTOR_HEAD = "清單類股 20 日強度（僅就清單內股票）"
+
+
+def _sector_entries(rows: Sequence[Row]) -> list[str]:
     """The industries on today's list by 20-session sector strength, with how many listed stocks
     each holds. Built from the listed rows only, so it describes the list, not the market."""
     stocks: dict[str, set[str]] = {}
@@ -81,10 +85,14 @@ def _sector_line(rows: Sequence[Row]) -> str:
         if isinstance(value, (int, float)) and not isinstance(value, bool):
             strength[industry] = max(strength.get(industry, value), value)
     ranked = sorted(stocks, key=lambda i: (-strength.get(i, -1.0), -len(stocks[i]), i))
-    shown = "、".join(
+    return [
         f"{i} {_number(strength.get(i))}（{len(stocks[i])} 檔）" for i in ranked[:SECTOR_LINE_LIMIT]
-    )
-    return f"清單類股 20 日強度（僅就清單內股票）：{shown}" if shown else ""
+    ]
+
+
+def _sector_line(rows: Sequence[Row]) -> str:
+    shown = "、".join(_sector_entries(rows))
+    return f"{_SECTOR_HEAD}：{shown}" if shown else ""
 
 
 def in_scope(
@@ -97,6 +105,13 @@ def in_scope(
         for row in rows
         if row.get("strategy") in wanted and (members is None or row.get("symbol") in members)
     ]
+
+
+def _market_header(rows: Sequence[Row]) -> str:
+    regime = rows[0].get("regime")
+    breadth = rows[0].get("breadth_pct")
+    market = {"risk_on": "偏強", "neutral": "中性", "risk_off": "偏弱"}.get(str(regime))
+    return f"市場寬度 {_number(breadth)}%（{market}）" if market else ""
 
 
 def morning_list(rows: Sequence[Row], day: date) -> tuple[str, str] | None:
@@ -122,20 +137,56 @@ def morning_list(rows: Sequence[Row], day: date) -> tuple[str, str] | None:
     definitions = [
         _definition(key) for key in STRATEGY_KEYS if any(r.get("strategy") == key for r in rows)
     ]
-    regime = rows[0].get("regime")
-    breadth = rows[0].get("breadth_pct")
-    market = {"risk_on": "偏強", "neutral": "中性", "risk_off": "偏弱"}.get(str(regime))
-    header = f"市場寬度 {_number(breadth)}%（{market}）" if market else ""
+    header = _market_header(rows)
     body = "\n".join(
         [
             *([header] if header else []),
             *lines,
             *([sector] if sector else []),
             *definitions,
-            "盤中每 10 分鐘檢查一次，條件全數成立時通知你。",
+            _MORNING_CHECK_NOTE,
         ]
     )
     return f"今日盯盤清單（{day.month}/{day.day}）", body
+
+
+_MORNING_CHECK_NOTE = "盤中每 10 分鐘檢查一次，條件全數成立時通知你。"
+_DEFINITIONS_HEAD = "📖 名詞"
+
+
+def morning_list_layout(rows: Sequence[Row], day: date) -> Layout | None:
+    """The Telegram layout of `morning_list`: the same facts, one stock per line under its
+    strategy, the industries one per line, and the definitions folded away."""
+    if not rows:
+        return None
+    header = _market_header(rows)
+    blocks = [
+        LayoutBlock(
+            head=f"📋 今日盯盤清單（{day.month}/{day.day}）", lines=(header,) if header else ()
+        )
+    ]
+    for key in STRATEGY_KEYS:
+        group = [r for r in rows if r.get("strategy") == key]
+        if not group:
+            continue
+        lines = [
+            f"{r.get('symbol')}{_name(r)}　{_key_level(r)}"
+            for r in group[:MORNING_LIST_PER_STRATEGY]
+        ]
+        if len(group) > MORNING_LIST_PER_STRATEGY:
+            lines.append(f"…另 {len(group) - MORNING_LIST_PER_STRATEGY} 檔，見 Miru")
+        blocks.append(
+            LayoutBlock(head=f"{STRATEGY_LABEL[key]} · {len(group)} 檔", lines=tuple(lines))
+        )
+    sectors = _sector_entries(rows)
+    if sectors:
+        blocks.append(LayoutBlock(head=f"🏭 {_SECTOR_HEAD}", lines=tuple(sectors)))
+    definitions = tuple(
+        _definition(key) for key in STRATEGY_KEYS if any(r.get("strategy") == key for r in rows)
+    )
+    blocks.append(LayoutBlock(head=_DEFINITIONS_HEAD, lines=definitions, fold=True))
+    blocks.append(LayoutBlock(lines=(_MORNING_CHECK_NOTE,)))
+    return Layout(blocks=tuple(blocks))
 
 
 CLOSE_SLOT = "close"
@@ -216,27 +267,35 @@ def _context(watch: Row | None) -> str:
     return "背景：" + "、".join(parts) if parts else ""
 
 
+def _hit_details(hit: Row, *, masked: bool) -> tuple[list[str], str]:
+    """(one fact per held condition, the trailing note): the observed values, or for a masked
+    reader the condition names and a note that the numbers are Premium data."""
+    triggers = [c for c in _conditions(hit) if c.get("kind") == "trigger"]
+    if masked:
+        names = [CONDITION_NAME.get(str(c.get("key")), str(c.get("key"))) for c in triggers]
+        return names, _MASKED_NOTE
+    phrases = [
+        phrase(
+            str(c.get("key")),
+            cast("float | None", c.get("observed")),
+            cast("float | None", c.get("required")),
+        )
+        for c in triggers
+    ]
+    return phrases, ""
+
+
+def _hit_label(hit: Row) -> str:
+    return STRATEGY_LABEL.get(str(hit.get("strategy")), str(hit.get("strategy")))
+
+
 def hit_alert(hit: Row, watch: Row | None, *, masked: bool) -> tuple[str, str, str]:
     """(title, body, plain_body) for one alertable hit. `plain_body` leaves out the third-party
     announcement subject, for when the output scan rejects the quoted text."""
     symbol = str(hit.get("symbol"))
-    label = STRATEGY_LABEL.get(str(hit.get("strategy")), str(hit.get("strategy")))
-    triggers = [c for c in _conditions(hit) if c.get("kind") == "trigger"]
-    if masked:
-        facts = "、".join(
-            CONDITION_NAME.get(str(c.get("key")), str(c.get("key"))) for c in triggers
-        )
-        detail = f"{facts}{_MASKED_NOTE}"
-    else:
-        phrases = [
-            phrase(
-                str(c.get("key")),
-                cast("float | None", c.get("observed")),
-                cast("float | None", c.get("required")),
-            )
-            for c in triggers
-        ]
-        detail = "、".join(phrases)
+    label = _hit_label(hit)
+    facts, note = _hit_details(hit, masked=masked)
+    detail = "、".join(facts) + note
     if hit.get("slot") == CLOSE_SLOT:
         title = f"收盤確認：{symbol}{_name(watch)} · {label}"
         lead = f"{symbol}{_name(watch)} 收盤確認你訂閱的「{label}」條件：{detail}"
@@ -254,21 +313,64 @@ def hit_alert(hit: Row, watch: Row | None, *, masked: bool) -> tuple[str, str, s
     return title, full, plain
 
 
+def hit_alert_layout(
+    hit: Row, watch: Row | None, *, masked: bool, with_headline: bool = True
+) -> Layout:
+    """The Telegram layout of `hit_alert`: the stock and strategy once as the heading, one line per
+    condition, then the background, the announcement subject (when `with_headline`) and the
+    folded definition."""
+    close = hit.get("slot") == CLOSE_SLOT
+    facts, note = _hit_details(hit, masked=masked)
+    stock = f"{hit.get('symbol')}{_name(watch)} · {_hit_label(hit)}"
+    heading = f"🔔 收盤確認：{stock}" if close else f"🔔 {stock}"
+    when = "收盤確認你訂閱的條件" if close else f"{hit.get('slot')} 條件全數成立（連續兩次檢查）"
+    lines = (when, *(f"• {f}" for f in facts), *((note,) if note else ()))
+    blocks = [LayoutBlock(head=heading, lines=lines)]
+    if context := _context(watch):
+        blocks.append(LayoutBlock(lines=(context,)))
+    headline = watch.get("headline") if watch is not None else None
+    if with_headline and isinstance(headline, str) and headline:
+        blocks.append(LayoutBlock(lines=(f"今日重訊：{headline}",)))
+    if definition := _definition(str(hit.get("strategy"))):
+        blocks.append(LayoutBlock(head=_DEFINITIONS_HEAD, lines=(definition,), fold=True))
+    return Layout(blocks=tuple(blocks))
+
+
+def safe_message(
+    candidates: Sequence[tuple[str, Layout | None]], fallback: str
+) -> tuple[str, Layout | None]:
+    """The first (body, layout) pair in which both the body and the text the layout renders pass
+    the output scan, so what Telegram receives is covered exactly like the plain body. Failing
+    that, the first body that passes alone, without a layout. A flagged text is never sent (same
+    contract as rule alerts): the last resort is a fixed line."""
+    texts = [(f"{body}\n{NON_ADVICE_FOOTER}", layout) for body, layout in candidates]
+    for text, layout in texts:
+        if _clean(text) and (layout is None or _clean(render_text(layout, NON_ADVICE_FOOTER))):
+            return text, layout
+    for text, _ in texts:
+        if _clean(text):
+            return text, None
+    return f"{fallback}\n{NON_ADVICE_FOOTER}", None
+
+
+def _clean(text: str) -> bool:
+    return check_output(text, has_market_data=False).reason is None
+
+
 def safe_body(body: str, plain: str, fallback: str) -> str:
     """The body with the footer if it passes the output scan, else the version without quoted
-    text, else a fixed line: a flagged text is never sent (same contract as rule alerts)."""
-    for candidate in (body, plain):
-        text = f"{candidate}\n{NON_ADVICE_FOOTER}"
-        if check_output(text, has_market_data=False).reason is None:
-            return text
-    return f"{fallback}\n{NON_ADVICE_FOOTER}"
+    text, else a fixed line."""
+    return safe_message([(body, None), (plain, None)], fallback)[0]
 
 
 __all__ = [
     "MORNING_LIST_PER_STRATEGY",
     "first_alertable",
     "hit_alert",
+    "hit_alert_layout",
     "in_scope",
     "morning_list",
+    "morning_list_layout",
     "safe_body",
+    "safe_message",
 ]

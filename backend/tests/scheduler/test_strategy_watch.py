@@ -4,20 +4,35 @@ limit, the after-close cutoff and the output scan."""
 
 from __future__ import annotations
 
+import html
 import json
+import re
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
+
+import pytest
 
 from analytics.strategy_watch.batch import STRATEGY_WATCHLIST_DATASET
 from db.models import WatchlistItemRow, WatchlistRow
 from governance.textscan import check_output
 from ingest.jobs.strategy_intraday import STRATEGY_HITS_DATASET
+from scheduler.delivery.base import DeliveryNotification, DeliveryReceipt
+from scheduler.delivery.layout import Layout, LayoutBlock, fit_html, render_text
+from scheduler.models import DeliveryChannelKind
 from scheduler.store import SqlAlchemySchedulerStore
-from scheduler.strategy_messages import hit_alert, morning_list, safe_body
+from scheduler.strategy_messages import (
+    MORNING_LIST_PER_STRATEGY,
+    hit_alert,
+    hit_alert_layout,
+    morning_list,
+    morning_list_layout,
+    safe_body,
+    safe_message,
+)
 from scheduler.strategy_store import STRATEGY_SOURCE_PREFIX, StrategySubscriptionStore
 from schemas.alerts import NON_ADVICE_FOOTER
 from schemas.enums import Tier
-from schemas.strategy_watch import STRATEGY_DEFINITION, STRATEGY_KEYS
+from schemas.strategy_watch import STRATEGY_DEFINITION, STRATEGY_KEYS, STRATEGY_LABEL
 from tests.scheduler.conftest import insert_user
 from tests.scheduler.test_alert_engine import FakeReader, make_worker
 
@@ -460,3 +475,223 @@ def test_every_strategy_body_passes_the_output_scan() -> None:
         assert "fallback" not in text
         assert check_output(text, has_market_data=False).reason is None
     assert set(STRATEGY_DEFINITION) == set(STRATEGY_KEYS)
+
+
+_FACT = re.compile(r"[0-9A-Za-z][0-9A-Za-z.,:%*+\-]*")
+
+
+def _facts(text: str) -> set[str]:
+    return {token.rstrip(".,:") for token in _FACT.findall(text)}
+
+
+def _strip_tags(markup: str) -> str:
+    return html.unescape(re.sub(r"</?(?:b|i|blockquote)(?: expandable)?>", "", markup))
+
+
+def _many(
+    strategy: str, count: int, *, industry: str | None = "半導體業"
+) -> list[dict[str, object]]:
+    return [
+        {
+            **_watch(f"{3000 + i}", strategy),
+            "name": f"名稱{i}",
+            "industry": industry,
+            "sector_strength_pct": 80.0 if industry else None,
+        }
+        for i in range(count)
+    ]
+
+
+def _heads(layout: Layout) -> list[str]:
+    return [b.head for b in layout.blocks if b.head]
+
+
+@pytest.mark.parametrize(
+    ("rows", "listed", "more", "sector"),
+    [
+        (_many("volatility_squeeze", 3), {"波動率擠壓 · 3 檔": 3}, {}, True),
+        (
+            [r for key in STRATEGY_KEYS for r in _many(key, 2)],
+            {f"{STRATEGY_LABEL[key]} · 2 檔": 2 for key in STRATEGY_KEYS},
+            {},
+            True,
+        ),
+        (_many("oversold_bounce", 29), {"超跌反彈 · 29 檔": 5}, {"超跌反彈 · 29 檔": 24}, True),
+        (_many("ad_divergence", 5), {"量價背離 · 5 檔": 5}, {}, True),
+        (_many("chip_accumulation", 2, industry=None), {"籌碼集中盤整 · 2 檔": 2}, {}, False),
+    ],
+    ids=["one-strategy", "all-five", "over-the-cap", "exactly-the-cap", "no-industries"],
+)
+def test_morning_layout_puts_one_stock_per_line_under_each_strategy(
+    rows: list[dict[str, object]], listed: dict[str, int], more: dict[str, int], sector: bool
+) -> None:
+    layout = morning_list_layout(rows, _DAY)
+    assert layout is not None
+    blocks = {b.head: b for b in layout.blocks if b.head}
+    assert _heads(layout)[0] == "📋 今日盯盤清單（10/16）"
+    assert layout.blocks[0].lines == ("市場寬度 46.1%（中性）",)
+    for head, shown in listed.items():
+        lines = blocks[head].lines
+        extra = more.get(head)
+        assert len(lines) == shown + (1 if extra else 0)
+        assert all(re.fullmatch(r"\d{4} 名稱\d　.+", line) for line in lines[:shown])
+        if extra:
+            assert lines[-1] == f"…另 {extra} 檔，見 Miru"
+    assert ("🏭 清單類股 20 日強度（僅就清單內股票）" in blocks) is sector
+    definitions = blocks["📖 名詞"]
+    assert definitions.fold is True
+    assert len(definitions.lines) == len({r["strategy"] for r in rows})
+    assert layout.blocks[-1] == LayoutBlock(
+        lines=("盤中每 10 分鐘檢查一次，條件全數成立時通知你。",)
+    )
+
+
+def test_morning_layout_is_none_without_rows() -> None:
+    assert morning_list_layout([], _DAY) is None
+
+
+@pytest.mark.parametrize("count", [1, 5, 6, 40])
+def test_morning_layout_states_the_same_facts_as_the_plain_body(count: int) -> None:
+    rows = [r for key in STRATEGY_KEYS for r in _many(key, count)]
+    title, body = morning_list(rows, _DAY) or ("", "")
+    layout = morning_list_layout(rows, _DAY)
+    assert layout is not None
+    laid_out = render_text(layout, NON_ADVICE_FOOTER)
+    assert _facts(f"{title}\n{body}") <= _facts(laid_out)
+    if count <= MORNING_LIST_PER_STRATEGY:
+        assert _facts(laid_out) == _facts(f"{title}\n{body}\n{NON_ADVICE_FOOTER}")
+    assert all(row["name"] in laid_out for row in rows[:MORNING_LIST_PER_STRATEGY])
+
+
+def _alert_case(
+    *, slot: str = "09:50", masked: bool = False, headline: str | None = None, name: str = "台積電"
+) -> tuple[dict[str, object], dict[str, object], bool]:
+    watch = {**_watch("2330"), "name": name, **({"headline": headline} if headline else {})}
+    return _hit("2330", slot), watch, masked
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        _alert_case(),
+        _alert_case(headline="公告董事會決議召開股東會"),
+        _alert_case(masked=True),
+        _alert_case(slot="close"),
+        _alert_case(name="A&B <C> 'D'", headline="x & y < z"),
+    ],
+    ids=["intraday", "headline", "masked", "close", "markup-characters"],
+)
+def test_alert_layout_states_the_same_facts_as_the_plain_body_and_passes_the_scan(
+    case: tuple[dict[str, object], dict[str, object], bool],
+) -> None:
+    hit, watch, masked = case
+    title, body, plain = hit_alert(hit, watch, masked=masked)
+    layout = hit_alert_layout(hit, watch, masked=masked)
+    laid_out = render_text(layout, NON_ADVICE_FOOTER)
+    text, kept = safe_message([(body, layout), (plain, layout)], "fallback")
+    assert kept == layout
+    assert check_output(laid_out, has_market_data=False).reason is None
+    assert _facts(f"{title}\n{body}\n{NON_ADVICE_FOOTER}") == _facts(laid_out)
+    assert str(watch["name"]) in laid_out
+    markup = fit_html(layout, NON_ADVICE_FOOTER, pointer="…")
+    assert markup is not None
+    assert _strip_tags(markup) == laid_out
+    assert text.endswith(NON_ADVICE_FOOTER)
+
+
+def test_alert_layout_names_the_stock_once_with_a_bullet_per_condition() -> None:
+    hit, watch, _ = _alert_case()
+    layout = hit_alert_layout(hit, watch, masked=False)
+    assert layout.blocks[0] == LayoutBlock(
+        head="🔔 2330 台積電 · 波動率擠壓",
+        lines=(
+            "09:50 條件全數成立（連續兩次檢查）",
+            "• 價格 872 高於布林上軌 868",
+            "• 量比 2.45（門檻 1.5）",
+        ),
+    )
+    assert render_text(layout, NON_ADVICE_FOOTER).count("2330") == 1
+    assert layout.blocks[-1].fold is True
+    assert layout.blocks[-1].lines == (f"波動率擠壓：{STRATEGY_DEFINITION['volatility_squeeze']}",)
+    assert layout.blocks[-1].head == "📖 名詞"
+
+
+def test_masked_alert_layout_names_conditions_and_says_the_numbers_are_premium() -> None:
+    hit, watch, _ = _alert_case(masked=True)
+    lines = hit_alert_layout(hit, watch, masked=True).blocks[0].lines
+    assert lines[1:] == ("• 價格高於布林上軌", "• 量比達門檻", "（盤中數值為 Premium 方案資料）")
+
+
+def test_close_alert_layout_says_it_is_a_close_confirmation() -> None:
+    hit, watch, _ = _alert_case(slot="close")
+    block = hit_alert_layout(hit, watch, masked=False).blocks[0]
+    assert block.head == "🔔 收盤確認：2330 台積電 · 波動率擠壓"
+    assert block.lines[0] == "收盤確認你訂閱的條件"
+
+
+def test_headline_is_its_own_block_and_left_out_on_request() -> None:
+    hit, watch, masked = _alert_case(headline="公告董事會決議召開股東會")
+    with_it = hit_alert_layout(hit, watch, masked=masked)
+    without = hit_alert_layout(hit, watch, masked=masked, with_headline=False)
+    assert LayoutBlock(lines=("今日重訊：公告董事會決議召開股東會",)) in with_it.blocks
+    assert not any("今日重訊" in line for b in without.blocks for line in b.lines)
+
+
+def test_a_flagged_headline_drops_to_the_plain_pair_and_keeps_a_clean_layout() -> None:
+    hit, watch, masked = _alert_case(headline="董事會決議，建議買進並設定目標價 1200 元")
+    _, body, plain = hit_alert(hit, watch, masked=masked)
+    text, layout = safe_message(
+        [
+            (body, hit_alert_layout(hit, watch, masked=masked)),
+            (plain, hit_alert_layout(hit, watch, masked=masked, with_headline=False)),
+        ],
+        "fallback",
+    )
+    assert layout is not None
+    assert "目標價" not in text
+    assert "目標價" not in render_text(layout, NON_ADVICE_FOOTER)
+
+
+def test_a_layout_the_scan_flags_is_dropped_but_a_clean_body_is_still_sent() -> None:
+    flagged = Layout(blocks=(LayoutBlock(lines=("建議買進並設定目標價 1200 元",)),))
+    text, layout = safe_message([("2330 條件成立", flagged)], "fallback")
+    assert layout is None
+    assert text == f"2330 條件成立\n{NON_ADVICE_FOOTER}"
+
+
+def test_a_flagged_body_falls_back_to_the_fixed_line_with_no_layout() -> None:
+    flagged = Layout(blocks=(LayoutBlock(lines=("建議買進並設定目標價 1200 元",)),))
+    text, layout = safe_message([("建議買進並設定目標價 1200 元", flagged)], "fallback")
+    assert (text, layout) == (f"fallback\n{NON_ADVICE_FOOTER}", None)
+
+
+async def test_the_worker_hands_telegram_the_layout_of_each_strategy_message(
+    session_factory,
+) -> None:
+    sent: list[DeliveryNotification] = []
+
+    class _Telegram:
+        kind = DeliveryChannelKind.TELEGRAM
+
+        async def send(self, notification, recipient):  # type: ignore[no-untyped-def]
+            sent.append(notification)
+            return DeliveryReceipt(channel=self.kind, delivered=True)
+
+    user = await insert_user(session_factory, tier=Tier.PRO)
+    await _subscribe(session_factory, user, channels=(DeliveryChannelKind.TELEGRAM,))
+    await _backdate(session_factory, user)
+    worker = make_worker(session_factory, _reader([_hit("2330", "09:50")]))
+    worker._ctx.channels[DeliveryChannelKind.TELEGRAM] = _Telegram()  # type: ignore[assignment]
+
+    await worker.run_strategy_watch(now=_at(10, 1))
+
+    assert {n.title for n in sent} == {
+        "今日盯盤清單（10/16）",
+        "2330 台積電 · 波動率擠壓 條件全數達成",
+    }
+    for notification in sent:
+        assert notification.layout is not None
+        assert notification.body.endswith(NON_ADVICE_FOOTER)
+        assert _facts(render_text(notification.layout, NON_ADVICE_FOOTER)) >= _facts(
+            notification.body
+        )
