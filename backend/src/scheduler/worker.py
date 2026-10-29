@@ -1172,7 +1172,8 @@ class SchedulerWorker:
             joined = lines[0] if len(group) == 1 else "\n".join(f"・{line}" for line in lines)
             title = titles[0] if len(group) == 1 else f"靜音期間的通知（{len(group)} 則）"
             deep_link: dict[str, object] = {"route": "notifications"}
-            layout = _scanned_layout(held_layout(titles))
+            # One parked item keeps its own text: a title-only layout would drop its fact line.
+            layout = _scanned_layout(held_layout(titles)) if len(group) > 1 else None
             record = await store.record_notification(
                 user_id=user.id,
                 source=NotificationSource.DIGEST,

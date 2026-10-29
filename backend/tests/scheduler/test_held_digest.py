@@ -109,12 +109,27 @@ async def _digest_rows(session_factory) -> list[NotificationRow]:
     return list(rows)
 
 
+async def test_a_single_parked_notification_keeps_its_own_text(session_factory) -> None:
+    user = await insert_user(session_factory, tier=Tier.PRO)
+    channel = _Telegram()
+    worker = _worker(session_factory, channel)
+    (title,) = await _park(session_factory, worker, user, 1)
+
+    assert await worker.release_held() == 1
+
+    (sent,) = channel.sent
+    assert sent.layout is None
+    assert sent.title == title
+    assert "條件 1 已符合" in sent.body
+    assert sent.body.count(NON_ADVICE_FOOTER) == 1
+
+
 def _sent_text(notification: DeliveryNotification) -> str:
     assert notification.layout is not None
     return render_text(notification.layout, NON_ADVICE_FOOTER)
 
 
-@pytest.mark.parametrize("count", [1, 3])
+@pytest.mark.parametrize("count", [2, 3])
 async def test_parked_notifications_are_sent_as_one_laid_out_digest(
     session_factory, count: int
 ) -> None:
