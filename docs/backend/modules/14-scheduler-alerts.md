@@ -481,9 +481,35 @@ successful `/start <token>` is confirmed in the chat, and a bare `/start` (also 
 unknown, used or expired code gets the linking instructions. Other chatter is not answered. A failed
 reply is swallowed; neither the bot token nor a chat id is logged.
 
-**Telegram delivery.** Plain text (no `parse_mode`), one `sendMessage` per notification:
+**Telegram delivery.** One `sendMessage` per notification. A plain notification is plain text (no
+`parse_mode`). A notification that carries a `layout` (`scheduler/delivery/layout.py`; today the 策略盯盤
+messages) is sent as `parse_mode=HTML`:
 
-- **Length:** Telegram rejects more than 4096 UTF-16 code units (an emoji counts two, a Chinese
+- **Layout, not parsing:** `DeliveryNotification.title`/`body` stay the single plain source for the
+  inbox, email, LINE and push and for the output scan. `layout` is a typed twin the same builder
+  writes (`strategy_messages.morning_list_layout` / `hit_alert_layout`): blocks of a bold `head`,
+  `lines`, and an optional `fold` that renders as one `<blockquote expandable>`. No text is parsed
+  to recover structure. Every string goes through `html.escape` and the only tags are `<b>`, `<i>`
+  (the footer) and `<blockquote expandable>`, so a stock name containing `&`, `<` or `>` cannot
+  break the markup. Fixed copy only.
+- **Scan coverage:** `safe_message` accepts a (body, layout) pair only when both the body and the
+  text the layout renders (`render_text`, i.e. the HTML with its tags removed) pass `check_output`;
+  otherwise the next candidate (the version without the quoted 重訊 subject) is tried, then the
+  body alone without a layout, then the fixed line. What Telegram receives is therefore scanned the
+  same as the plain body, and `NON_ADVICE_FOOTER` is always the last block.
+- **Persistence:** only the Telegram `notifications` row stores `payload.layout` (the in-app row
+  stays small), so a retry sends the same layout. A stored layout that no longer validates degrades
+  to the plain text. A quiet-hours digest joins the stored plain bodies and has no layout.
+- **Markup rejected:** a 400 whose description contains "parse entities" is answered once, in the
+  same `send`, with the plain text (`formatted=False`) through the same `OutboundTransport`; that
+  second answer is the receipt, so `_delivery_outcome` and the unlink-on-403 rule apply to it
+  unchanged. There is no sleep. Any other 400 is final as before.
+- **Length:** an HTML layout is trimmed on its blocks and rendered afterwards (`fit_html`): lines
+  leave from the end of the last block, then empty blocks, then `…（完整內容請見 Miru）` is added.
+  The first block and the footer stay, and a cut can never land inside a tag or an entity. Tags and
+  entities count toward the limit, so it is conservative. If even the first block alone cannot fit,
+  the message goes as plain text through the cut below.
+- **Length (plain text):** Telegram rejects more than 4096 UTF-16 code units (an emoji counts two, a Chinese
   character one). `TelegramChannel.build_request` cuts a longer text at a line boundary (a single
   oversized line at a character boundary), then appends `…（完整內容請見 Miru）` and the non-advice
   footer, which always survives the cut. It never splits into several messages.
@@ -564,7 +590,12 @@ stored `strategy_watchlist` and `strategy_hits` partitions (module 20 §5c):
   top three industries among the listed rows by `sector_strength_pct`, with their listed-stock
   counts; it describes the list only and is left out when no row has an industry), then one
   definition line per strategy on the list (`STRATEGY_DEFINITION`, the fact form of the screen
-  rule). A condition alert ends with the definition of its own strategy.
+  rule). A condition alert ends with the definition of its own strategy. On Telegram the same facts
+  are laid out for a phone: the list heading and breadth, then one bold block per strategy (name ·
+  count) with one stock per line and `…另 N 檔，見 Miru` past the five shown, one industry per line,
+  and the definitions in a collapsed 名詞 block. A condition alert names the stock and strategy
+  once in its heading, then the check time, one bullet per condition, the background line, the 重訊
+  subject, and the folded definition.
 - **Condition alert** once per (stock, strategy, day) for the first slot the intraday check marked
   alertable, listing each condition with its observed and required value plus context (類股強度,
   法人 streaks, today's 重訊 subject). Slots from before a same-day subscription are not replayed;
