@@ -769,6 +769,9 @@ store and writes `strategy_watchlist`, one row per `(symbol, strategy)`:
   除權息 from today through 3 trading days ahead.
 - Context columns (never conditions): industry and its 20-session sector-strength percentile, 外資
   and 投信 streaks, 5-session 融資餘額 change, the newest 重大訊息 subject.
+- Notification copy: `schemas/strategy_watch.py` `STRATEGY_DEFINITION` restates each row above as one
+  fact sentence. The morning list prints the sentences of the strategies on that day's list plus the
+  top three listed industries by sector strength; both come from the stored rows only.
 - Thresholds are fixed constants chosen from common practice, not tuned to a backtest; no return or
   win-rate figure is shown to users (§7).
 
