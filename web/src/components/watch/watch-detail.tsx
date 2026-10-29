@@ -25,6 +25,7 @@ import {
 } from "recharts";
 import {
   assertNeverStatus,
+  guardReason,
   keyLevel,
   STRATEGY_COLOR,
   tint,
@@ -132,7 +133,7 @@ function StatusLine({ status }: Readonly<{ status: WatchStatus }>): ReactNode {
     case "blockedByGuard":
       return (
         <StatusText>
-          {t("detail.statusBlocked", { guard: t(`conditions.${status.guard}`) })}
+          {t("detail.statusBlocked", { reason: guardReason(t, status.guard) })}
         </StatusText>
       );
     case "alerted":

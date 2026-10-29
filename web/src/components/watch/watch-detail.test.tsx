@@ -143,7 +143,30 @@ describe("WatchDetail", () => {
         masked={false}
       />,
     );
-    expect(screen.getByText("觸發條件全數成立，盤中檢查未通過：站上當日均價")).toBeTruthy();
+    expect(screen.getByText("觸發條件全數成立，但價格低於當日均價")).toBeTruthy();
+  });
+
+  it.each([
+    ["after_opening_window", "觸發條件全數成立，但09:30 前不發送通知"],
+    ["market_not_falling", "觸發條件全數成立，但大盤中位數跌幅超過 1%"],
+    ["above_average_price", "觸發條件全數成立，但價格低於當日均價"],
+    ["not_near_limit_up", "觸發條件全數成立，但漲幅 9% 以上，已接近漲停"],
+    ["price_above_upper_band", "觸發條件全數成立，但價格高於布林上軌"],
+  ])("phrases the failed %s guard as a fact", (key, text) => {
+    renderWithIntl(
+      <WatchDetail
+        item={item({
+          conditions: [
+            { key: "price_above_upper_band", kind: "trigger", met: true, observed: 1, required: 1 },
+            { key, kind: "guard", met: false, observed: null, required: null },
+          ],
+          all_met: true,
+          confirmed: true,
+        })}
+        masked={false}
+      />,
+    );
+    expect(screen.getByText(text)).toBeTruthy();
   });
 
   it("says when and that an alert was sent", () => {

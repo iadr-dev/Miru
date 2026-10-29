@@ -193,7 +193,7 @@ describe("WatchTable", () => {
       />,
     );
     expect(screen.getAllByText("待下一次檢查確認")).toHaveLength(1);
-    expect(screen.getAllByText("未通過：站上當日均價")).toHaveLength(1);
+    expect(screen.getAllByText("未發送通知：價格低於當日均價")).toHaveLength(1);
   });
 
   it("says when a strategy has no stock today", () => {

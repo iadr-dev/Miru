@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import {
   assertNeverStatus,
   distanceToLevel,
+  guardReason,
   keyLevel,
   tint,
   triggersMet,
@@ -152,9 +153,7 @@ function ShortStatus({ status }: Readonly<{ status: WatchStatus }>): ReactNode {
       return <ShortText>{t("status.awaitingShort")}</ShortText>;
     case "blockedByGuard":
       return (
-        <ShortText>
-          {t("status.blockedShort", { guard: t(`conditions.${status.guard}`) })}
-        </ShortText>
+        <ShortText>{t("status.blockedShort", { reason: guardReason(t, status.guard) })}</ShortText>
       );
     default:
       return assertNeverStatus(status);

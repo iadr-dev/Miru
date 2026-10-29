@@ -54,6 +54,14 @@ export function watchStatus(item: StrategyWatchItem): WatchStatus {
   return { kind: "alerted", time: item.latest_slot };
 }
 
+export function guardReason(
+  t: { (key: string): string; has(key: string): boolean },
+  guard: string,
+): string {
+  const reason = `status.guardFailed.${guard}`;
+  return t.has(reason) ? t(reason) : t(`conditions.${guard}`);
+}
+
 export function assertNeverStatus(status: never): never {
   throw new Error(`Unhandled watch status: ${JSON.stringify(status)}`);
 }
