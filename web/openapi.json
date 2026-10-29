@@ -21567,6 +21567,11 @@
       "title": "Conditions",
       "type": "array"
      },
+     "confirmed": {
+      "default": false,
+      "title": "Confirmed",
+      "type": "boolean"
+     },
      "days_on_list": {
       "default": 1,
       "title": "Days On List",

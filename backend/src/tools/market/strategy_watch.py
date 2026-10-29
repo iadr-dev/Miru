@@ -87,6 +87,8 @@ class StrategyWatchItem(BaseModel):
     price: float | None = None
     conditions: tuple[StrategyCondition, ...] = ()
     all_met: bool = False
+    # Every trigger held at the latest check and at the check before it (guards aside).
+    confirmed: bool = False
     # The first slot every condition and guard held on two checks in a row (an alert was due).
     alerted_at: str | None = None
     close_confirmed: bool = False
@@ -212,6 +214,7 @@ def _apply_latest_hit(
     values["price"] = None if masked else as_float(latest_hit.get("price"))
     values["conditions"] = _masked(conditions) if masked else conditions
     values["all_met"] = latest_hit.get("all_met") is True
+    values["confirmed"] = latest_hit.get("confirmed") is True
 
 
 class GetStrategyWatchTool(SyncStoreTool):
