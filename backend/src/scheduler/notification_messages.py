@@ -16,6 +16,7 @@ from scheduler.delivery.layout import Layout, LayoutBlock
 from scheduler.evaluator import Evaluation
 from scheduler.strategy_messages import safe_message
 from schemas.alerts import NON_ADVICE_FOOTER
+from schemas.schedule_templates import DEFAULT_SCHEDULE_LABEL
 
 _OPEN_REPORT = "完整報告請見 Miru"
 
@@ -49,7 +50,6 @@ def safe_alert_message(evaluation: Evaluation, as_of: date) -> tuple[str, Layout
     )
 
 
-_REPORT_HEADING = "📰 排程摘要"
 _REPORT_BULLETS = 3
 _BULLET_CHARS = 80
 _RULE_LINE = re.compile(r"[-*_=:|\s]{3,}")
@@ -124,12 +124,12 @@ def report_preview(report: str) -> str:
     return "\n".join([*_report_bullets(report), _OPEN_REPORT])
 
 
-def report_layout(report: str) -> Layout:
-    """A scheduled report as a heading, up to three short lines from its opening, and a pointer to
-    the full report in Miru."""
+def report_layout(report: str, label: str = DEFAULT_SCHEDULE_LABEL) -> Layout:
+    """A scheduled report as a heading naming the schedule (`label`), up to three short lines from
+    its opening, and a pointer to the full report in Miru."""
     return Layout(
         blocks=(
-            LayoutBlock(head=_REPORT_HEADING, lines=_report_bullets(report)),
+            LayoutBlock(head=f"📰 {label}", lines=_report_bullets(report)),
             LayoutBlock(lines=(_OPEN_REPORT,)),
         )
     )
@@ -207,14 +207,28 @@ def digest_body(titles: Sequence[str], alerts: int, jobs: int) -> str:
 def digest_layout(titles: Sequence[str], alerts: int, jobs: int) -> Layout:
     """The recap as a heading with the notification count, one line per title (newest last), and
     the active counts."""
-    shown = [f"• {title}" for title in titles[-DIGEST_MAX_LINES:]]
-    if len(titles) > DIGEST_MAX_LINES:
-        shown.append(f"…另有 {len(titles) - DIGEST_MAX_LINES} 則較早的通知，請見通知紀錄")
     heading = f"🗒 過去 24 小時 {len(titles)} 則通知" if titles else "🗒 過去 24 小時沒有新的通知"
     return Layout(
         blocks=(
-            LayoutBlock(head=heading, lines=tuple(shown)),
+            LayoutBlock(head=heading, lines=_title_lines(titles)),
             LayoutBlock(lines=(f"目前啟用中：{alerts} 個提醒、{jobs} 個排程",)),
+        )
+    )
+
+
+def _title_lines(titles: Sequence[str]) -> tuple[str, ...]:
+    shown = [f"• {title}" for title in titles[-DIGEST_MAX_LINES:]]
+    if len(titles) > DIGEST_MAX_LINES:
+        shown.append(f"…另有 {len(titles) - DIGEST_MAX_LINES} 則較早的通知，請見通知紀錄")
+    return tuple(shown)
+
+
+def held_layout(titles: Sequence[str]) -> Layout:
+    """What quiet hours parked, sent once the window closes: a heading with the count and one line
+    per title (oldest first, newest last), capped like the morning recap."""
+    return Layout(
+        blocks=(
+            LayoutBlock(head=f"🔕 靜音期間的通知（{len(titles)} 則）", lines=_title_lines(titles)),
         )
     )
 
@@ -226,6 +240,7 @@ __all__ = [
     "brief_preview",
     "digest_body",
     "digest_layout",
+    "held_layout",
     "plain_lines",
     "report_layout",
     "report_preview",

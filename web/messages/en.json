@@ -900,7 +900,7 @@
       "unread": "{count} unread notifications",
       "unreadItem": "Unread",
       "foldCount": "{count} items",
-      "showAll": "Show all",
+      "showAll": "Show all ({count} more)",
       "showLess": "Show less"
     },
     "tier": {

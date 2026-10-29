@@ -48,6 +48,8 @@ class ScheduleTemplate:
     extra_inputs: Mapping[str, object] = MappingProxyType({})
     # Plain-language cadence, for the agent and the proposal card.
     cadence: str = ""
+    # What a notification from this schedule is called (its heading and title).
+    label: str = ""
 
 
 MAX_TARGETS: Final = 10
@@ -111,6 +113,7 @@ SCHEDULE_TEMPLATES: Final[dict[ScheduleTemplateId, ScheduleTemplate]] = {
         target_input="stock_ids",
         multiple=True,
         cadence="每個台股交易日開盤前",
+        label="盤前摘要",
     ),
     ScheduleTemplateId.AFTER_CLOSE_CHIP: ScheduleTemplate(
         id=ScheduleTemplateId.AFTER_CLOSE_CHIP,
@@ -121,6 +124,7 @@ SCHEDULE_TEMPLATES: Final[dict[ScheduleTemplateId, ScheduleTemplate]] = {
         target_input="stock_id",
         multiple=False,
         cadence="每個台股交易日收盤後",
+        label="籌碼回顧",
     ),
     ScheduleTemplateId.DISPOSITION_WATCH: ScheduleTemplate(
         id=ScheduleTemplateId.DISPOSITION_WATCH,
@@ -131,6 +135,7 @@ SCHEDULE_TEMPLATES: Final[dict[ScheduleTemplateId, ScheduleTemplate]] = {
         target_input="stock_id",
         multiple=False,
         cadence="每個台股交易日收盤後",
+        label="處置股公告",
     ),
     ScheduleTemplateId.WEEKLY_CATALYST: ScheduleTemplate(
         id=ScheduleTemplateId.WEEKLY_CATALYST,
@@ -141,6 +146,7 @@ SCHEDULE_TEMPLATES: Final[dict[ScheduleTemplateId, ScheduleTemplate]] = {
         target_input="stock_id",
         multiple=False,
         cadence="每週一 08:30",
+        label="催化事件掃描",
     ),
     # The full analysis reports (5-year table, charts, seasonality, risk). Weekly on purpose: each
     # run makes a dozen data calls and counts against the chat quota, and a five-year report does
@@ -155,6 +161,7 @@ SCHEDULE_TEMPLATES: Final[dict[ScheduleTemplateId, ScheduleTemplate]] = {
         multiple=False,
         extra_inputs=MappingProxyType({"market": "TW"}),
         cadence="每週一 08:30",
+        label="台股個股報告",
     ),
     ScheduleTemplateId.US_STOCK_REPORT: ScheduleTemplate(
         id=ScheduleTemplateId.US_STOCK_REPORT,
@@ -166,6 +173,7 @@ SCHEDULE_TEMPLATES: Final[dict[ScheduleTemplateId, ScheduleTemplate]] = {
         multiple=False,
         extra_inputs=MappingProxyType({"market": "US"}),
         cadence="每週六（美東上午 9:00，週五收盤後）",
+        label="美股個股報告",
     ),
     ScheduleTemplateId.TW_ETF_REPORT: ScheduleTemplate(
         id=ScheduleTemplateId.TW_ETF_REPORT,
@@ -177,6 +185,7 @@ SCHEDULE_TEMPLATES: Final[dict[ScheduleTemplateId, ScheduleTemplate]] = {
         multiple=False,
         extra_inputs=MappingProxyType({"market": "TW"}),
         cadence="每週五 15:30",
+        label="ETF 報告",
     ),
     ScheduleTemplateId.US_ETF_REPORT: ScheduleTemplate(
         id=ScheduleTemplateId.US_ETF_REPORT,
@@ -188,6 +197,7 @@ SCHEDULE_TEMPLATES: Final[dict[ScheduleTemplateId, ScheduleTemplate]] = {
         multiple=False,
         extra_inputs=MappingProxyType({"market": "US"}),
         cadence="每週六（美東上午 9:00，週五收盤後）",
+        label="ETF 報告",
     ),
     ScheduleTemplateId.WEEKLY_WATCHLIST_REVIEW: ScheduleTemplate(
         id=ScheduleTemplateId.WEEKLY_WATCHLIST_REVIEW,
@@ -200,6 +210,7 @@ SCHEDULE_TEMPLATES: Final[dict[ScheduleTemplateId, ScheduleTemplate]] = {
         takes_targets=False,
         extra_inputs=MappingProxyType({WEEKLY_REVIEW_INPUT: WEEKLY_REVIEW_MODE}),
         cadence="每週六 09:00",
+        label="自選股週回顧",
     ),
 }
 
@@ -214,7 +225,19 @@ def build_inputs(template: ScheduleTemplate, targets: list[str]) -> dict[str, ob
     return inputs
 
 
+DEFAULT_SCHEDULE_LABEL: Final = "排程摘要"
+_LABEL_BY_SKILL: Final[Mapping[str, str]] = MappingProxyType(
+    {t.skill_ref: t.label for t in SCHEDULE_TEMPLATES.values()}
+)
+
+
+def schedule_label(skill_ref: str) -> str:
+    """What to call a schedule running `skill_ref`: its template's label, else the generic one."""
+    return _LABEL_BY_SKILL.get(skill_ref, DEFAULT_SCHEDULE_LABEL)
+
+
 __all__ = [
+    "DEFAULT_SCHEDULE_LABEL",
     "MAX_TARGETS",
     "SCHEDULE_TEMPLATES",
     "WEEKDAY_CRON",
@@ -227,5 +250,6 @@ __all__ = [
     "ScheduleTemplateId",
     "build_inputs",
     "is_weekly_review",
+    "schedule_label",
     "weekly_review_cron",
 ]
