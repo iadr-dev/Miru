@@ -238,3 +238,152 @@ async def test_a_second_delivery_of_the_same_alert_sends_nothing(session_factory
     await _deliver(worker, session_factory, user)
 
     assert len(channel.sent) == 1
+
+
+class _ScriptedTelegram(_ScriptedChannel):
+    kind = DeliveryChannelKind.TELEGRAM
+
+
+def _telegram_worker(session_factory, channel: _ScriptedTelegram) -> SchedulerWorker:
+    return SchedulerWorker(
+        SchedulerContext(
+            session_factory=session_factory,
+            orchestrator=None,  # type: ignore[arg-type]
+            router=None,  # type: ignore[arg-type]
+            channels={
+                DeliveryChannelKind.IN_APP: InAppChannel(),
+                DeliveryChannelKind.TELEGRAM: channel,
+            },  # type: ignore[dict-item]
+            entitlement_resolver=EntitlementResolver(),
+            leader=AlwaysLeader(),
+            quota_gate=AllowAllQuotaGate(),
+        )
+    )
+
+
+def _telegram_receipt(*, delivered: bool, retryable: bool, gone: bool) -> DeliveryReceipt:
+    return DeliveryReceipt(
+        channel=DeliveryChannelKind.TELEGRAM,
+        delivered=delivered,
+        retryable=retryable,
+        address_gone=gone,
+    )
+
+
+async def _link_telegram(session_factory, user_id: str) -> None:
+    async with session_factory() as session:
+        store = SqlAlchemySchedulerStore(session)
+        await store.start_channel_link(
+            user_id=user_id,
+            channel="telegram",
+            token="tok",
+            expires_at=datetime.now(UTC) + timedelta(minutes=5),
+        )
+        await store.complete_channel_link(
+            channel="telegram", token="tok", address="555", now=datetime.now(UTC)
+        )
+        await session.commit()
+
+
+async def _telegram_address(session_factory, user_id: str) -> str | None:
+    async with session_factory() as session:
+        return await SqlAlchemySchedulerStore(session).channel_address(
+            user_id=user_id, channel="telegram"
+        )
+
+
+async def _deliver_telegram(
+    worker: SchedulerWorker, session_factory, user_id: str, *, source_id: str = "rule-1"
+) -> None:
+    async with session_factory() as session:
+        user = await SqlAlchemyUserStore(session).get(user_id=user_id)
+        await worker._deliver(
+            SqlAlchemySchedulerStore(session),
+            user=user,
+            source=NotificationSource.ALERT,
+            source_id=source_id,
+            channels=(DeliveryChannelKind.TELEGRAM,),
+            title="2330 crossed",
+            body="above 1000",
+            trigger_date=date(2026, 10, 13),
+            deep_link={"route": "/stock/2330"},
+        )
+        await session.commit()
+
+
+async def test_a_gone_telegram_chat_is_unlinked_so_settings_stops_claiming_it_works(
+    session_factory,
+) -> None:
+    user = await insert_user(session_factory, tier=Tier.PRO)
+    await _link_telegram(session_factory, user)
+    gone = _telegram_receipt(delivered=False, retryable=False, gone=True)
+
+    await _deliver_telegram(
+        _telegram_worker(session_factory, _ScriptedTelegram(gone)), session_factory, user
+    )
+
+    assert await _telegram_address(session_factory, user) is None
+
+
+async def test_a_transient_telegram_failure_keeps_the_chat_linked(session_factory) -> None:
+    user = await insert_user(session_factory, tier=Tier.PRO)
+    await _link_telegram(session_factory, user)
+    busy = _telegram_receipt(delivered=False, retryable=True, gone=False)
+    permanent = _telegram_receipt(delivered=False, retryable=False, gone=False)
+
+    for rule, outcome in enumerate((busy, permanent, RuntimeError("down"))):
+        worker = _telegram_worker(session_factory, _ScriptedTelegram(outcome))
+        await _deliver_telegram(worker, session_factory, user, source_id=f"rule-{rule}")
+        assert await _telegram_address(session_factory, user) == "555"
+
+
+async def test_a_gone_chat_found_by_the_retry_sweep_is_unlinked_too(session_factory) -> None:
+    user = await insert_user(session_factory, tier=Tier.PRO)
+    await _link_telegram(session_factory, user)
+    busy = _telegram_receipt(delivered=False, retryable=True, gone=False)
+    gone = _telegram_receipt(delivered=False, retryable=False, gone=True)
+    worker = _telegram_worker(session_factory, _ScriptedTelegram(busy, gone))
+
+    await _deliver_telegram(worker, session_factory, user)
+    assert await _telegram_address(session_factory, user) == "555"
+    await worker.retry_pending_deliveries(now=datetime.now(UTC) + timedelta(hours=1))
+
+    assert await _telegram_address(session_factory, user) is None
+
+
+class _RecipientProbe(_ScriptedTelegram):
+    def __init__(self) -> None:
+        super().__init__(_ok())
+        self.recipients: list[DeliveryRecipient] = []
+
+    async def send(self, notification, recipient):  # type: ignore[no-untyped-def]
+        self.recipients.append(recipient)
+        return await super().send(notification, recipient)
+
+
+async def _app_url_seen_by_telegram(session_factory, app_base_url: str | None) -> str | None:
+    user = await insert_user(session_factory, tier=Tier.PRO)
+    await _link_telegram(session_factory, user)
+    probe = _RecipientProbe()
+    worker = SchedulerWorker(
+        SchedulerContext(
+            session_factory=session_factory,
+            orchestrator=None,  # type: ignore[arg-type]
+            router=None,  # type: ignore[arg-type]
+            channels={DeliveryChannelKind.TELEGRAM: probe},  # type: ignore[dict-item]
+            entitlement_resolver=EntitlementResolver(),
+            leader=AlwaysLeader(),
+            quota_gate=AllowAllQuotaGate(),
+            app_base_url=app_base_url,
+        )
+    )
+    await _deliver_telegram(worker, session_factory, user)
+    return probe.recipients[0].app_url
+
+
+async def test_the_recipient_carries_the_app_url_only_when_it_is_https(session_factory) -> None:
+    assert await _app_url_seen_by_telegram(session_factory, "https://miru.example/") == (
+        "https://miru.example"
+    )
+    assert await _app_url_seen_by_telegram(session_factory, "http://localhost:3000") is None
+    assert await _app_url_seen_by_telegram(session_factory, None) is None

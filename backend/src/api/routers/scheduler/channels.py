@@ -161,7 +161,18 @@ async def unlink_telegram(
     await store.unlink_channel(user_id=user.id, channel=_TELEGRAM)
 
 
-_START_PREFIX = "/start "
+_START_COMMAND = "/start"
+
+
+_TELEGRAM_SEND_URL = "https://api.telegram.org/bot{token}/sendMessage"
+
+
+_TELEGRAM_HELP = (
+    "請到 Miru 的「設定 → 通知」按「連結 Telegram」，再點開連結並按 Start，就能收到提醒通知。"
+)
+
+
+_LINKED_REPLY = "已連結完成，之後的提醒會傳到這裡。"
 
 
 _LINE_CODE = re.compile(r"\b([A-Z2-7]{8})\b")
@@ -343,9 +354,32 @@ async def _handle_line_event(
     linked = await _complete_line_link(store, _line_event_text(event), line_user)
     reply_token = event.get("replyToken")
     if token and isinstance(reply_token, str):
-        reply = "已連結完成，之後的提醒會傳到這裡。" if linked else _LINK_HELP
+        reply = _LINKED_REPLY if linked else _LINK_HELP
         await _line_reply(transport, token, reply_token, reply)
     return True
+
+
+def get_telegram_transport() -> OutboundTransport:
+    """The transport the Telegram webhook replies with (overridden in tests)."""
+    return HttpxTransport()
+
+
+async def _telegram_reply(
+    transport: OutboundTransport, token: str, chat_id: str, text: str
+) -> None:
+    """Best effort: a failed reply must never turn the webhook into an error."""
+    await transport.post_json(
+        _TELEGRAM_SEND_URL.format(token=token),
+        headers={"Content-Type": "application/json"},
+        body={"chat_id": chat_id, "text": text},
+    )
+
+
+def _start_token(text: str) -> str | None:
+    """The link code after `/start` (empty for a bare `/start`), or None when `text` is not a
+    `/start` command. `/start@bot_name` is the form Telegram uses in groups."""
+    command, _, rest = text.strip().partition(" ")
+    return rest.strip() if command.partition("@")[0] == _START_COMMAND else None
 
 
 @router.post("/webhooks/telegram", dependencies=[Depends(system_scope)])
@@ -353,6 +387,7 @@ async def telegram_webhook(
     update: dict[str, object],
     state: AppState = Depends(get_state),
     store: SchedulerStore = Depends(_store),
+    transport: OutboundTransport = Depends(get_telegram_transport),
     secret: str | None = Header(default=None, alias="X-Telegram-Bot-Api-Secret-Token"),
 ) -> dict[str, bool]:
     """Telegram calls this for every message to the bot. Only `/start <token>` matters: it binds
@@ -376,14 +411,23 @@ async def telegram_webhook(
     text = cast("dict[str, object]", message).get("text")
     chat = cast("dict[str, object]", message).get("chat")
     chat_id = cast("dict[str, object]", chat).get("id") if isinstance(chat, dict) else None
-    if not (isinstance(text, str) and text.startswith(_START_PREFIX) and chat_id is not None):
+    link_code = _start_token(text) if isinstance(text, str) else None
+    if link_code is None or chat_id is None:
         return {"linked": False}
-    user_id = await store.complete_channel_link(
-        channel=_TELEGRAM,
-        token=text[len(_START_PREFIX) :].strip(),
-        address=str(chat_id),
-        now=datetime.now(UTC),
+    user_id = (
+        await store.complete_channel_link(
+            channel=_TELEGRAM,
+            token=link_code,
+            address=str(chat_id),
+            now=datetime.now(UTC),
+        )
+        if link_code
+        else None
     )
+    bot_token = reveal(state.settings.telegram_bot_token)
+    if bot_token:
+        reply = _LINKED_REPLY if user_id is not None else _TELEGRAM_HELP
+        await _telegram_reply(transport, bot_token, str(chat_id), reply)
     return {"linked": user_id is not None}
 
 

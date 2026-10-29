@@ -33,6 +33,7 @@ _TIMEOUT_SECONDS = 10.0
 _HTTP_OK_MAX = 299
 _HTTP_TOO_MANY = 429
 _HTTP_SERVER_ERROR = 500
+_DESCRIPTION_MAX_CHARS = 200
 
 
 @dataclass(frozen=True)
@@ -47,6 +48,9 @@ class TransportResult:
     detail: str = ""
     # The push service says this subscription is gone for good (404/410): prune it.
     gone: bool = False
+    # The provider's own explanation of a 4xx (a JSON `description`), for the channel to read; it
+    # is never logged.
+    description: str = ""
 
 
 @runtime_checkable
@@ -69,14 +73,35 @@ class HttpxTransport:
         except (httpx.HTTPError, OSError):
             logger.warning("outbound_transport_error")
             return TransportResult(ok=False, retryable=True, detail="network error")
-        return _classify(response.status_code, response.headers.get("x-line-request-id"))
+        return _classify(response)
 
 
-def _classify(status: int, request_id: str | None) -> TransportResult:
+def _classify(response: httpx.Response) -> TransportResult:
+    status = response.status_code
     if status <= _HTTP_OK_MAX:
-        return TransportResult(ok=True, status=status, message_id=request_id)
+        return TransportResult(
+            ok=True, status=status, message_id=response.headers.get("x-line-request-id")
+        )
     retryable = status == _HTTP_TOO_MANY or status >= _HTTP_SERVER_ERROR
-    return TransportResult(ok=False, status=status, retryable=retryable, detail=f"http {status}")
+    return TransportResult(
+        ok=False,
+        status=status,
+        retryable=retryable,
+        detail=f"http {status}",
+        description="" if retryable else _error_description(response),
+    )
+
+
+def _error_description(response: httpx.Response) -> str:
+    """The `description` of a JSON error body, or "" when the body is anything else."""
+    try:
+        body = cast("object", response.json())
+    except ValueError:
+        return ""
+    description = (
+        cast("dict[str, object]", body).get("description") if isinstance(body, dict) else None
+    )
+    return description[:_DESCRIPTION_MAX_CHARS] if isinstance(description, str) else ""
 
 
 _HTTP_NOT_FOUND = 404

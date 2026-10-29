@@ -6,8 +6,12 @@ from __future__ import annotations
 
 import json
 
+import httpx
+import pytest
+
+import scheduler.delivery.transport as transport_module
 from config.settings import Settings
-from scheduler.delivery.base import DeliveryNotification, DeliveryRecipient
+from scheduler.delivery.base import DeliveryNotification, DeliveryReceipt, DeliveryRecipient
 from scheduler.delivery.channels import (
     EmailChannel,
     InAppChannel,
@@ -15,8 +19,10 @@ from scheduler.delivery.channels import (
     PushChannel,
     TelegramChannel,
 )
-from scheduler.delivery.transport import TransportResult
+from scheduler.delivery.transport import HttpxTransport, TransportResult
 from scheduler.models import DeliveryChannelKind
+from schemas.alerts import NON_ADVICE_FOOTER
+from tests.http_support import OwnedLease
 
 
 def _notification() -> DeliveryNotification:
@@ -268,3 +274,224 @@ async def test_no_unsubscribe_header_without_a_link() -> None:
         _notification(), DeliveryRecipient(user_id="u1", email_address="a@example.test")
     )
     assert "headers" not in transport.calls[0][2]
+
+
+_TELEGRAM_LIMIT = 4096
+_POINTER = "…（完整內容請見 Miru）"
+
+
+def _units(text: str) -> int:
+    return len(text.encode("utf-16-le")) // 2
+
+
+def _telegram_text(body: str, *, title: str = "排程摘要") -> str:
+    channel = TelegramChannel(Settings(telegram_bot_token="bot-tok"))
+    request = channel.build_request(
+        DeliveryNotification(notification_id="n1", title=title, body=body),
+        DeliveryRecipient(user_id="u1", telegram_chat_id="12345"),
+    )
+    return str(request.json["text"])
+
+
+def test_a_short_telegram_message_is_sent_whole() -> None:
+    body = f"短訊息\n{NON_ADVICE_FOOTER}"
+    assert _telegram_text(body) == f"排程摘要\n{body}"
+
+
+def test_a_long_telegram_message_is_cut_at_a_line_and_keeps_the_footer() -> None:
+    lines = [f"第 {i} 行 📈 台積電外資買超連 3 日" for i in range(600)]
+    text = _telegram_text("\n".join(lines) + f"\n{NON_ADVICE_FOOTER}")
+    assert _units(text) <= _TELEGRAM_LIMIT
+    assert text.endswith(f"{_POINTER}\n{NON_ADVICE_FOOTER}")
+    kept = text.removesuffix(f"\n{_POINTER}\n{NON_ADVICE_FOOTER}").split("\n")[1:]
+    assert kept == lines[: len(kept)]
+    assert 0 < len(kept) < len(lines)
+    assert _TELEGRAM_LIMIT - _units(text) < _units(lines[len(kept)]) + 1  # as much as fits was kept
+
+
+def test_the_limit_counts_utf16_units_so_emoji_cost_two() -> None:
+    body = "📈" * 3000 + f"\n{NON_ADVICE_FOOTER}"
+    text = _telegram_text(body)
+    assert _units(text) <= _TELEGRAM_LIMIT
+    assert len(text) < _TELEGRAM_LIMIT  # code points, not units, would have fit more
+    assert text.endswith(NON_ADVICE_FOOTER)
+
+
+def test_one_enormous_line_is_cut_on_a_character_boundary() -> None:
+    text = _telegram_text("字" * 9000 + f"\n{NON_ADVICE_FOOTER}")
+    assert _units(text) <= _TELEGRAM_LIMIT
+    assert text.endswith(f"{_POINTER}\n{NON_ADVICE_FOOTER}")
+
+
+def test_a_message_exactly_at_the_limit_is_untouched() -> None:
+    title = "題"
+    fixed = _units(f"{title}\n\n{NON_ADVICE_FOOTER}")
+    body = "字" * (_TELEGRAM_LIMIT - fixed)
+    text = _telegram_text(f"{body}\n{NON_ADVICE_FOOTER}", title=title)
+    assert _units(text) == _TELEGRAM_LIMIT
+    assert _POINTER not in text
+
+
+def test_a_long_message_without_a_footer_still_fits() -> None:
+    text = _telegram_text("\n".join("字" * 50 for _ in range(200)))
+    assert _units(text) <= _TELEGRAM_LIMIT
+    assert text.endswith(_POINTER)
+
+
+_APP = "https://miru.example"
+
+
+def _telegram_request_json(
+    deep_link: dict[str, object], *, app_url: str | None = _APP
+) -> dict[str, object]:
+    channel = TelegramChannel(Settings(telegram_bot_token="bot-tok"))
+    request = channel.build_request(
+        DeliveryNotification(notification_id="n1", title="t", body="b", deep_link=deep_link),
+        DeliveryRecipient(user_id="u1", telegram_chat_id="12345", app_url=app_url),
+    )
+    return request.json
+
+
+@pytest.mark.parametrize(
+    ("deep_link", "path"),
+    [
+        ({"route": "stock", "symbol": "2330"}, "/stock/2330"),
+        ({"route": "thread", "thread_id": "t-1"}, "/chat?thread=t-1"),
+        ({"route": "watch", "symbol": "2330", "strategy": "x"}, "/watch"),
+        ({"route": "notifications"}, "/settings/alerts"),
+        ({}, "/settings/alerts"),
+    ],
+)
+def test_telegram_carries_one_open_in_miru_button_for_the_deep_link(
+    deep_link: dict[str, object], path: str
+) -> None:
+    payload = _telegram_request_json(deep_link)
+    assert payload["reply_markup"] == {
+        "inline_keyboard": [[{"text": "在 Miru 開啟", "url": f"{_APP}{path}"}]]
+    }
+    assert "parse_mode" not in payload
+
+
+def test_the_button_url_is_built_from_the_base_without_a_double_slash() -> None:
+    payload = _telegram_request_json({"route": "stock", "symbol": "2330"}, app_url=f"{_APP}/")
+    markup = payload["reply_markup"]
+    assert markup == {"inline_keyboard": [[{"text": "在 Miru 開啟", "url": f"{_APP}/stock/2330"}]]}
+
+
+def test_a_symbol_in_the_button_url_is_escaped() -> None:
+    payload = _telegram_request_json({"route": "stock", "symbol": "a/b?c"})
+    assert "a%2Fb%3Fc" in str(payload["reply_markup"])
+
+
+def test_without_a_public_https_app_url_telegram_sends_no_keyboard() -> None:
+    payload = _telegram_request_json({"route": "stock", "symbol": "2330"}, app_url=None)
+    assert "reply_markup" not in payload
+
+
+_BLOCKED = "Forbidden: bot was blocked by the user"
+_CHAT_GONE = "Bad Request: chat not found"
+
+
+def _telegram_error(status: int, description: str) -> TransportResult:
+    return TransportResult(
+        ok=False, status=status, detail=f"http {status}", description=description
+    )
+
+
+async def _telegram_receipt(result: TransportResult) -> DeliveryReceipt:
+    channel = TelegramChannel(Settings(telegram_bot_token="bot-tok"), _FakeTransport(result))
+    return await channel.send(
+        _notification(), DeliveryRecipient(user_id="u1", telegram_chat_id="12345")
+    )
+
+
+@pytest.mark.parametrize(
+    ("status", "description"),
+    [(403, _BLOCKED), (403, "Forbidden: user is deactivated"), (400, _CHAT_GONE)],
+)
+async def test_a_blocked_bot_or_missing_chat_marks_the_telegram_address_gone(
+    status: int, description: str
+) -> None:
+    receipt = await _telegram_receipt(_telegram_error(status, description))
+    assert receipt.delivered is False
+    assert receipt.retryable is False
+    assert receipt.address_gone is True
+
+
+@pytest.mark.parametrize(
+    "result",
+    [
+        TransportResult(ok=False, status=429, retryable=True, description="Too Many Requests"),
+        TransportResult(ok=False, status=500, retryable=True),
+        TransportResult(ok=False, status=502, retryable=True),
+        TransportResult(ok=False, retryable=True, detail="network error"),
+        _telegram_error(400, "Bad Request: message is too long"),
+        _telegram_error(401, "Unauthorized"),
+        _telegram_error(404, "Not Found"),
+        TransportResult(ok=True, status=200),
+    ],
+)
+async def test_other_telegram_outcomes_never_mark_the_address_gone(
+    result: TransportResult,
+) -> None:
+    assert (await _telegram_receipt(result)).address_gone is False
+
+
+async def test_a_line_403_is_not_an_unlink_signal() -> None:
+    channel = LineMessagingChannel(
+        Settings(line_messaging_channel_access_token="tok"),
+        _FakeTransport(_telegram_error(403, _BLOCKED)),
+    )
+    receipt = await channel.send(
+        _notification(), DeliveryRecipient(user_id="u1", line_user_id="Uabc")
+    )
+    assert receipt.address_gone is False
+
+
+async def _post_through_httpx(
+    monkeypatch: pytest.MonkeyPatch, response: httpx.Response | Exception
+) -> TransportResult:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        if isinstance(response, Exception):
+            raise response
+        return response
+
+    monkeypatch.setattr(
+        transport_module,
+        "lease_client",
+        lambda **_: OwnedLease(httpx.AsyncClient(transport=httpx.MockTransport(handler))),
+    )
+    return await HttpxTransport().post_json(
+        "https://api.telegram.org/botX/sendMessage", headers={}, body={}
+    )
+
+
+async def test_the_transport_keeps_the_error_description_the_provider_sent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    body = {"ok": False, "error_code": 403, "description": _BLOCKED}
+    result = await _post_through_httpx(monkeypatch, httpx.Response(403, json=body))
+    assert (result.ok, result.status, result.retryable) == (False, 403, False)
+    assert result.description == _BLOCKED
+    assert result.detail == "http 403"
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        httpx.Response(403, content=b"<html>nope</html>"),
+        httpx.Response(403, json=["not", "an", "object"]),
+        httpx.Response(403, json={"description": 7}),
+    ],
+)
+async def test_an_unreadable_error_body_leaves_the_description_empty(
+    monkeypatch: pytest.MonkeyPatch, response: httpx.Response
+) -> None:
+    assert (await _post_through_httpx(monkeypatch, response)).description == ""
+
+
+async def test_a_network_failure_is_retryable_with_no_description(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result = await _post_through_httpx(monkeypatch, httpx.ConnectError("down"))
+    assert (result.ok, result.retryable, result.description) == (False, True, "")

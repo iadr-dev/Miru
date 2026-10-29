@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import html
 import json
+from collections.abc import Callable
 from typing import Protocol, cast, runtime_checkable
 from urllib.parse import quote
 
@@ -78,14 +79,23 @@ def _text(notification: DeliveryNotification) -> str:
     return f"{notification.title}\n{notification.body}".strip()
 
 
-def _receipt(kind: DeliveryChannelKind, result: TransportResult) -> DeliveryReceipt:
-    logger.info("delivery_sent", channel=kind.value, ok=result.ok, status=result.status)
+def _receipt(
+    kind: DeliveryChannelKind, result: TransportResult, *, address_gone: bool = False
+) -> DeliveryReceipt:
+    logger.info(
+        "delivery_sent",
+        channel=kind.value,
+        ok=result.ok,
+        status=result.status,
+        address_gone=address_gone,
+    )
     return DeliveryReceipt(
         channel=kind,
         delivered=result.ok,
         retryable=result.retryable,
         provider_message_id=result.message_id,
         detail=result.detail,
+        address_gone=address_gone,
     )
 
 
@@ -146,6 +156,69 @@ class LineMessagingChannel:
         )
 
 
+_HTTP_BAD_REQUEST = 400
+_HTTP_FORBIDDEN = 403
+_CHAT_NOT_FOUND = "chat not found"
+
+
+_TELEGRAM_MAX_UNITS = 4096
+_OPEN_IN_APP = "在 Miru 開啟"
+_TRIM_POINTER = "…（完整內容請見 Miru）"
+
+
+def _utf16_units(text: str) -> int:
+    return len(text.encode("utf-16-le")) // 2
+
+
+def _fit_telegram(text: str) -> str:
+    """`text` as one Telegram message. Telegram rejects more than 4096 UTF-16 code units (an emoji
+    is two), so a longer text is cut at a line boundary, then a pointer to the full content and the
+    non-advice footer, which always survives the cut, are appended."""
+    if _utf16_units(text) <= _TELEGRAM_MAX_UNITS:
+        return text
+    has_footer = NON_ADVICE_FOOTER in text
+    head = text.replace(NON_ADVICE_FOOTER, "").rstrip() if has_footer else text
+    tail = f"\n{_TRIM_POINTER}\n{NON_ADVICE_FOOTER}" if has_footer else f"\n{_TRIM_POINTER}"
+    budget = _TELEGRAM_MAX_UNITS - _utf16_units(tail)
+    kept: list[str] = []
+    used = 0
+    for line in head.split("\n"):
+        cost = _utf16_units(line) + (1 if kept else 0)
+        if used + cost > budget:
+            break
+        kept.append(line)
+        used += cost
+    if not kept:
+        kept.append(_cut_units(head, budget))
+    return "\n".join(kept).rstrip() + tail
+
+
+def _cut_units(text: str, budget: int) -> str:
+    """The longest prefix of `text` within `budget` UTF-16 units, never splitting a character."""
+    used = 0
+    for index, char in enumerate(text):
+        used += _utf16_units(char)
+        if used > budget:
+            return text[:index]
+    return text
+
+
+def _never_gone(result: TransportResult) -> bool:
+    del result
+    return False
+
+
+def _telegram_chat_gone(result: TransportResult) -> bool:
+    """Telegram answers 403 when the user blocked or deleted the bot (or was deactivated) and 400
+    "chat not found" when the chat no longer exists. Neither ever recovers on its own; a 429, a 5xx
+    or a network failure says nothing about the chat and never counts."""
+    if result.ok or result.retryable:
+        return False
+    if result.status == _HTTP_FORBIDDEN:
+        return True
+    return result.status == _HTTP_BAD_REQUEST and _CHAT_NOT_FOUND in result.description.lower()
+
+
 class TelegramChannel:
     kind = DeliveryChannelKind.TELEGRAM
 
@@ -158,18 +231,33 @@ class TelegramChannel:
     ) -> OutboundRequest:
         if recipient.telegram_chat_id is None:
             raise ChannelNotConfiguredError("no Telegram chat id for recipient")
+        payload: dict[str, object] = {
+            "chat_id": recipient.telegram_chat_id,
+            "text": _fit_telegram(_text(notification)),
+        }
+        if recipient.app_url is not None:
+            button = {
+                "text": _OPEN_IN_APP,
+                "url": f"{recipient.app_url.rstrip('/')}{_push_url(notification.deep_link)}",
+            }
+            payload["reply_markup"] = {"inline_keyboard": [[button]]}
         return OutboundRequest(
             method="POST",
             url=f"https://api.telegram.org/bot{self._token or ''}/sendMessage",
             headers={"Content-Type": _JSON_CONTENT_TYPE},
-            json={"chat_id": recipient.telegram_chat_id, "text": _text(notification)},
+            json=payload,
         )
 
     async def send(
         self, notification: DeliveryNotification, recipient: DeliveryRecipient
     ) -> DeliveryReceipt:
         return await _post_json_send(
-            self, self._transport, notification, recipient, configured=bool(self._token)
+            self,
+            self._transport,
+            notification,
+            recipient,
+            configured=bool(self._token),
+            address_gone=_telegram_chat_gone,
         )
 
 
@@ -321,7 +409,7 @@ def _parse_subscription(token: str) -> dict[str, object] | None:
     return None
 
 
-_LINK_ROUTES = {"stock": "/stock/{detail}", "thread": "/chat?thread={detail}"}
+_LINK_ROUTES = {"stock": "/stock/{detail}", "thread": "/chat?thread={detail}", "watch": "/watch"}
 
 
 def _push_url(deep_link: dict[str, object]) -> str:
@@ -329,7 +417,9 @@ def _push_url(deep_link: dict[str, object]) -> str:
     route = deep_link.get("route")
     detail = deep_link.get("symbol") or deep_link.get("thread_id")
     template = _LINK_ROUTES.get(str(route))
-    if template and detail:
+    if template is not None and "{detail}" not in template:
+        return template
+    if template is not None and detail:
         return template.format(detail=quote(str(detail), safe=""))
     return "/settings/alerts"
 
@@ -345,13 +435,14 @@ class _ShapedChannel(Protocol):
     ) -> OutboundRequest: ...
 
 
-async def _post_json_send(
+async def _post_json_send(  # noqa: PLR0913 — one argument per send dimension
     channel: _ShapedChannel,
     transport: OutboundTransport | None,
     notification: DeliveryNotification,
     recipient: DeliveryRecipient,
     *,
     configured: bool,
+    address_gone: Callable[[TransportResult], bool] = _never_gone,
 ) -> DeliveryReceipt:
     """Shared send path for the JSON-POST channels: build the real request (validating that the
     recipient is addressable), then send it — or, with no credential or transport, report a
@@ -364,7 +455,7 @@ async def _post_json_send(
         logger.info("delivery_shaped", channel=channel.kind.value, configured=configured)
         return DeliveryReceipt(channel=channel.kind, delivered=True, detail=_NO_NETWORK)
     result = await transport.post_json(request.url, headers=request.headers, body=request.json)
-    return _receipt(channel.kind, result)
+    return _receipt(channel.kind, result, address_gone=address_gone(result))
 
 
 def build_default_channels(

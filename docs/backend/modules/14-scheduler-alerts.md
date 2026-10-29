@@ -471,6 +471,30 @@ single-use and expires. The operator points the bot's webhook at that URL with
 `setWebhook(secret_token=…)` — `scripts/dev-backend.sh --webhook https://<public-host>` does it from
 `backend/.env` (Telegram only calls public HTTPS, so locally use a tunnel). `GET /me/channels` reports which channels can reach the user now.
 
+The webhook always answers Telegram with a 200 and talks back to the chat through the same
+`OutboundTransport` seam the senders use (`get_telegram_transport`, overridable in tests): a
+successful `/start <token>` is confirmed in the chat, and a bare `/start` (also `/start@<bot>`) or an
+unknown, used or expired code gets the linking instructions. Other chatter is not answered. A failed
+reply is swallowed; neither the bot token nor a chat id is logged.
+
+**Telegram delivery.** Plain text (no `parse_mode`), one `sendMessage` per notification:
+
+- **Length:** Telegram rejects more than 4096 UTF-16 code units (an emoji counts two, a Chinese
+  character one). `TelegramChannel.build_request` cuts a longer text at a line boundary (a single
+  oversized line at a character boundary), then appends `…（完整內容請見 Miru）` and the non-advice
+  footer, which always survives the cut. It never splits into several messages.
+- **Open button:** with a public HTTPS app URL (`frontend_base_url`; plain HTTP or localhost gives
+  none) the message carries an inline keyboard with one button 「在 Miru 開啟」, whose URL is the
+  app origin plus the locale-less path `_push_url` derives from `deep_link` (`stock`, `thread`,
+  `watch`; anything else falls back to `/settings/alerts`). The web proxy adds the locale prefix.
+- **Unreachable chat:** the transport keeps the provider's JSON `description` of a 4xx (never
+  logged). 403 (bot blocked or deleted, user deactivated) and 400 "chat not found" are permanent:
+  the receipt is non-retryable with `address_gone=True`, and the worker unlinks the user's Telegram
+  channel (`store.unlink_channel`) so Settings stops showing it as connected; the user links again
+  from Settings. 429, 5xx, network errors and every other 4xx never unlink. Retry state stays in
+  the database (`_delivery_outcome`); the httpx loggers are pinned above INFO so the bot token in
+  the URL never reaches a log.
+
 - **Precedence:** `AlertPreference` holds default channels, quiet hours, daily cap, morning digest;
   a rule/job may override and the UI shows inherited values.
 - **Egress safety:** channel credentials are env-only; LINE/Telegram binding tokens are one-time;

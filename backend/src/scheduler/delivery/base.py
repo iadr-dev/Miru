@@ -44,6 +44,9 @@ class DeliveryRecipient(BaseModel):
     email_address: str | None = None
     # One-click unsubscribe link for the email channel (None when no HTTPS public URL is set).
     unsubscribe_url: str | None = None
+    # The app's public HTTPS origin, for a channel that can carry an "open in the app" button
+    # (None when only a local/plain-HTTP address is configured).
+    app_url: str | None = None
     device_tokens: tuple[str, ...] = Field(default_factory=tuple)
 
 
@@ -61,6 +64,9 @@ class DeliveryReceipt(BaseModel):
     detail: str = ""
     # Device tokens the provider reported as permanently invalid; the worker unregisters them.
     stale_tokens: tuple[str, ...] = ()
+    # The provider says this recipient can never be reached again (a blocked bot, a deleted chat):
+    # the worker unlinks the channel so the account stops claiming it works.
+    address_gone: bool = False
 
 
 @runtime_checkable

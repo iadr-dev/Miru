@@ -21,10 +21,10 @@ from api.routers.scheduler import (
     schedules,
     strategy_watch,
 )
-from api.routers.scheduler.channels import get_line_transport
+from api.routers.scheduler.channels import get_line_transport, get_telegram_transport
 
 router = APIRouter(tags=["scheduler"])
 for _part in (schedules, alerts, notifications, channels, email, strategy_watch):
     router.include_router(_part.router)
 
-__all__ = ["get_line_transport", "router"]
+__all__ = ["get_line_transport", "get_telegram_transport", "router"]
