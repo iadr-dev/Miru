@@ -61,6 +61,9 @@ class DeliveryReceipt(BaseModel):
     detail: str = ""
     # Device tokens the provider reported as permanently invalid; the worker unregisters them.
     stale_tokens: tuple[str, ...] = ()
+    # The provider says this recipient can never be reached again (a blocked bot, a deleted chat):
+    # the worker unlinks the channel so the account stops claiming it works.
+    address_gone: bool = False
 
 
 @runtime_checkable

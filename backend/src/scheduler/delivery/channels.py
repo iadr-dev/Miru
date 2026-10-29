@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import html
 import json
+from collections.abc import Callable
 from typing import Protocol, cast, runtime_checkable
 from urllib.parse import quote
 
@@ -78,14 +79,23 @@ def _text(notification: DeliveryNotification) -> str:
     return f"{notification.title}\n{notification.body}".strip()
 
 
-def _receipt(kind: DeliveryChannelKind, result: TransportResult) -> DeliveryReceipt:
-    logger.info("delivery_sent", channel=kind.value, ok=result.ok, status=result.status)
+def _receipt(
+    kind: DeliveryChannelKind, result: TransportResult, *, address_gone: bool = False
+) -> DeliveryReceipt:
+    logger.info(
+        "delivery_sent",
+        channel=kind.value,
+        ok=result.ok,
+        status=result.status,
+        address_gone=address_gone,
+    )
     return DeliveryReceipt(
         channel=kind,
         delivered=result.ok,
         retryable=result.retryable,
         provider_message_id=result.message_id,
         detail=result.detail,
+        address_gone=address_gone,
     )
 
 
@@ -146,6 +156,27 @@ class LineMessagingChannel:
         )
 
 
+_HTTP_BAD_REQUEST = 400
+_HTTP_FORBIDDEN = 403
+_CHAT_NOT_FOUND = "chat not found"
+
+
+def _never_gone(result: TransportResult) -> bool:
+    del result
+    return False
+
+
+def _telegram_chat_gone(result: TransportResult) -> bool:
+    """Telegram answers 403 when the user blocked or deleted the bot (or was deactivated) and 400
+    "chat not found" when the chat no longer exists. Neither ever recovers on its own; a 429, a 5xx
+    or a network failure says nothing about the chat and never counts."""
+    if result.ok or result.retryable:
+        return False
+    if result.status == _HTTP_FORBIDDEN:
+        return True
+    return result.status == _HTTP_BAD_REQUEST and _CHAT_NOT_FOUND in result.description.lower()
+
+
 class TelegramChannel:
     kind = DeliveryChannelKind.TELEGRAM
 
@@ -169,7 +200,12 @@ class TelegramChannel:
         self, notification: DeliveryNotification, recipient: DeliveryRecipient
     ) -> DeliveryReceipt:
         return await _post_json_send(
-            self, self._transport, notification, recipient, configured=bool(self._token)
+            self,
+            self._transport,
+            notification,
+            recipient,
+            configured=bool(self._token),
+            address_gone=_telegram_chat_gone,
         )
 
 
@@ -345,13 +381,14 @@ class _ShapedChannel(Protocol):
     ) -> OutboundRequest: ...
 
 
-async def _post_json_send(
+async def _post_json_send(  # noqa: PLR0913 — one argument per send dimension
     channel: _ShapedChannel,
     transport: OutboundTransport | None,
     notification: DeliveryNotification,
     recipient: DeliveryRecipient,
     *,
     configured: bool,
+    address_gone: Callable[[TransportResult], bool] = _never_gone,
 ) -> DeliveryReceipt:
     """Shared send path for the JSON-POST channels: build the real request (validating that the
     recipient is addressable), then send it — or, with no credential or transport, report a
@@ -364,7 +401,7 @@ async def _post_json_send(
         logger.info("delivery_shaped", channel=channel.kind.value, configured=configured)
         return DeliveryReceipt(channel=channel.kind, delivered=True, detail=_NO_NETWORK)
     result = await transport.post_json(request.url, headers=request.headers, body=request.json)
-    return _receipt(channel.kind, result)
+    return _receipt(channel.kind, result, address_gone=address_gone(result))
 
 
 def build_default_channels(

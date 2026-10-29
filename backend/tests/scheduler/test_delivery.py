@@ -6,8 +6,12 @@ from __future__ import annotations
 
 import json
 
+import httpx
+import pytest
+
+import scheduler.delivery.transport as transport_module
 from config.settings import Settings
-from scheduler.delivery.base import DeliveryNotification, DeliveryRecipient
+from scheduler.delivery.base import DeliveryNotification, DeliveryReceipt, DeliveryRecipient
 from scheduler.delivery.channels import (
     EmailChannel,
     InAppChannel,
@@ -15,8 +19,9 @@ from scheduler.delivery.channels import (
     PushChannel,
     TelegramChannel,
 )
-from scheduler.delivery.transport import TransportResult
+from scheduler.delivery.transport import HttpxTransport, TransportResult
 from scheduler.models import DeliveryChannelKind
+from tests.http_support import OwnedLease
 
 
 def _notification() -> DeliveryNotification:
@@ -268,3 +273,112 @@ async def test_no_unsubscribe_header_without_a_link() -> None:
         _notification(), DeliveryRecipient(user_id="u1", email_address="a@example.test")
     )
     assert "headers" not in transport.calls[0][2]
+
+
+_BLOCKED = "Forbidden: bot was blocked by the user"
+_CHAT_GONE = "Bad Request: chat not found"
+
+
+def _telegram_error(status: int, description: str) -> TransportResult:
+    return TransportResult(
+        ok=False, status=status, detail=f"http {status}", description=description
+    )
+
+
+async def _telegram_receipt(result: TransportResult) -> DeliveryReceipt:
+    channel = TelegramChannel(Settings(telegram_bot_token="bot-tok"), _FakeTransport(result))
+    return await channel.send(
+        _notification(), DeliveryRecipient(user_id="u1", telegram_chat_id="12345")
+    )
+
+
+@pytest.mark.parametrize(
+    ("status", "description"),
+    [(403, _BLOCKED), (403, "Forbidden: user is deactivated"), (400, _CHAT_GONE)],
+)
+async def test_a_blocked_bot_or_missing_chat_marks_the_telegram_address_gone(
+    status: int, description: str
+) -> None:
+    receipt = await _telegram_receipt(_telegram_error(status, description))
+    assert receipt.delivered is False
+    assert receipt.retryable is False
+    assert receipt.address_gone is True
+
+
+@pytest.mark.parametrize(
+    "result",
+    [
+        TransportResult(ok=False, status=429, retryable=True, description="Too Many Requests"),
+        TransportResult(ok=False, status=500, retryable=True),
+        TransportResult(ok=False, status=502, retryable=True),
+        TransportResult(ok=False, retryable=True, detail="network error"),
+        _telegram_error(400, "Bad Request: message is too long"),
+        _telegram_error(401, "Unauthorized"),
+        _telegram_error(404, "Not Found"),
+        TransportResult(ok=True, status=200),
+    ],
+)
+async def test_other_telegram_outcomes_never_mark_the_address_gone(
+    result: TransportResult,
+) -> None:
+    assert (await _telegram_receipt(result)).address_gone is False
+
+
+async def test_a_line_403_is_not_an_unlink_signal() -> None:
+    channel = LineMessagingChannel(
+        Settings(line_messaging_channel_access_token="tok"),
+        _FakeTransport(_telegram_error(403, _BLOCKED)),
+    )
+    receipt = await channel.send(
+        _notification(), DeliveryRecipient(user_id="u1", line_user_id="Uabc")
+    )
+    assert receipt.address_gone is False
+
+
+async def _post_through_httpx(
+    monkeypatch: pytest.MonkeyPatch, response: httpx.Response | Exception
+) -> TransportResult:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        if isinstance(response, Exception):
+            raise response
+        return response
+
+    monkeypatch.setattr(
+        transport_module,
+        "lease_client",
+        lambda **_: OwnedLease(httpx.AsyncClient(transport=httpx.MockTransport(handler))),
+    )
+    return await HttpxTransport().post_json(
+        "https://api.telegram.org/botX/sendMessage", headers={}, body={}
+    )
+
+
+async def test_the_transport_keeps_the_error_description_the_provider_sent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    body = {"ok": False, "error_code": 403, "description": _BLOCKED}
+    result = await _post_through_httpx(monkeypatch, httpx.Response(403, json=body))
+    assert (result.ok, result.status, result.retryable) == (False, 403, False)
+    assert result.description == _BLOCKED
+    assert result.detail == "http 403"
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        httpx.Response(403, content=b"<html>nope</html>"),
+        httpx.Response(403, json=["not", "an", "object"]),
+        httpx.Response(403, json={"description": 7}),
+    ],
+)
+async def test_an_unreadable_error_body_leaves_the_description_empty(
+    monkeypatch: pytest.MonkeyPatch, response: httpx.Response
+) -> None:
+    assert (await _post_through_httpx(monkeypatch, response)).description == ""
+
+
+async def test_a_network_failure_is_retryable_with_no_description(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result = await _post_through_httpx(monkeypatch, httpx.ConnectError("down"))
+    assert (result.ok, result.retryable, result.description) == (False, True, "")

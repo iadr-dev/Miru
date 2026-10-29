@@ -1111,6 +1111,9 @@ class SchedulerWorker:
     ) -> None:
         for token in receipt.stale_tokens:
             await store.unregister_device(user_id=user_id, token=token)
+        if receipt.address_gone:
+            await store.unlink_channel(user_id=user_id, channel=receipt.channel.value)
+            logger.info("delivery_channel_unlinked", channel=receipt.channel.value, user_id=user_id)
 
     def _log_receipt(self, receipt: DeliveryReceipt) -> None:
         logger.info(
