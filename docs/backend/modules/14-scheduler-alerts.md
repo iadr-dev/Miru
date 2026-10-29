@@ -382,8 +382,12 @@ without ranking or picking.
   stocks and ETFs (close, % change, TW ETF premium/discount), US trending and TW top gainers/losers,
   headlines (only market/economy headlines; any with trading language are dropped), and rule-based `flags` (VIX +15%, index
   ±2%, SOX ±3%, TSMC ADR ±3%, ETF premium beyond ±1%). A section that is empty, slow, gated or stale
-  is named in `unavailable` and written as 「N/A」 — nothing is estimated. Not provided: night-session
-  futures, DXY, pre-market movers, and (in a dev store) anything the ingest has not loaded. TAIEX comes
+  is named in `unavailable` and written as 「N/A」 — nothing is estimated. The TW table also
+  carries 台指期夜盤（近月）: the latest night session of the front-month TAIEX future (single-month
+  contract with the most volume; calendar-spread rows skipped), its close and % change against the
+  previous day-session settlement, dated by the day the session ended. It is stated as 「前一夜盤交易時段變動」,
+  is not a Top 3 Driver, has no flag, and is never worded as an implied open. Not provided: DXY,
+  pre-market movers, and (in a dev store) anything the ingest has not loaded. TAIEX comes
   from Yahoo daily bars because the vendor's intraday TAIEX dataset rejects our plan. Charts
   (`chart_hints`): US index moves, institution net flows, best/worst sectors, and the watchlist's
   five-day indexed lines. **Top 3 Drivers** are the three largest moves on a fixed scale (index 1%,

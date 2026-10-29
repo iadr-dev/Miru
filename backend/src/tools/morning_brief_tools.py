@@ -1,8 +1,9 @@
 """`get_morning_brief` — the data behind the 晨間摘要, assembled by code and handed to the model.
 
-One call gathers what a pre-open briefing needs — overnight US close, macro, TAIEX and the TSMC
-ADR, the three major institutions, breadth and sector moves, today's calendar, the user's own
-watchlist stocks/ETFs, and headlines — by running the existing single-purpose tools concurrently.
+One call gathers what a pre-open briefing needs — overnight US close, macro, TAIEX, the previous
+night's TAIEX futures session change and the TSMC ADR, the three major institutions, breadth and
+sector moves, today's calendar, the user's own watchlist stocks/ETFs, and headlines — by running the
+existing single-purpose tools concurrently.
 Each section is independent: if a source is empty, slow or sponsor-gated, that section is reported
 in `unavailable` and the rest still arrives, so the briefing says 「N/A」 instead of guessing.
 
@@ -145,6 +146,11 @@ def _us_overnight(data: Row | None, today: date) -> list[BriefRow]:
     ]
 
 
+_NIGHT_SESSION = "after_market"
+_CONTRACT_MONTH_DIGITS = 6
+_NIGHT_FUTURES_LABEL = "台指期夜盤（近月）"
+_TAIEX_FUTURE_ID = "TX"
+
 _STRIP_MACRO_KEYS = ("usd_twd", "jpy_twd", "gold", "crude_oil_wti", "crude_oil_brent")
 
 
@@ -173,6 +179,37 @@ def _otc(data: Row | None) -> BriefRow | None:
 def _taiex(data: Row | None) -> BriefRow:
     latest, before = _last_two(_rows(data, "bars"), "trade_date", "close")
     return _level("加權指數 TAIEX", latest, before, "前一交易日收盤" if latest else "")
+
+
+def _night_futures(data: Row | None, today: date) -> BriefRow | None:
+    """The latest night session of the front-month TAIEX future, as the previous night's change.
+
+    A night session is filed under the date it ended. Calendar-spread rows carry two contract
+    months and are skipped; among single-month contracts the busiest one is the front month.
+    """
+    cutoff = today.isoformat()
+    nights = [
+        r
+        for r in _rows(data, "rows")
+        if _str(r.get("trading_session")) == _NIGHT_SESSION
+        and len(_str(r.get("contract_date"))) == _CONTRACT_MONTH_DIGITS
+        and _str(r.get("contract_date")).isdigit()
+        and _str(r.get("trade_date")) <= cutoff
+        and _num(r.get("close")) is not None
+    ]
+    if not nights:
+        return None
+    day = max(_str(r.get("trade_date")) for r in nights)
+    front = max(
+        (r for r in nights if _str(r.get("trade_date")) == day),
+        key=lambda r: _num(r.get("volume")) or 0.0,
+    )
+    return BriefRow(
+        label=_NIGHT_FUTURES_LABEL,
+        text=_fmt(_num(front.get("close")), 0),
+        change_pct=_num(front.get("spread_per")),
+        note=f"{day} 較前一日盤結算",
+    )
 
 
 def _adr(data: Row | None) -> BriefRow:
@@ -566,16 +603,18 @@ class _Collector:
         self._router = router
         self.unavailable: list[str] = []
 
-    async def bars(self, label: str, symbol: str, market: Market, span: Row) -> Row | None:
-        """Daily bars for a symbol the ingest does not hold (the TAIEX index), via the router's
-        price capability — the same path the price tools use."""
+    async def fetch(
+        self, label: str, capability: Capability, symbol: str, market: Market, span: Row
+    ) -> Row | None:
+        """A capability read for data the ingest does not hold (the TAIEX index, the TAIEX
+        future), through the router — the same path the tools use."""
         if self._router is None:
             self.unavailable.append(f"{label}（暫時無法取得）")
             return None
         try:
             result = await asyncio.wait_for(
                 self._router.fetch(
-                    Capability.PRICE_EOD,
+                    capability,
                     Symbol(id=symbol, market=market),
                     tls_policy=self._ctx.tls_policy,
                     **span,
@@ -583,7 +622,7 @@ class _Collector:
                 timeout=_CALL_TIMEOUT_SECONDS,
             )
         except Exception:
-            logger.warning("morning_brief_bars_failed", symbol=symbol)
+            logger.warning("morning_brief_fetch_failed", capability=capability.value, symbol=symbol)
             self.unavailable.append(f"{label}（暫時無法取得）")
             return None
         return result.payload
@@ -618,11 +657,12 @@ class GetMorningBriefTool(BaseTool):
     description = (
         "Get the pre-computed data for the 晨間摘要 (morning briefing): US overnight close "
         "(S&P 500, Dow, Nasdaq, SOX, VIX, 10Y yield), macro (USD/TWD, gold, oil, Fear & Greed), "
-        "TAIEX and the TSMC ADR, three-institution net flows, breadth and sector moves, today's "
-        "macro calendar in Taipei and ET time, the user's own TW/US stocks and ETFs (close, % "
-        "change, ETF premium), US and TW movers, headlines, and rule-based unusual-condition "
-        "flags. Any missing section is listed in `unavailable` — write N/A, never estimate. The "
-        "result includes `report`, the finished 晨間摘要 text; reproduce it verbatim."
+        "TAIEX, the previous night's TAIEX futures session change and the TSMC ADR, "
+        "three-institution net flows, breadth and sector moves, today's macro calendar in Taipei "
+        "and ET time, the user's own TW/US stocks and ETFs (close, % change, ETF premium), US "
+        "and TW movers, headlines, and rule-based unusual-condition flags. Any missing section is "
+        "listed in `unavailable` — write N/A, never estimate. The result "
+        "includes `report`, the finished 晨間摘要 text; reproduce it verbatim."
     )
     input_model: type[BaseModel] = MorningBriefInput
     output_model: type[BaseModel] = GetMorningBriefOutput
@@ -651,7 +691,10 @@ class GetMorningBriefTool(BaseTool):
         plan: dict[str, Awaitable[Row | None]] = {
             "us_strip": c.call("美股夜盤與指數", "get_us_market_index_strip", {}),
             "macro": c.call("匯率、黃金與原油", "get_market_index_strip", {}),
-            "taiex": c.bars("加權指數", "^TWII", Market.US, span),
+            "taiex": c.fetch("加權指數", Capability.PRICE_EOD, "^TWII", Market.US, span),
+            "night": c.fetch(
+                _NIGHT_FUTURES_LABEL, Capability.FUTURES_DAILY, _TAIEX_FUTURE_ID, Market.TW, span
+            ),
             "adr": c.call(
                 "台積電 ADR", "get_international_stock", {"id": "TSM", "market": "US", **span}
             ),
@@ -703,9 +746,12 @@ class GetMorningBriefTool(BaseTool):
         tw_etf_hist, us_etf_hist = got["tw_etf_hist"], got["us_etf_hist"]
         us_rank, tw_mom, news = got["us_rank"], got["tw_mom"], got["news"]
         premiums = [got[f"premium:{e}"] for e in tw_etfs]
+        night = _night_futures(got["night"], today)
 
         us_rows = _us_overnight(us_strip, today)
         tw_rows = [_taiex(taiex), _adr(adr)]
+        if night is not None:
+            tw_rows.append(night)
         if (otc := _otc(macro)) is not None:
             tw_rows.append(otc)
         up, down = _sectors(sectors)
@@ -746,6 +792,8 @@ class GetMorningBriefTool(BaseTool):
             "三大法人": not inst,
             "類股漲跌": not up,
         }
+        if night is None and not any(g.startswith(_NIGHT_FUTURES_LABEL) for g in c.unavailable):
+            c.unavailable.append(f"{_NIGHT_FUTURES_LABEL}（來源無資料）")
         c.unavailable.extend(
             f"{name}（來源無資料）" for name, is_empty in empty.items() if is_empty
         )

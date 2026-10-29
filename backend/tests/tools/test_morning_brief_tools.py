@@ -3,14 +3,15 @@ flagged by rule, and nothing is estimated."""
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ConfigDict
 
+from governance.textscan import check_output
 from schemas.enums import DataClass, Tier
 from tools.base import ToolContext
-from tools.morning_brief_tools import GetMorningBriefTool, MorningBriefInput
+from tools.morning_brief_tools import GetMorningBriefTool, MorningBriefInput, _night_futures
 
 
 class _Any(BaseModel):
@@ -303,3 +304,107 @@ async def test_an_answering_news_source_with_no_items_is_not_reported_as_down() 
     result = await _run(_Registry(_Stub("get_news_feed", quiet)))
     gaps = " ".join(str(x) for x in result["unavailable"])  # type: ignore[attr-defined]
     assert "新聞標題（來源暫時無法取得）" not in gaps
+
+
+def _night(day: str, contract: str, close: float, pct: float, volume: int) -> dict[str, object]:
+    return {
+        "trade_date": day,
+        "contract_date": contract,
+        "trading_session": "after_market",
+        "close": close,
+        "spread_per": pct,
+        "volume": volume,
+    }
+
+
+def _day(day: str, contract: str, close: float, pct: float, volume: int) -> dict[str, object]:
+    return {**_night(day, contract, close, pct, volume), "trading_session": "position"}
+
+
+_TODAY = date(2026, 10, 29)
+
+
+def test_night_row_is_the_busiest_single_month_contract_of_the_latest_night_session() -> None:
+    data: dict[str, object] = {
+        "rows": [
+            _night("2026-10-27", "202611", 41000.0, 0.1, 9000),
+            _night("2026-10-28", "202611", 41500.0, 0.8, 52000),
+            _night("2026-10-28", "202612", 41400.0, 0.7, 3000),
+            _night("2026-10-28", "202611/202612", 100.0, 9.9, 99999),
+            _day("2026-10-28", "202611", 41300.0, 0.3, 120000),
+        ]
+    }
+    row = _night_futures(data, _TODAY)
+    assert row is not None
+    assert row.label == "台指期夜盤（近月）"
+    assert row.text == "41,500"
+    assert row.change_pct == 0.8
+    assert row.note == "2026-10-28 較前一日盤結算"
+
+
+def test_night_row_takes_the_last_available_day_when_calendar_days_are_missing() -> None:
+    data: dict[str, object] = {"rows": [_night("2026-10-23", "202611", 40800.0, -0.4, 5)]}
+    row = _night_futures(data, _TODAY)
+    assert row is not None
+    assert row.note.startswith("2026-10-23")
+
+
+def test_night_row_is_absent_without_night_rows() -> None:
+    only_day: dict[str, object] = {"rows": [_day("2026-10-28", "202611", 41300.0, 0.3, 1)]}
+    only_spread: dict[str, object] = {"rows": [_night("2026-10-28", "202611/202612", 5.0, 0.0, 1)]}
+    assert _night_futures(None, _TODAY) is None
+    assert _night_futures({"rows": []}, _TODAY) is None
+    assert _night_futures(only_day, _TODAY) is None
+    assert _night_futures(only_spread, _TODAY) is None
+
+
+def test_night_row_ignores_sessions_dated_after_today() -> None:
+    data: dict[str, object] = {"rows": [_night("2026-10-30", "202611", 41500.0, 0.8, 1)]}
+    assert _night_futures(data, _TODAY) is None
+
+
+class _TwRouter:
+    def __init__(self, futures: dict[str, object], *, futures_boom: bool = False) -> None:
+        self._futures = futures
+        self._futures_boom = futures_boom
+
+    async def fetch(self, cap: object, sym: object, **kwargs: object) -> object:
+        del sym, kwargs
+        if str(getattr(cap, "value", cap)) == "futures_daily":
+            if self._futures_boom:
+                raise RuntimeError("down")
+            return type("R", (), {"payload": self._futures})()
+        return type("R", (), {"payload": {}})()
+
+
+async def test_night_futures_row_lands_in_the_tw_table_and_passes_the_output_guardrails() -> None:
+    day = (datetime.now(ZoneInfo("Asia/Taipei")).date() - timedelta(days=1)).isoformat()
+    router = _TwRouter({"rows": [_night(day, "202611", 41500.0, 0.8, 52000)]})
+    tool = GetMorningBriefTool(_Registry(), router)  # type: ignore[arg-type]
+    out = await tool.run(MorningBriefInput(), ToolContext(tier=Tier.PRO))
+    night = next(r for r in out.tw_market if r.label == "台指期夜盤（近月）")  # type: ignore[attr-defined]
+    assert night.text == "41,500"
+    assert not any("台指期夜盤" in g for g in out.unavailable)  # type: ignore[attr-defined]
+    report: str = out.report  # type: ignore[attr-defined]
+    assert "| 台指期夜盤（近月） | 41,500 | +0.8% |" in report
+    verdict = check_output(report)
+    assert verdict.allowed
+    assert verdict.reason is None
+    assert verdict.redacted_text in (None, report)
+
+
+async def test_a_failing_futures_read_is_listed_once_and_the_rest_of_the_brief_survives() -> None:
+    router = _TwRouter({}, futures_boom=True)
+    tool = GetMorningBriefTool(_Registry(_strip()), router)  # type: ignore[arg-type]
+    out = await tool.run(MorningBriefInput(), ToolContext(tier=Tier.PRO))
+    gaps = [g for g in out.unavailable if "台指期夜盤" in g]  # type: ignore[attr-defined]
+    assert gaps == ["台指期夜盤（近月）（暫時無法取得）"]
+    assert not any(r.label == "台指期夜盤（近月）" for r in out.tw_market)  # type: ignore[attr-defined]
+    assert len(out.us_overnight) == 2  # type: ignore[arg-type]
+
+
+async def test_a_futures_read_without_night_rows_is_listed_as_empty() -> None:
+    router = _TwRouter({"rows": [_day("2026-10-28", "202611", 41300.0, 0.3, 1)]})
+    tool = GetMorningBriefTool(_Registry(), router)  # type: ignore[arg-type]
+    out = await tool.run(MorningBriefInput(), ToolContext(tier=Tier.PRO))
+    assert "台指期夜盤（近月）（來源無資料）" in out.unavailable  # type: ignore[attr-defined]

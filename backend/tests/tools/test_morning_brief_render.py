@@ -122,3 +122,12 @@ def test_a_rounding_to_zero_is_not_shown_as_negative_zero() -> None:
     text = render_morning_report(_brief(macro=(_row("美元/台幣", "31.80", -0.03),)))
     assert "-0.0%" not in text
     assert "| 美元/台幣 | 31.80 | 0.0% |" in text
+
+
+def test_the_night_futures_row_is_a_table_row_and_never_a_top_driver() -> None:
+    night = _row("台指期夜盤（近月）", "41,500", 25.0, "2026-10-04 較前一日盤結算")
+    brief = _brief(tw_market=(*_brief().tw_market, night))
+    text = render_morning_report(brief)
+    drivers = text.split("### Top 3 Drivers")[1].split("###")[0]
+    assert "台指期" not in drivers
+    assert "| 台指期夜盤（近月） | 41,500 | +25.0% | 2026-10-04 較前一日盤結算 |" in text
