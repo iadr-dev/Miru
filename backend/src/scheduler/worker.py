@@ -66,7 +66,7 @@ from scheduler.delivery.base import (
     DeliveryReceipt,
     DeliveryRecipient,
 )
-from scheduler.delivery.layout import Layout
+from scheduler.delivery.layout import Layout, render_text
 from scheduler.evaluator import Evaluation, SnapshotReader, SnapshotView, evaluate_condition
 from scheduler.models import (
     AlertPreference,
@@ -131,6 +131,7 @@ _DIGEST_FROM = time(8, 0)
 _DIGEST_UNTIL = time(12, 0)
 _DIGEST_LOOKBACK = timedelta(hours=24)
 _DIGEST_MAX_LINES = 8
+_LAYOUT_CHANNELS = frozenset({DeliveryChannelKind.TELEGRAM, DeliveryChannelKind.LINE})
 
 
 def _user_zone(name: str | None) -> ZoneInfo:
@@ -629,8 +630,10 @@ class SchedulerWorker:
         (it is silent) but external channels are only recorded as held; `release_held` sends them
         as one digest once the window closes.
 
-        `layout` is the structured twin of `body` (already scanned with it); only the Telegram row
-        stores it, so a retry sends the same layout and the inbox payload stays small."""
+        `layout` is the structured twin of `body`; only the Telegram and LINE rows store it, so a
+        retry sends the same layout and the inbox payload stays small. It reaches a channel only
+        if the text it renders passes the same output scan as the body."""
+        layout = _scanned_layout(layout)
         selected = _channel_order(channels)
         recipient = await self._recipient_for(store, user)
         for channel_kind in selected:
@@ -647,7 +650,7 @@ class SchedulerWorker:
                     body,
                     deep_link,
                     held=held,
-                    layout=layout if channel_kind is DeliveryChannelKind.TELEGRAM else None,
+                    layout=layout if channel_kind in _LAYOUT_CHANNELS else None,
                 ),
                 delivery_state="pending" if external else "sent",
             )
@@ -1527,9 +1530,17 @@ def _notification_payload(
     }
 
 
+def _scanned_layout(layout: Layout | None) -> Layout | None:
+    """`layout` if the text it renders passes the output scan, else None (plain text is sent)."""
+    if layout is None:
+        return None
+    clean = check_output(render_text(layout, NON_ADVICE_FOOTER), has_market_data=False).reason
+    return layout if clean is None else None
+
+
 def _stored_layout(raw: object) -> Layout | None:
-    """The layout a pending Telegram row was stored with, or None when it has none or the stored
-    shape no longer validates (the retry then sends the plain text)."""
+    """The layout a pending Telegram or LINE row was stored with, or None when it has none or the
+    stored shape no longer validates (the retry then sends the plain text)."""
     if not isinstance(raw, dict):
         return None
     try:
