@@ -15,11 +15,18 @@ from typing import cast
 
 from governance.textscan import check_output
 from schemas.alerts import NON_ADVICE_FOOTER
-from schemas.strategy_watch import CONDITION_NAME, STRATEGY_KEYS, STRATEGY_LABEL, phrase
+from schemas.strategy_watch import (
+    CONDITION_NAME,
+    STRATEGY_DEFINITION,
+    STRATEGY_KEYS,
+    STRATEGY_LABEL,
+    phrase,
+)
 
 Row = Mapping[str, object]
 
 MORNING_LIST_PER_STRATEGY = 5
+SECTOR_LINE_LIMIT = 3
 _MASKED_NOTE = "（盤中數值為 Premium 方案資料）"
 
 
@@ -55,6 +62,31 @@ def _key_level(row: Row) -> str:
     return f"20 日低點 {_number(row.get('low_20d'))}"
 
 
+def _definition(key: str) -> str:
+    text = STRATEGY_DEFINITION.get(key)
+    return f"{STRATEGY_LABEL.get(key, key)}：{text}" if text else ""
+
+
+def _sector_line(rows: Sequence[Row]) -> str:
+    """The industries on today's list by 20-session sector strength, with how many listed stocks
+    each holds. Built from the listed rows only, so it describes the list, not the market."""
+    stocks: dict[str, set[str]] = {}
+    strength: dict[str, float] = {}
+    for row in rows:
+        industry = row.get("industry")
+        if not isinstance(industry, str) or not industry:
+            continue
+        stocks.setdefault(industry, set()).add(str(row.get("symbol")))
+        value = row.get("sector_strength_pct")
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            strength[industry] = max(strength.get(industry, value), value)
+    ranked = sorted(stocks, key=lambda i: (-strength.get(i, -1.0), -len(stocks[i]), i))
+    shown = "、".join(
+        f"{i} {_number(strength.get(i))}（{len(stocks[i])} 檔）" for i in ranked[:SECTOR_LINE_LIMIT]
+    )
+    return f"清單類股 20 日強度（僅就清單內股票）：{shown}" if shown else ""
+
+
 def in_scope(
     rows: Iterable[Row], strategies: Sequence[str], members: frozenset[str] | None
 ) -> list[Row]:
@@ -86,12 +118,22 @@ def morning_list(rows: Sequence[Row], day: date) -> tuple[str, str] | None:
             else f" {len(group)} 檔"
         )
         lines.append(f"{STRATEGY_LABEL[key]}{more}：{shown}")
+    sector = _sector_line(rows)
+    definitions = [
+        _definition(key) for key in STRATEGY_KEYS if any(r.get("strategy") == key for r in rows)
+    ]
     regime = rows[0].get("regime")
     breadth = rows[0].get("breadth_pct")
     market = {"risk_on": "偏強", "neutral": "中性", "risk_off": "偏弱"}.get(str(regime))
     header = f"市場寬度 {_number(breadth)}%（{market}）" if market else ""
     body = "\n".join(
-        [*([header] if header else []), *lines, "盤中每 10 分鐘檢查一次，條件全數成立時通知你。"]
+        [
+            *([header] if header else []),
+            *lines,
+            *([sector] if sector else []),
+            *definitions,
+            "盤中每 10 分鐘檢查一次，條件全數成立時通知你。",
+        ]
     )
     return f"今日盯盤清單（{day.month}/{day.day}）", body
 
@@ -205,7 +247,8 @@ def hit_alert(hit: Row, watch: Row | None, *, masked: bool) -> tuple[str, str, s
             f"（連續兩次檢查）：{detail}"
         )
     context = _context(watch)
-    plain = "\n".join(p for p in (lead, context) if p)
+    definition = _definition(str(hit.get("strategy")))
+    plain = "\n".join(p for p in (lead, context, definition) if p)
     headline = watch.get("headline") if watch is not None else None
     full = f"{plain}\n今日重訊：{headline}" if isinstance(headline, str) and headline else plain
     return title, full, plain

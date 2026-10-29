@@ -560,7 +560,11 @@ preferences). `SchedulerWorker.run_strategy_watch` runs on every scheduler pass 
 stored `strategy_watchlist` and `strategy_hits` partitions (module 20 §5c):
 
 - **Morning list** once per trading day, before 13:30: each subscribed strategy's stocks with their
-  key level (上軌 / 下軌 / 20 日低點) and the market breadth.
+  key level (上軌 / 下軌 / 20 日低點) and the market breadth, then one 清單類股 20 日強度 line (the
+  top three industries among the listed rows by `sector_strength_pct`, with their listed-stock
+  counts; it describes the list only and is left out when no row has an industry), then one
+  definition line per strategy on the list (`STRATEGY_DEFINITION`, the fact form of the screen
+  rule). A condition alert ends with the definition of its own strategy.
 - **Condition alert** once per (stock, strategy, day) for the first slot the intraday check marked
   alertable, listing each condition with its observed and required value plus context (類股強度,
   法人 streaks, today's 重訊 subject). Slots from before a same-day subscription are not replayed;

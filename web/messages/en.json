@@ -4135,23 +4135,23 @@
     "strategies": {
       "volatility_squeeze": {
         "name": "Volatility squeeze",
-        "desc": "Bollinger bands at their narrowest in 120 sessions, waiting for a break above the upper band on volume."
+        "desc": "Bollinger band width in the narrowest 5% of the last 120 sessions, close above the 60-day average and still below the upper band."
       },
       "oversold_bounce": {
         "name": "Oversold bounce",
-        "desc": "A steep short-term drop with RSI low, watching for a white candle on light volume."
+        "desc": "Down 15% or more over 10 sessions, or closing below the lower Bollinger band, with RSI below 30."
       },
       "ad_divergence": {
         "name": "A/D divergence",
-        "desc": "Price near its 20-day low while the A/D line holds up."
+        "desc": "Close within 3% of the 20-day low and below its level 20 sessions ago, while the A/D line is above its level 20 sessions ago."
       },
       "chip_accumulation": {
         "name": "Chip accumulation",
-        "desc": "Price still in its range while institutions and large holders add and margin falls."
+        "desc": "20-day range no wider than 12%, institutions net buying, large-holder share up and margin balance down."
       },
       "momentum_flag": {
         "name": "Momentum flag",
-        "desc": "A tight pause on drying volume after a strong run, with shares still concentrating."
+        "desc": "A 3 to 7 session tight pause on lighter volume after a rise of at least 15%, with foreign investors net buying and large-holder share up."
       }
     },
     "table": {
