@@ -1,8 +1,8 @@
-import type { Notification } from "@/types/settings";
+import type { Notification, NotificationDeepLink, NotificationLayout } from "@/types/settings";
 
-/** A notification's `payload` is an open record on the wire (`{title, body, deep_link}` for alerts
- * and schedules). Read it defensively: anything missing or mistyped degrades to an empty string /
- * no link rather than throwing in the bell. Text is rendered as inert text — never as markup. */
+/** A notification's `payload` arrives typed (`title`, `body`, `deep_link`, `layout`, `footer`) and
+ * already degraded field by field by the schema. This turns it into what the bell draws. Text is
+ * rendered as inert text, never as markup. */
 
 export type NotificationView = {
   id: string;
@@ -12,47 +12,60 @@ export type NotificationView = {
   deliveredAt: string;
   /** In-app route (locale-less), or null when the notification has no usable deep link. */
   href: string | null;
+  /** The structured twin of `body`, or null to draw `title` and `body` as plain text. */
+  layout: NotificationLayout | null;
+  /** The non-advice footer a layout is shown under. */
+  footer: string;
 };
 
-function readText(payload: Record<string, unknown>, key: string): string {
-  const value = payload[key];
-  return typeof value === "string" ? value : "";
+function present(value: string | null | undefined): value is string {
+  return typeof value === "string" && value.trim() !== "";
 }
 
-/** `deep_link` is `{route, symbol?, strategy?, thread_id?}`. Only routes this app actually has are honoured;
- * an unknown route yields no link so a tap never lands on a dead page. */
-export function deepLinkHref(payload: Record<string, unknown>): string | null {
-  const link = payload.deep_link;
-  if (typeof link !== "object" || link === null) {
+/** Only routes this app actually has are honoured; one without what it needs yields no link so a
+ * tap never lands on a dead page. */
+export function deepLinkHref(link: NotificationDeepLink | null | undefined): string | null {
+  if (!link) {
     return null;
   }
-  const { route, symbol, strategy, thread_id: threadId } = link as Record<string, unknown>;
   // A 策略盯盤 notification opens the watch page, on its stock and strategy when it names one.
-  if (route === "watch") {
+  if (link.route === "watch") {
     const search = new URLSearchParams();
-    if (typeof symbol === "string" && symbol.trim() !== "") search.set("symbol", symbol);
-    if (typeof strategy === "string" && strategy.trim() !== "") search.set("strategy", strategy);
+    if (present(link.symbol)) search.set("symbol", link.symbol);
+    if (present(link.strategy)) search.set("strategy", link.strategy);
     const query = search.toString();
     return query ? `/watch?${query}` : "/watch";
   }
-  if (route === "stock" && typeof symbol === "string" && symbol.trim() !== "") {
-    return `/stock/${encodeURIComponent(symbol)}`;
+  if (link.route === "stock" && present(link.symbol)) {
+    return `/stock/${encodeURIComponent(link.symbol)}`;
   }
   // A schedule's notification points at the one thread every run of it is appended to.
-  if (route === "thread" && typeof threadId === "string" && threadId.trim() !== "") {
-    return `/chat?thread=${encodeURIComponent(threadId)}`;
+  if (link.route === "thread" && present(link.thread_id)) {
+    return `/chat?thread=${encodeURIComponent(link.thread_id)}`;
   }
   return null;
 }
 
+/** A layout with nothing to show is no layout: the plain body is shown instead. */
+function usableLayout(layout: NotificationLayout | null | undefined): NotificationLayout | null {
+  if (!layout) {
+    return null;
+  }
+  const blocks = layout.blocks.filter((block) => block.head !== "" || block.lines.length > 0);
+  return blocks.length > 0 ? { blocks } : null;
+}
+
 export function toNotificationView(notification: Notification): NotificationView {
+  const { payload } = notification;
   return {
     id: notification.id,
-    title: readText(notification.payload, "title"),
-    body: readText(notification.payload, "body"),
+    title: payload.title,
+    body: payload.body,
     unread: notification.read_at === null,
     deliveredAt: notification.delivered_at,
-    href: deepLinkHref(notification.payload),
+    href: deepLinkHref(payload.deep_link),
+    layout: usableLayout(payload.layout),
+    footer: payload.footer,
   };
 }
 

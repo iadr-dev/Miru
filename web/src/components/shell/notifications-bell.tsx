@@ -1,28 +1,33 @@
 "use client";
 
 import { BellIcon } from "@phosphor-icons/react";
-import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import * as Popover from "@radix-ui/react-popover";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useFormatter, useTranslations } from "next-intl";
+import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 import { useRouter } from "@/i18n/navigation";
 import { getNotificationBadge, listNotifications, markNotificationsRead } from "@/lib/api/settings";
 import { cn } from "@/lib/cn";
 import { FRESHNESS } from "@/lib/freshness";
-import { parseServerDate } from "@/lib/parse-server-date";
 import { badgeLabel, type NotificationView, toNotificationView } from "./notification-payload";
+import { NotificationRow } from "./notification-row";
 
 const BADGE_KEY = ["notifications", "badge"] as const;
 const LIST_KEY = ["notifications", "list"] as const;
 const INBOX_LIMIT = 20;
+const FOOTER_ACTION = cn(
+  "!outline-none inline-flex min-h-11 items-center rounded-[var(--radius-button)] px-3 text-[13px]",
+  "hover:bg-[var(--surface-2)] focus-visible:ring-2 focus-visible:ring-[var(--accent)]",
+);
 
 /** Notification inbox. The unread count comes from the badge
  * endpoint and refreshes on window focus only — no polling interval. The list loads when the menu
- * opens. Radix `DropdownMenu` gives `Esc`-close and focus-return-to-trigger for free. Notification
- * text renders as inert text; the non-advice footer rides inside each body. */
+ * opens. Radix `Popover` gives `Esc`-close and focus-return-to-trigger for free; it is a popover
+ * and not a menu because an entry can hold a disclosure (a folded list) that must stay
+ * keyboard-reachable. Notification text renders as inert text; the non-advice footer rides inside
+ * each body, or under a layout. */
 export function NotificationsBell(): ReactNode {
   const t = useTranslations("shell.notifications");
-  const format = useFormatter();
   const router = useRouter();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -57,13 +62,14 @@ export function NotificationsBell(): ReactNode {
       markRead.mutate({ ids: [item.id] });
     }
     if (item.href) {
+      setOpen(false);
       router.push(item.href);
     }
   };
 
   return (
-    <DropdownMenu.Root open={open} onOpenChange={setOpen}>
-      <DropdownMenu.Trigger asChild>
+    <Popover.Root open={open} onOpenChange={setOpen}>
+      <Popover.Trigger asChild>
         <button
           type="button"
           aria-label={unread > 0 ? t("unread", { count: unread }) : t("label")}
@@ -88,70 +94,53 @@ export function NotificationsBell(): ReactNode {
             </span>
           ) : null}
         </button>
-      </DropdownMenu.Trigger>
-      <DropdownMenu.Portal>
-        <DropdownMenu.Content
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content
           side="bottom"
           align="end"
           sideOffset={8}
+          collisionPadding={8}
+          aria-label={t("label")}
           className={cn(
-            "z-50 w-80 rounded-[var(--radius-card)] border border-[var(--border)]",
+            "z-50 flex w-[22rem] max-w-[calc(100vw-1rem)] flex-col overflow-hidden",
+            "max-h-[min(var(--radix-popover-content-available-height),36rem)]",
+            "rounded-[var(--radius-card)] border border-[var(--border)]",
             "bg-[var(--surface)] shadow-lg",
           )}
         >
           {items.length === 0 ? (
             <p className="p-4 text-center text-[var(--text-muted)] text-sm">{t("empty")}</p>
           ) : (
-            <ul className="max-h-96 divide-y divide-[var(--border)] overflow-y-auto">
+            <ul className="min-h-0 divide-y divide-[var(--border)] overflow-y-auto overscroll-contain">
               {items.map((item) => (
-                <li key={item.id}>
-                  <DropdownMenu.Item
-                    onSelect={() => openItem(item)}
-                    className={cn(
-                      "!outline-none flex cursor-pointer flex-col gap-1 px-4 py-3",
-                      "data-[highlighted]:bg-[var(--surface-2)]",
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        "text-[13px] text-[var(--text)]",
-                        item.unread ? "font-semibold" : "font-normal",
-                      )}
-                    >
-                      {item.title}
-                    </span>
-                    <span className="whitespace-pre-line text-[12px] text-[var(--text-muted)]">
-                      {item.body}
-                    </span>
-                    <span className="font-num text-[11px] text-[var(--text-muted)]">
-                      {format.dateTime(parseServerDate(item.deliveredAt), {
-                        dateStyle: "medium",
-                        timeStyle: "short",
-                      })}
-                    </span>
-                  </DropdownMenu.Item>
-                </li>
+                <NotificationRow key={item.id} item={item} onOpen={openItem} />
               ))}
             </ul>
           )}
-          <div className="flex items-center justify-between gap-2 border-[var(--border)] border-t px-2 py-1">
-            <DropdownMenu.Item
-              onSelect={() => router.push("/settings/alerts")}
-              className="!outline-none min-h-11 cursor-pointer rounded-[var(--radius-button)] px-3 text-[13px] text-[var(--text-muted)] data-[highlighted]:bg-[var(--surface-2)]"
+          <div className="flex shrink-0 items-center justify-between gap-2 border-[var(--border)] border-t px-2 py-1">
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                router.push("/settings/alerts");
+              }}
+              className={cn(FOOTER_ACTION, "text-[var(--text-muted)]")}
             >
-              <span className="inline-flex min-h-11 items-center">{t("manage")}</span>
-            </DropdownMenu.Item>
+              {t("manage")}
+            </button>
             {unread > 0 ? (
-              <DropdownMenu.Item
-                onSelect={() => markRead.mutate({ all: true })}
-                className="!outline-none min-h-11 cursor-pointer rounded-[var(--radius-button)] px-3 text-[13px] text-[var(--accent-text)] data-[highlighted]:bg-[var(--surface-2)]"
+              <button
+                type="button"
+                onClick={() => markRead.mutate({ all: true })}
+                className={cn(FOOTER_ACTION, "text-[var(--accent-text)]")}
               >
-                <span className="inline-flex min-h-11 items-center">{t("markAllRead")}</span>
-              </DropdownMenu.Item>
+                {t("markAllRead")}
+              </button>
             ) : null}
           </div>
-        </DropdownMenu.Content>
-      </DropdownMenu.Portal>
-    </DropdownMenu.Root>
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
   );
 }

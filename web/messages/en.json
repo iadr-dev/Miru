@@ -897,7 +897,9 @@
       "empty": "No notifications yet",
       "markAllRead": "Mark all as read",
       "manage": "Manage alerts",
-      "unread": "{count} unread notifications"
+      "unread": "{count} unread notifications",
+      "unreadItem": "Unread",
+      "foldCount": "{count} items"
     },
     "tier": {
       "free": "Free",

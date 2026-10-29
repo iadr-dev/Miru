@@ -407,6 +407,40 @@ export const alertsResponseSchema = z.object({
 
 export const NOTIFICATION_SOURCES = ["schedule", "alert", "digest"] as const;
 
+export const layoutBlockSchema = z.object({
+  head: z.string(),
+  lines: z.array(z.string()),
+  fold: z.boolean(),
+});
+
+/** `Layout` from `backend/src/scheduler/delivery/layout.py`: the blocks a notification is drawn
+ * from. A stored layout the server could not read is sent as `null`, and one this schema cannot
+ * read also degrades to `null`, so the bell then shows the plain body. */
+export const layoutSchema = z.object({ blocks: z.array(layoutBlockSchema) });
+export type NotificationLayout = z.infer<typeof layoutSchema>;
+
+export const NOTIFICATION_ROUTES = ["stock", "thread", "watch", "notifications"] as const;
+
+export const deepLinkSchema = z.object({
+  route: z.enum(NOTIFICATION_ROUTES),
+  symbol: z.string().nullable().optional(),
+  strategy: z.string().nullable().optional(),
+  thread_id: z.string().nullable().optional(),
+});
+export type NotificationDeepLink = z.infer<typeof deepLinkSchema>;
+
+/** `NotificationPayload` from `backend/src/scheduler/notification_payload.py`. Each field falls
+ * back to a plain default when it is missing or mistyped, so one odd row never blanks the bell. */
+export const notificationPayloadSchema = z.object({
+  title: z.string().catch(""),
+  body: z.string().catch(""),
+  deep_link: deepLinkSchema.nullable().optional().catch(null),
+  held: z.boolean().catch(false),
+  layout: layoutSchema.nullable().optional().catch(null),
+  footer: z.string().catch(""),
+});
+export type NotificationPayload = z.infer<typeof notificationPayloadSchema>;
+
 export const notificationSchema = z.object({
   id: z.string(),
   user_id: z.string(),
@@ -414,7 +448,7 @@ export const notificationSchema = z.object({
   source_id: z.string(),
   channel: z.enum(DELIVERY_CHANNEL_KINDS),
   dedupe_key: z.string(),
-  payload: z.record(z.string(), z.unknown()).default({}),
+  payload: notificationPayloadSchema,
   delivered_at: z.string(),
   read_at: z.string().nullable(),
 });
