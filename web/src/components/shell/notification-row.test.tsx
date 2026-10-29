@@ -128,6 +128,24 @@ describe("NotificationRow with a layout", () => {
   });
 });
 
+describe("NotificationRow whose first block is a fold with a head", () => {
+  const foldFirst = {
+    title: "今日盯盤清單",
+    body: "…",
+    layout: { blocks: [{ head: "波動壓縮", lines: ["2330", "2317"], fold: true }] },
+    footer: FOOTER,
+  };
+
+  it("still has exactly one open button, labelled with the title", () => {
+    const onOpen = renderRow(view(foldFirst));
+    const buttons = screen.getAllByRole("button");
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0]?.textContent).toBe("今日盯盤清單");
+    fireEvent.click(buttons[0] as HTMLElement);
+    expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("NotificationRow without a usable layout", () => {
   it("falls back to the title and the plain body", () => {
     const item = view({ title: "排程摘要", body: `一行\n二行\n${FOOTER}` });

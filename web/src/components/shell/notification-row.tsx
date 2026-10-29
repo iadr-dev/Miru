@@ -98,10 +98,11 @@ export function NotificationRow({
   const format = useFormatter();
   const open = (): void => onOpen(item);
   const blocks = item.layout?.blocks ?? [];
-  const leadHead = blocks[0]?.head ?? "";
+  const first = blocks[0];
+  const headLeads = first !== undefined && !first.fold && first.head !== "";
   const openButton = (
     <button type="button" onClick={open} className={cn(OPEN_BUTTON, "font-semibold")}>
-      {leadHead || item.title}
+      {headLeads ? first.head : item.title}
     </button>
   );
 
@@ -115,7 +116,7 @@ export function NotificationRow({
       <div className="flex min-w-0 flex-1 flex-col gap-2">
         {item.layout ? (
           <>
-            {leadHead ? null : openButton}
+            {headLeads ? null : openButton}
             {keyed(blocks, (b) => `${b.head}|${b.lines.length}|${b.fold}`).map(
               ({ key, item: block }) =>
                 block.fold ? (
@@ -124,7 +125,7 @@ export function NotificationRow({
                   <PlainBlock
                     key={key}
                     block={block}
-                    lead={block === blocks[0] && leadHead ? openButton : null}
+                    lead={block === first && headLeads ? openButton : null}
                   />
                 ),
             )}
