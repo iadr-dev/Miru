@@ -7,16 +7,21 @@ string reaches the HTML through `html.escape`, so the markup is limited to `<b>`
 `<blockquote expandable>` and can never be broken by a stock name containing `&`, `<` or `>`.
 
 Trimming works on the blocks and renders afterwards, so a cut can never land inside a tag or an
-entity, and the footer is rendered last whatever is dropped.
+entity, and the footer is rendered last whatever is dropped. LINE gets `render_text`: the same
+blocks, blank lines between them, no markup.
 """
 
 from __future__ import annotations
 
 import html
+from collections.abc import Callable
 
 from pydantic import BaseModel, ConfigDict
 
 TELEGRAM_MAX_UNITS = 4096
+LINE_MAX_UNITS = 5000
+LINE_FOLD_LINES = 3
+LINE_FOLD_MORE = "…（其餘請見 Miru）"
 _BLOCK_GAP = "\n\n"
 
 
@@ -64,17 +69,14 @@ def render_text(layout: Layout, footer: str) -> str:
     return _BLOCK_GAP.join([*(p for p in parts if p), footer])
 
 
-def fit_html(
-    layout: Layout, footer: str, *, pointer: str, limit: int = TELEGRAM_MAX_UNITS
+def _fit(
+    layout: Layout, footer: str, *, pointer: str, limit: int, render: Callable[[Layout, str], str]
 ) -> str | None:
-    """The HTML within `limit` UTF-16 units (tags and entities counted, so it is conservative), or
-    None when even the first block alone does not fit. Lines are dropped from the end of the last
-    block, then empty blocks, with `pointer` marking the cut; the first block and footer stay."""
     blocks = list(layout.blocks)
     trimmed = False
     while True:
         shown = (*blocks, LayoutBlock(lines=(pointer,))) if trimmed else tuple(blocks)
-        text = render_html(Layout(blocks=shown), footer)
+        text = render(Layout(blocks=shown), footer)
         if utf16_units(text) <= limit:
             return text
         if not blocks:
@@ -89,11 +91,46 @@ def fit_html(
         trimmed = True
 
 
+def fit_html(
+    layout: Layout, footer: str, *, pointer: str, limit: int = TELEGRAM_MAX_UNITS
+) -> str | None:
+    """The HTML within `limit` UTF-16 units (tags and entities counted, so it is conservative), or
+    None when even the first block alone does not fit. Lines are dropped from the end of the last
+    block, then empty blocks, with `pointer` marking the cut; the first block and footer stay."""
+    return _fit(layout, footer, pointer=pointer, limit=limit, render=render_html)
+
+
+def line_view(layout: Layout) -> Layout:
+    """The layout as LINE shows it. LINE text has no expandable quote, so a folded block becomes a
+    normal one, cut to `LINE_FOLD_LINES` lines (marked with `LINE_FOLD_MORE`) to stay short."""
+    blocks: list[LayoutBlock] = []
+    for block in layout.blocks:
+        if not block.fold:
+            blocks.append(block)
+            continue
+        cut = len(block.lines) > LINE_FOLD_LINES
+        lines = (*block.lines[:LINE_FOLD_LINES], *((LINE_FOLD_MORE,) if cut else ()))
+        blocks.append(LayoutBlock(head=block.head, lines=lines))
+    return Layout(blocks=tuple(blocks))
+
+
+def fit_text(
+    layout: Layout, footer: str, *, pointer: str, limit: int = LINE_MAX_UNITS
+) -> str | None:
+    """The LINE text within `limit` UTF-16 units, trimmed the way `fit_html` trims."""
+    return _fit(line_view(layout), footer, pointer=pointer, limit=limit, render=render_text)
+
+
 __all__ = [
+    "LINE_FOLD_LINES",
+    "LINE_FOLD_MORE",
+    "LINE_MAX_UNITS",
     "TELEGRAM_MAX_UNITS",
     "Layout",
     "LayoutBlock",
     "fit_html",
+    "fit_text",
+    "line_view",
     "render_html",
     "render_text",
     "utf16_units",

@@ -24,7 +24,7 @@ class DeliveryNotification(BaseModel):
     """The channel-agnostic notification a `DeliveryChannel` renders. `deep_link` mirrors the
     native-push payload shape so a tap resolves to the right surface; non-push channels ignore
     it or embed it as a URL. `layout` is the optional structured twin of `body` for a channel that
-    can lay a message out (Telegram); every other channel sends `title`/`body` as before."""
+    can lay a message out (Telegram, LINE); the others send `title`/`body` as before."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 

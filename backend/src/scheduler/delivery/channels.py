@@ -33,7 +33,13 @@ from scheduler.delivery.base import (
     DeliveryReceipt,
     DeliveryRecipient,
 )
-from scheduler.delivery.layout import fit_html
+from scheduler.delivery.layout import (
+    LINE_MAX_UNITS,
+    TELEGRAM_MAX_UNITS,
+    fit_html,
+    fit_text,
+    utf16_units,
+)
 from scheduler.delivery.push_endpoint import subscription_endpoint_allowed
 from scheduler.delivery.transport import (
     HttpxTransport,
@@ -80,6 +86,17 @@ def _text(notification: DeliveryNotification) -> str:
     return f"{notification.title}\n{notification.body}".strip()
 
 
+def _line_text(notification: DeliveryNotification) -> str:
+    """The LINE text: the layout as markup-free text when there is one (and it fits), else the
+    title and body, either way within LINE's 5000 characters."""
+    laid_out = (
+        fit_text(notification.layout, NON_ADVICE_FOOTER, pointer=_TRIM_POINTER)
+        if notification.layout is not None
+        else None
+    )
+    return laid_out if laid_out is not None else _fit_plain(_text(notification), LINE_MAX_UNITS)
+
+
 def _receipt(
     kind: DeliveryChannelKind, result: TransportResult, *, address_gone: bool = False
 ) -> DeliveryReceipt:
@@ -120,9 +137,48 @@ class InAppChannel:
         return DeliveryReceipt(channel=self.kind, delivered=True)
 
 
+_OPEN_IN_APP = "在 Miru 開啟"
+_TRIM_POINTER = "…（完整內容請見 Miru）"
+
+
+def _fit_plain(text: str, limit: int) -> str:
+    """`text` as one message within `limit` UTF-16 code units (an emoji is two; Telegram allows
+    4096, LINE 5000). A longer text is cut at a line boundary, then a pointer to the full content
+    and the non-advice footer, which always survives the cut, are appended."""
+    if utf16_units(text) <= limit:
+        return text
+    has_footer = NON_ADVICE_FOOTER in text
+    head = text.replace(NON_ADVICE_FOOTER, "").rstrip() if has_footer else text
+    tail = f"\n{_TRIM_POINTER}\n{NON_ADVICE_FOOTER}" if has_footer else f"\n{_TRIM_POINTER}"
+    budget = limit - utf16_units(tail)
+    kept: list[str] = []
+    used = 0
+    for line in head.split("\n"):
+        cost = utf16_units(line) + (1 if kept else 0)
+        if used + cost > budget:
+            break
+        kept.append(line)
+        used += cost
+    if not kept:
+        kept.append(_cut_units(head, budget))
+    return "\n".join(kept).rstrip() + tail
+
+
+def _cut_units(text: str, budget: int) -> str:
+    """The longest prefix of `text` within `budget` UTF-16 units, never splitting a character."""
+    used = 0
+    for index, char in enumerate(text):
+        used += utf16_units(char)
+        if used > budget:
+            return text[:index]
+    return text
+
+
 class LineMessagingChannel:
     """LINE Messaging API push. Distinct credential from LINE Login — this is the outbound
-    Messaging channel access token, never the sign-in channel secret."""
+    Messaging channel access token, never the sign-in channel secret. One text message: a
+    notification with a `layout` goes as its markup-free text, anything else as title and body,
+    both cut to LINE's 5000-character limit."""
 
     kind = DeliveryChannelKind.LINE
     _PUSH_URL = "https://api.line.me/v2/bot/message/push"
@@ -145,7 +201,7 @@ class LineMessagingChannel:
             },
             json={
                 "to": recipient.line_user_id,
-                "messages": [{"type": "text", "text": _text(notification)}],
+                "messages": [{"type": "text", "text": _line_text(notification)}],
             },
         )
 
@@ -161,48 +217,6 @@ _HTTP_BAD_REQUEST = 400
 _HTTP_FORBIDDEN = 403
 _CHAT_NOT_FOUND = "chat not found"
 _PARSE_ERROR = "parse entities"
-
-
-_TELEGRAM_MAX_UNITS = 4096
-_OPEN_IN_APP = "在 Miru 開啟"
-_TRIM_POINTER = "…（完整內容請見 Miru）"
-
-
-def _utf16_units(text: str) -> int:
-    return len(text.encode("utf-16-le")) // 2
-
-
-def _fit_telegram(text: str) -> str:
-    """`text` as one Telegram message. Telegram rejects more than 4096 UTF-16 code units (an emoji
-    is two), so a longer text is cut at a line boundary, then a pointer to the full content and the
-    non-advice footer, which always survives the cut, are appended."""
-    if _utf16_units(text) <= _TELEGRAM_MAX_UNITS:
-        return text
-    has_footer = NON_ADVICE_FOOTER in text
-    head = text.replace(NON_ADVICE_FOOTER, "").rstrip() if has_footer else text
-    tail = f"\n{_TRIM_POINTER}\n{NON_ADVICE_FOOTER}" if has_footer else f"\n{_TRIM_POINTER}"
-    budget = _TELEGRAM_MAX_UNITS - _utf16_units(tail)
-    kept: list[str] = []
-    used = 0
-    for line in head.split("\n"):
-        cost = _utf16_units(line) + (1 if kept else 0)
-        if used + cost > budget:
-            break
-        kept.append(line)
-        used += cost
-    if not kept:
-        kept.append(_cut_units(head, budget))
-    return "\n".join(kept).rstrip() + tail
-
-
-def _cut_units(text: str, budget: int) -> str:
-    """The longest prefix of `text` within `budget` UTF-16 units, never splitting a character."""
-    used = 0
-    for index, char in enumerate(text):
-        used += _utf16_units(char)
-        if used > budget:
-            return text[:index]
-    return text
 
 
 def _never_gone(result: TransportResult) -> bool:
@@ -261,7 +275,9 @@ class TelegramChannel:
         )
         payload: dict[str, object] = {
             "chat_id": recipient.telegram_chat_id,
-            "text": html_text if html_text is not None else _fit_telegram(_text(notification)),
+            "text": html_text
+            if html_text is not None
+            else _fit_plain(_text(notification), TELEGRAM_MAX_UNITS),
         }
         if html_text is not None:
             payload["parse_mode"] = "HTML"
