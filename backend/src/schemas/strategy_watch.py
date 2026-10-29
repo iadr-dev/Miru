@@ -29,6 +29,14 @@ STRATEGY_LABEL: Final[dict[str, str]] = {
     "momentum_flag": "強勢整理",
 }
 
+STRATEGY_DEFINITION: Final[dict[str, str]] = {
+    "volatility_squeeze": "布林通道寬度收斂到近 120 日最窄的 5%，收盤在季線之上、仍低於上軌。",
+    "oversold_bounce": "10 日跌幅達 15% 或收在布林下軌之下，且 RSI 低於 30。",
+    "ad_divergence": "收盤在 20 日低點 3% 以內且低於 20 日前，A/D 線卻高於 20 日前。",
+    "chip_accumulation": "20 日區間寬度在 12% 以內，法人淨買、千張大戶持股上升、融資減少。",
+    "momentum_flag": "前段上漲至少 15% 後窄幅整理 3 至 7 日且量縮，外資淨買、千張大戶持股上升。",
+}
+
 # `{o}` is the observed value, `{r}` the level it was compared with.
 CONDITION_PHRASE: Final[dict[str, str]] = {
     "price_above_upper_band": "價格 {o} 高於布林上軌 {r}",
@@ -85,6 +93,7 @@ def _number(value: float | None) -> str:
 __all__ = [
     "CONDITION_NAME",
     "CONDITION_PHRASE",
+    "STRATEGY_DEFINITION",
     "STRATEGY_KEYS",
     "STRATEGY_LABEL",
     "StrategyKey",

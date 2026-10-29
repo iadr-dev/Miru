@@ -17,6 +17,7 @@ from scheduler.strategy_messages import hit_alert, morning_list, safe_body
 from scheduler.strategy_store import STRATEGY_SOURCE_PREFIX, StrategySubscriptionStore
 from schemas.alerts import NON_ADVICE_FOOTER
 from schemas.enums import Tier
+from schemas.strategy_watch import STRATEGY_DEFINITION, STRATEGY_KEYS
 from tests.scheduler.conftest import insert_user
 from tests.scheduler.test_alert_engine import FakeReader, make_worker
 
@@ -392,3 +393,70 @@ def test_flag_listing_states_the_pause_and_a_margin_surge() -> None:
     assert "融資 20 日 +33.0%，增幅偏大（散戶融資追價）" in text
     assert "整理區下緣 59.2" in text
     assert check_output(text, has_market_data=False).reason is None
+
+
+def test_morning_list_defines_each_listed_strategy_once() -> None:
+    listing = morning_list(
+        [_watch("2330"), _watch("2454"), _watch("2317", "ad_divergence")],
+        _DAY,
+    )
+    assert listing is not None
+    body = listing[1]
+    assert body.count(f"波動率擠壓：{STRATEGY_DEFINITION['volatility_squeeze']}") == 1
+    assert f"量價背離：{STRATEGY_DEFINITION['ad_divergence']}" in body
+    assert "超跌反彈：" not in body
+
+
+def test_morning_list_ranks_industries_on_the_list_only() -> None:
+    def row(symbol: str, industry: str | None, strength: float | None) -> dict[str, object]:
+        return {**_watch(symbol), "industry": industry, "sector_strength_pct": strength}
+
+    rows = [
+        row("2330", "半導體業", 92.0),
+        row("2454", "半導體業", 92.0),
+        row("2603", "航運業", 40.0),
+        row("2412", "電信業", 55.5),
+        row("1101", "水泥工業", 10.0),
+        row("9999", None, None),
+        row("8888", "無強度業", None),
+    ]
+    listing = morning_list(rows, _DAY)
+    assert listing is not None
+    sector = next(line for line in listing[1].splitlines() if line.startswith("清單類股"))
+    assert "半導體業 92（2 檔）、電信業 55.5（1 檔）、航運業 40（1 檔）" in sector
+    assert "水泥工業" not in sector
+    assert "無強度業" not in sector
+    assert "僅就清單內" in sector
+
+
+def test_morning_list_skips_the_sector_line_without_industries() -> None:
+    rows = [{**_watch("2330"), "industry": None, "sector_strength_pct": None}]
+    listing = morning_list(rows, _DAY)
+    assert listing is not None
+    assert "清單類股" not in listing[1]
+
+
+def test_hit_alert_carries_the_definition_of_its_own_strategy_only() -> None:
+    _, body, plain = hit_alert(_hit("2330", "09:50"), _watch("2330"), masked=False)
+    definition = f"波動率擠壓：{STRATEGY_DEFINITION['volatility_squeeze']}"
+    assert definition in body
+    assert definition in plain
+    assert "超跌反彈：" not in body
+
+
+def test_every_strategy_body_passes_the_output_scan() -> None:
+    watches = [_watch(f"{2300 + i}", key) for i, key in enumerate(STRATEGY_KEYS)]
+    listing = morning_list(watches, _DAY)
+    assert listing is not None
+    bodies = [listing[1]]
+    for watch in watches:
+        hit = {**_hit(str(watch["symbol"]), "09:50"), "strategy": watch["strategy"]}
+        for masked in (False, True):
+            _, body, plain = hit_alert(hit, watch, masked=masked)
+            bodies.extend([body, plain])
+    for body in bodies:
+        text = safe_body(body, body, "fallback")
+        assert text.endswith(NON_ADVICE_FOOTER)
+        assert "fallback" not in text
+        assert check_output(text, has_market_data=False).reason is None
+    assert set(STRATEGY_DEFINITION) == set(STRATEGY_KEYS)
