@@ -33,6 +33,7 @@ from scheduler.delivery.base import (
     DeliveryReceipt,
     DeliveryRecipient,
 )
+from scheduler.delivery.layout import fit_html
 from scheduler.delivery.push_endpoint import subscription_endpoint_allowed
 from scheduler.delivery.transport import (
     HttpxTransport,
@@ -159,6 +160,7 @@ class LineMessagingChannel:
 _HTTP_BAD_REQUEST = 400
 _HTTP_FORBIDDEN = 403
 _CHAT_NOT_FOUND = "chat not found"
+_PARSE_ERROR = "parse entities"
 
 
 _TELEGRAM_MAX_UNITS = 4096
@@ -219,7 +221,24 @@ def _telegram_chat_gone(result: TransportResult) -> bool:
     return result.status == _HTTP_BAD_REQUEST and _CHAT_NOT_FOUND in result.description.lower()
 
 
+def _no_retry(result: TransportResult) -> OutboundRequest | None:
+    del result
+    return None
+
+
+def _markup_rejected(result: TransportResult) -> bool:
+    return (
+        not result.ok
+        and result.status == _HTTP_BAD_REQUEST
+        and _PARSE_ERROR in result.description.lower()
+    )
+
+
 class TelegramChannel:
+    """One `sendMessage`. A notification with a `layout` goes as HTML; if Telegram rejects the
+    markup ("can't parse entities") the same message is sent once more as plain text, so a
+    formatting fault can never cost the user the notification."""
+
     kind = DeliveryChannelKind.TELEGRAM
 
     def __init__(self, settings: Settings, transport: OutboundTransport | None = None) -> None:
@@ -227,14 +246,25 @@ class TelegramChannel:
         self._transport = transport
 
     def build_request(
-        self, notification: DeliveryNotification, recipient: DeliveryRecipient
+        self,
+        notification: DeliveryNotification,
+        recipient: DeliveryRecipient,
+        *,
+        formatted: bool = True,
     ) -> OutboundRequest:
         if recipient.telegram_chat_id is None:
             raise ChannelNotConfiguredError("no Telegram chat id for recipient")
+        html_text = (
+            fit_html(notification.layout, NON_ADVICE_FOOTER, pointer=_TRIM_POINTER)
+            if formatted and notification.layout is not None
+            else None
+        )
         payload: dict[str, object] = {
             "chat_id": recipient.telegram_chat_id,
-            "text": _fit_telegram(_text(notification)),
+            "text": html_text if html_text is not None else _fit_telegram(_text(notification)),
         }
+        if html_text is not None:
+            payload["parse_mode"] = "HTML"
         if recipient.app_url is not None:
             button = {
                 "text": _OPEN_IN_APP,
@@ -251,6 +281,12 @@ class TelegramChannel:
     async def send(
         self, notification: DeliveryNotification, recipient: DeliveryRecipient
     ) -> DeliveryReceipt:
+        def plain_retry(result: TransportResult) -> OutboundRequest | None:
+            if notification.layout is None or not _markup_rejected(result):
+                return None
+            logger.warning("telegram_markup_rejected")
+            return self.build_request(notification, recipient, formatted=False)
+
         return await _post_json_send(
             self,
             self._transport,
@@ -258,6 +294,7 @@ class TelegramChannel:
             recipient,
             configured=bool(self._token),
             address_gone=_telegram_chat_gone,
+            retry=plain_retry,
         )
 
 
@@ -443,10 +480,12 @@ async def _post_json_send(  # noqa: PLR0913 — one argument per send dimension
     *,
     configured: bool,
     address_gone: Callable[[TransportResult], bool] = _never_gone,
+    retry: Callable[[TransportResult], OutboundRequest | None] = _no_retry,
 ) -> DeliveryReceipt:
     """Shared send path for the JSON-POST channels: build the real request (validating that the
-    recipient is addressable), then send it — or, with no credential or transport, report a
-    no-network success so an unconfigured profile is not a failure."""
+    recipient is addressable), then send it — once more if `retry` turns the first answer into a
+    different request — or, with no credential or transport, report a no-network success so an
+    unconfigured profile is not a failure."""
     try:
         request = channel.build_request(notification, recipient)
     except ChannelNotConfiguredError as exc:
@@ -455,6 +494,9 @@ async def _post_json_send(  # noqa: PLR0913 — one argument per send dimension
         logger.info("delivery_shaped", channel=channel.kind.value, configured=configured)
         return DeliveryReceipt(channel=channel.kind, delivered=True, detail=_NO_NETWORK)
     result = await transport.post_json(request.url, headers=request.headers, body=request.json)
+    again = retry(result)
+    if again is not None:
+        result = await transport.post_json(again.url, headers=again.headers, body=again.json)
     return _receipt(channel.kind, result, address_gone=address_gone(result))
 
 
