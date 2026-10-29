@@ -4176,7 +4176,7 @@
       "blockedShort": "未發送通知：{reason}",
       "guardFailed": {
         "after_opening_window": "09:30 前不發送通知",
-        "market_not_falling": "大盤中位數跌幅超過 1%",
+        "market_not_falling": "大盤跌幅超過 1%",
         "above_average_price": "價格低於當日均價",
         "not_near_limit_up": "漲幅 9% 以上，已接近漲停"
       }

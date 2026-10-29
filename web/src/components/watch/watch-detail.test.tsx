@@ -148,7 +148,7 @@ describe("WatchDetail", () => {
 
   it.each([
     ["after_opening_window", "觸發條件全數成立，但09:30 前不發送通知"],
-    ["market_not_falling", "觸發條件全數成立，但大盤中位數跌幅超過 1%"],
+    ["market_not_falling", "觸發條件全數成立，但大盤跌幅超過 1%"],
     ["above_average_price", "觸發條件全數成立，但價格低於當日均價"],
     ["not_near_limit_up", "觸發條件全數成立，但漲幅 9% 以上，已接近漲停"],
     ["price_above_upper_band", "觸發條件全數成立，但價格高於布林上軌"],
