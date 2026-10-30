@@ -113,9 +113,9 @@ class Settings(BaseSettings):
     openai_api_key: SecretStr | None = None
     gemini_api_key: SecretStr | None = None
     openrouter_api_key: SecretStr | None = None
-    ollama_base_url: str = "http://localhost:11434"
+    local_llm_base_url: str = "http://localhost:12434/engines"
     # Platform model profile (llm/profiles.py): "hosted" = the hosted provider chains;
-    # "local" = every role on ollama/<local_model_id> at ollama_base_url. MODEL_ROLE_* still win.
+    # "local" = every role on local/<local_model_id> at local_llm_base_url. MODEL_ROLE_* still win.
     platform_model_profile: PlatformProfile = "hosted"
     local_model_id: str = "ai/qwen3.6:latest"
     # Local profile only: append the hosted chain as fallback when the local endpoint fails.

@@ -54,7 +54,7 @@ ALLOWED: dict[str, str] = {
     "llm/anthropic_client.py": "Anthropic SDK",
     "llm/gemini_client.py": "Google Gemini SDK",
     "llm/openai_client.py": "OpenAI SDK",
-    "llm/openai_compat.py": "OpenAI-compatible HTTP endpoints (Ollama, etc.)",
+    "llm/openai_compat.py": "OpenAI-compatible HTTP endpoints (local models, etc.)",
     "voice/providers.py": "OpenAI speech APIs",
     # Billing, sign-in and notification delivery: account lifecycle, not market data.
     "accounts/oauth_providers.py": "OAuth token exchange with Google/LINE/Telegram",

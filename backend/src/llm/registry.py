@@ -32,7 +32,7 @@ from llm.anthropic_client import AnthropicClient
 from llm.base import LLMClient, LLMEvent, LLMResponse, Message, ModelCapabilities, ToolSpec
 from llm.byok_profiles import BYOK_PROVIDER_TIERS
 from llm.gemini_client import GeminiClient
-from llm.local_client import LocalOllamaClient
+from llm.local_client import LocalModelClient
 from llm.openai_client import OpenAIClient
 from llm.openai_compat import OpenAICompatClient
 from llm.profiles import ModelRole, platform_role_chains
@@ -102,16 +102,16 @@ def build_client(
 ) -> LLMClient:
     """Construct the concrete `LLMClient` for `(provider_id, model_id)`.
 
-    Raises `ProviderNotConfiguredError` if the provider needs a key that isn't set (Ollama
-    is the sole keyless exception) — never raises at *import* time, and never performs
+    Raises `ProviderNotConfiguredError` if the provider needs a key that isn't set (the local
+    model is the sole keyless exception) — never raises at *import* time, and never performs
     network I/O itself (construction of the concrete client is likewise network-free).
 
     `api_key` is a user's own key (BYOK); when given it is used instead of the server's key.
     """
     settings = settings or get_settings()
 
-    if provider_id == "ollama":
-        return LocalOllamaClient(model_id=model_id, base_url=settings.ollama_base_url)
+    if provider_id == "local":
+        return LocalModelClient(model_id=model_id, base_url=settings.local_llm_base_url)
 
     if provider_id == "anthropic":
         return AnthropicClient(
@@ -349,7 +349,7 @@ def _byok_client(role: ModelRole, settings: Settings) -> LLMClient | None:
 def resolve_role(role: ModelRole, settings: Settings | None = None) -> LLMClient:
     """Map a **role** (never a model) to its configured fallback chain of `(provider, model)`
     pairs and construct a client for it. An offline profile can point every role at
-    `ollama/qwen3.6` purely via config — no code change. A single-entry chain returns that
+    `local/qwen3.6` purely via config — no code change. A single-entry chain returns that
     entry's client directly; a multi-entry chain returns a `FallbackLLMClient` that tries each
     in order on failure."""
     settings = settings or get_settings()

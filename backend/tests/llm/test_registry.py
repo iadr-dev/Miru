@@ -22,7 +22,7 @@ from llm.base import (
     ToolSpec,
 )
 from llm.gemini_client import GeminiClient
-from llm.local_client import LocalOllamaClient
+from llm.local_client import LocalModelClient
 from llm.openai_client import OpenAIClient
 from llm.openai_compat import OpenAICompatClient
 from llm.registry import (
@@ -67,10 +67,33 @@ def test_build_client_threads_llm_max_output_tokens() -> None:
     assert gemini_client._max_output_tokens == 16_000
 
 
-def test_build_client_ollama_needs_no_key() -> None:
-    settings = _settings(ollama_base_url="http://localhost:11434")
-    client = build_client("ollama", "qwen3.6", settings)
-    assert isinstance(client, LocalOllamaClient)
+def test_build_client_local_needs_no_key() -> None:
+    settings = _settings(local_llm_base_url="http://localhost:12434/engines")
+    client = build_client("local", "qwen3.6", settings)
+    assert isinstance(client, LocalModelClient)
+
+
+def test_local_client_targets_the_configured_base_url() -> None:
+    settings = _settings(local_llm_base_url="http://runner.internal/engines")
+    client = build_client("local", "ai/qwen3.6:latest", settings)
+    assert isinstance(client, LocalModelClient)
+    assert client.provider_id == "local"
+    assert client.model_id == "ai/qwen3.6:latest"
+
+
+def test_unregistered_provider_id_is_rejected() -> None:
+    with pytest.raises(ProviderNotConfiguredError, match="no LLMClient implementation"):
+        build_client("retired-local-provider", "qwen3.6", _settings())
+
+
+def test_fallback_chain_resolves_a_local_entry_with_a_namespaced_model_id() -> None:
+    settings = _settings(
+        model_role_agent="anthropic/claude-sonnet-5,local/ai/qwen3.6:latest",
+        anthropic_api_key="sk-ant-test",
+    )
+    client = resolve_role(ModelRole.AGENT, settings)
+    assert isinstance(client, FallbackLLMClient)
+    assert client.provider_id == "anthropic"
 
 
 @pytest.mark.parametrize("provider_id", ["openrouter"])
@@ -129,9 +152,9 @@ def test_default_client_falls_back_to_anthropic_when_unset() -> None:
 
 
 def test_default_client_honors_explicit_override() -> None:
-    settings = _settings(llm_provider="ollama", llm_model="qwen3.6", ollama_base_url="http://x:1")
+    settings = _settings(llm_provider="local", llm_model="qwen3.6", local_llm_base_url="http://x:1")
     client = default_client(settings)
-    assert client.provider_id == "ollama"
+    assert client.provider_id == "local"
     assert client.model_id == "qwen3.6"
 
 
@@ -155,25 +178,25 @@ def test_synthesis_without_an_openai_key_runs_on_anthropic_instead_of_failing() 
 
 
 def test_resolve_role_honors_override() -> None:
-    settings = _settings(model_role_classifier="ollama/qwen3.6", ollama_base_url="http://x:1")
+    settings = _settings(model_role_classifier="local/qwen3.6", local_llm_base_url="http://x:1")
     client = resolve_role(ModelRole.CLASSIFIER, settings)
-    assert client.provider_id == "ollama"
+    assert client.provider_id == "local"
     assert client.model_id == "qwen3.6"
 
 
-def test_offline_profile_routes_every_role_to_ollama() -> None:
-    """The offline profile routes every role to ollama/qwen3.6 — purely config, no code
+def test_offline_profile_routes_every_role_to_local_model() -> None:
+    """The offline profile routes every role to local/qwen3.6 — purely config, no code
     change, since provider/model selection is never hardcoded in core logic."""
     settings = _settings(
-        model_role_classifier="ollama/qwen3.6",
-        model_role_agent="ollama/qwen3.6",
-        model_role_subagent="ollama/qwen3.6",
-        model_role_synthesis="ollama/qwen3.6",
-        ollama_base_url="http://x:1",
+        model_role_classifier="local/qwen3.6",
+        model_role_agent="local/qwen3.6",
+        model_role_subagent="local/qwen3.6",
+        model_role_synthesis="local/qwen3.6",
+        local_llm_base_url="http://x:1",
     )
     for role in ModelRole:
         client = resolve_role(role, settings)
-        assert client.provider_id == "ollama"
+        assert client.provider_id == "local"
 
 
 def test_resolve_role_raises_when_role_provider_unconfigured() -> None:
@@ -185,16 +208,16 @@ def test_resolve_role_raises_when_role_provider_unconfigured() -> None:
 def test_resolve_role_override_with_single_entry_returns_plain_client() -> None:
     """A single-entry override must return the concrete client directly, not a
     `FallbackLLMClient` wrapper — no fallback machinery for the common one-model case."""
-    settings = _settings(model_role_agent="ollama/qwen3.6", ollama_base_url="http://x:1")
+    settings = _settings(model_role_agent="local/qwen3.6", local_llm_base_url="http://x:1")
     client = resolve_role(ModelRole.AGENT, settings)
-    assert isinstance(client, LocalOllamaClient)
+    assert isinstance(client, LocalModelClient)
 
 
 def test_resolve_role_override_with_multiple_entries_returns_fallback_client() -> None:
     settings = _settings(
-        model_role_agent="anthropic/claude-sonnet-5,ollama/qwen3.6",
+        model_role_agent="anthropic/claude-sonnet-5,local/qwen3.6",
         anthropic_api_key="sk-ant-test",
-        ollama_base_url="http://x:1",
+        local_llm_base_url="http://x:1",
     )
     client = resolve_role(ModelRole.AGENT, settings)
     assert isinstance(client, FallbackLLMClient)
@@ -206,12 +229,12 @@ def test_resolve_role_chain_skips_unconfigured_entries() -> None:
     """A multi-entry chain with one unconfigured provider degrades to the remaining
     configured entries rather than failing the whole role."""
     settings = _settings(
-        model_role_agent="openai/gpt-5.5,ollama/qwen3.6",
+        model_role_agent="openai/gpt-5.5,local/qwen3.6",
         openai_api_key=None,
-        ollama_base_url="http://x:1",
+        local_llm_base_url="http://x:1",
     )
     client = resolve_role(ModelRole.AGENT, settings)
-    assert isinstance(client, LocalOllamaClient)
+    assert isinstance(client, LocalModelClient)
 
 
 def test_resolve_role_chain_raises_when_every_entry_unconfigured() -> None:
@@ -306,10 +329,10 @@ def test_construction_never_touches_network(monkeypatch: pytest.MonkeyPatch) -> 
         openai_api_key="k",
         gemini_api_key="k",
         openrouter_api_key="k",
-        ollama_base_url="http://localhost:11434",
+        local_llm_base_url="http://localhost:12434/engines",
     )
     build_client("anthropic", "claude-sonnet-5", settings)
     build_client("openai", "gpt-5.5", settings)
     build_client("gemini", "gemini-3.5-flash", settings)
     build_client("openrouter", "meta-llama/llama-3.3-70b-instruct", settings)
-    build_client("ollama", "qwen3.6", settings)
+    build_client("local", "qwen3.6", settings)

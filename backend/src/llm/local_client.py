@@ -1,7 +1,7 @@
-"""Ollama (local) client (`provider` id `ollama`).
+"""Local model client (`provider` id `local`), served by Docker Model Runner.
 
-No API key — `base_url` points at a local daemon (`OLLAMA_BASE_URL`, default
-`http://localhost:11434`). Uses Ollama's OpenAI-compatible `/v1/chat/completions` endpoint
+No API key — `base_url` points at a local model server (`LOCAL_LLM_BASE_URL`, default
+`http://localhost:12434/engines`). Uses its OpenAI-compatible `/v1/chat/completions` endpoint
 (documented, stable surface) rather than its native `/api/chat` — this lets us reuse the
 exact same wire-format conversion helpers as `openai_compat.py` (OpenRouter),
 proving the shared-base pattern generalizes even to a keyless local daemon (a deliberate
@@ -10,7 +10,7 @@ deviation from a literal one-file-per-provider split: implemented by thin compos
 lines of normalization logic for identical wire semantics).
 
 Construction never touches the network — only `chat()`/`stream()` hit the local daemon.
-`count_tokens()` is a local heuristic (Ollama exposes no counting endpoint) — a reasonable
+`count_tokens()` is a local heuristic (the local server exposes no counting endpoint) — a reasonable
 heuristic is an acceptable substitute here since there is no real endpoint to call.
 """
 
@@ -39,8 +39,8 @@ class LocalModelUnavailableError(RuntimeError):
         self.base_url = base_url
 
 
-class LocalOllamaClient:
-    """The `ollama` `LLMClient` — local/offline/privacy option."""
+class LocalModelClient:
+    """The `local` `LLMClient` — local/offline/privacy option."""
 
     def __init__(
         self,
@@ -50,19 +50,19 @@ class LocalOllamaClient:
         capabilities: ModelCapabilities | None = None,
         timeout: float = 120.0,  # local inference on modest hardware can be slow
     ) -> None:
-        self.provider_id = "ollama"
+        self.provider_id = "local"
         self.model_id = model_id
         self._base_url = base_url
         self.capabilities = capabilities or ModelCapabilities(
             native_tool_calling=True, streaming=True, native_web_search=False
         )
-        # No key: Ollama's OpenAI-compat endpoint accepts (and ignores) any bearer value. This
+        # No key: the local OpenAI-compat endpoint accepts (and ignores) any bearer value. This
         # is a placeholder sentinel, not a credential — nothing to rotate or protect.
         self._delegate = OpenAICompatClient(
-            provider_id="ollama",
+            provider_id="local",
             model_id=model_id,
             base_url=f"{base_url.rstrip('/')}/v1",
-            api_key="ollama-local-no-key-required",  # NOSONAR — not a real secret
+            api_key="local-no-key-required",  # NOSONAR — not a real secret
             capabilities=self.capabilities,
             timeout=timeout,
         )
@@ -98,4 +98,4 @@ class LocalOllamaClient:
         return await self._delegate.count_tokens(messages)
 
 
-__all__ = ["LocalModelUnavailableError", "LocalOllamaClient"]
+__all__ = ["LocalModelClient", "LocalModelUnavailableError"]

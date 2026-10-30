@@ -15,7 +15,7 @@ The parallel to Claude Code is deliberate:
 | Tools: Read, Edit, Bash, Grep… | Tools: canonical context, build context, bounded observation, source health |
 | Permission gating on risky tools | Entitlement gating on paid (FinMind Sponsor) data only |
 | Context/window management & compaction | Same, over the context pipeline |
-| Provider = Claude | Provider-agnostic adapter (Anthropic/OpenAI/Gemini/OpenRouter/Ollama) |
+| Provider = Claude | Provider-agnostic adapter (Anthropic/OpenAI/Gemini/OpenRouter/local model) |
 | Never runs destructive commands silently | Never emits trading signals; live observation is bounded |
 
 The **data/context layer preserves the reference project's governed semantics**
@@ -208,7 +208,7 @@ Conversation state and the auditable journal live in `backend/src/conversation/`
 
 `LLMClient` protocol: `chat(messages, tools) -> text | tool_calls`, streaming, token
 counting, tool-call formats normalized across providers. Clients: Anthropic (default),
-OpenAI, Gemini, OpenRouter, Ollama (local). Provider/model chosen from
+OpenAI, Gemini, OpenRouter, a local model (Docker Model Runner). Provider/model chosen from
 config/env; role-based cost-tiered routing.
 See [modules/04-llm-adapter.md](modules/04-llm-adapter.md).
 
@@ -265,7 +265,7 @@ ai-tw-stock/
    │  ├─ agent/                # loop, planner, context_window, guardrails, prompts/
    │  ├─ orchestrator/         # intent classifier, single/subagent/team, synthesis
    │  ├─ llm/                  # base + anthropic/openai/gemini/openai_compat(
-   │  │                        #   openrouter)/local(ollama) + registry, routing
+   │  │                        #   openrouter)/local + registry, routing
    │  ├─ tools/                # base, registry, market, context, health tool groups
    │  ├─ dataaccess/           # capability registry + Market/Symbol + priority-fallback router (config-driven)
    │  ├─ sources/              # 13 adapters incl. finmind/, yfinance/, and tdcc/ packages (mops/ptt/etf_pcf scrapers, news, web_search) + base + tls — ONLY network I/O

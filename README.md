@@ -52,7 +52,7 @@ about acting for you.
 | 🔔 **Alerts & scheduled briefs** | Rules and briefings you authorise yourself, delivered to LINE, Telegram, email or web push |
 | 🎭 **Miru's voice** | Four tone presets (Steady · Coach · Concise · Data). One engine with four ways of speaking, never four different advisors |
 | 🧠 **Memory** | Session and long-term memory that you can review and edit in Settings |
-| 🔌 **Bring your own model** | A provider-agnostic LLM adapter: Anthropic, OpenAI, Gemini, OpenRouter, or a local model through Ollama. BYOK is supported |
+| 🔌 **Bring your own model** | A provider-agnostic LLM adapter: Anthropic, OpenAI, Gemini, OpenRouter, or a local model served by Docker Model Runner. BYOK is supported |
 | 🛰️ **MCP server** | The same tools, exposed read-only over MCP (streamable HTTP), so other agents can use them. It works as a Claude connector: a claude.ai custom connector, the Messages API MCP connector, or Claude Code |
 | 🌐 **Bilingual** | zh-TW first, English throughout (`web/messages/`) |
 
@@ -144,7 +144,7 @@ variable. The web app needs only `NEXT_PUBLIC_API_BASE` in `web/.env.local`.
 
 | Group | Variables | Notes |
 |---|---|---|
-| LLM | `ANTHROPIC_API_KEY` · `OPENAI_API_KEY` · `GEMINI_API_KEY` · `OPENROUTER_API_KEY` · `OLLAMA_BASE_URL` | Set the ones you use; `LLM_PROVIDER` / `MODEL_ROLE_*` route models by role |
+| LLM | `ANTHROPIC_API_KEY` · `OPENAI_API_KEY` · `GEMINI_API_KEY` · `OPENROUTER_API_KEY` · `LOCAL_LLM_BASE_URL` | Set the ones you use; `LLM_PROVIDER` / `MODEL_ROLE_*` route models by role |
 | Market data | `FINMIND_API_KEY` | Whole-market ingest needs FinMind **Backer** or above. Sponsor-only datasets (for example institutional detail and ETF holdings) stop updating on a lower plan, and the app then shows the last day it has |
 | Optional data | `FINNHUB_KEY` · `BRAVE_SEARCH_API_KEY` · `FRED_API_KEY` | US analyst estimates, web-search fallback, and the US macro dashboard (free key; without it the nightly job skips and the panels stay empty) |
 | Reference data | `REFERENCE_DATA_DIR` | The supply-chain, concept-theme and entity data you maintain locally (default `./reference-data`, gitignored, mounted read-only in Docker). It is not part of this repository: without it those panels show honest empty states. Load it with `python -m analytics.supply_chain load`, then `positions`; `eval` scores positions against your own labelled set |

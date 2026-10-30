@@ -6,7 +6,7 @@ concrete provider SDK. Why: models and vendors change faster than the product, s
 
 Files: `base.py` (Protocol + wire types), `anthropic_client.py`, `openai_client.py`,
 `gemini_client.py`, `openai_compat.py` (shared base for OpenRouter),
-`local_client.py` (Ollama, delegates to `openai_compat.py`), `registry.py` (config-driven
+`local_client.py` (a local model served by Docker Model Runner, delegates to `openai_compat.py`), `registry.py` (config-driven
 construction + role routing), `pricing.py` (list prices for estimated cost), `shared.py` (helpers common to the clients). Tests: `backend/tests/llm/` (protocol conformance, one test
 module per client, `registry.py`, plus `stubs.py`'s `StubLLMClient` used by every
 runtime/orchestrator test that needs a deterministic, non-network `LLMClient`).
@@ -58,7 +58,7 @@ re-raise; retry/fallback policy lives one layer up, in the callers below.
 | `openai_client.py` | OpenAI | `openai` | exact local `tiktoken` count (`o200k_base` fallback for unregistered model ids) | `native_web_search=False` — Chat Completions has no general grounding tool for the catalog models; uses `AsyncOpenAI`, native SDK types (not the compat JSON path) |
 | `gemini_client.py` | Google Gemini | `gemini` | real SDK endpoint (`aio.models.count_tokens`) | `native_web_search=True`; uses `google-genai`'s `Client(...).aio` async surface |
 | `openai_compat.py` | OpenRouter | `openrouter` | heuristic, ~4 chars/token | one `OpenAICompatClient(provider_id, base_url, ...)` parameterized over `httpx`, shared because the three speak identical OpenAI chat-completions wire format; `native_web_search=True` for OpenRouter only (its own web-search plugin), `False` for Groq/Cerebras |
-| `local_client.py` | Ollama (local) | `ollama` | delegates to the compat heuristic | thin wrapper that constructs an `OpenAICompatClient` pointed at `{base_url}/v1`; no API key ever read from `Settings` |
+| `local_client.py` | Local model (Docker Model Runner) | `local` | delegates to the compat heuristic | thin wrapper that constructs an `OpenAICompatClient` pointed at `{base_url}/v1`; no API key ever read from `Settings` |
 
 Provider/model **ids** are config data, not a hardcoded enum in core — `registry.py` is the
 only place that maps a `provider_id` string to a concrete class. There is no compiled-in
@@ -84,13 +84,13 @@ Provider-specific normalization worth knowing when debugging a client:
   Gemini's stream yields each function call whole (no incremental JSON assembly) — so a
   `ToolCallDeltaEvent` + `ToolCallEvent` are emitted back-to-back per call, not accumulated
   over multiple deltas like Anthropic/OpenAI.
-- **OpenAI-compat (OpenRouter/Ollama)**: hand-rolled HTTP via `httpx` against
+- **OpenAI-compat (OpenRouter/local model)**: hand-rolled HTTP via `httpx` against
   `{base_url}/chat/completions`; SSE `data:` line framing for streaming, terminated by a
   literal `[DONE]` sentinel; `stream_options: {"include_usage": true}` requested so the final
   usage is real, not estimated, even on the streaming path.
 
 **Native web search** is exposed as the `ModelCapabilities.native_web_search` flag per client
-(`True` for Anthropic/Gemini/OpenRouter, `False` for OpenAI/Ollama on today's
+(`True` for Anthropic/Gemini/OpenRouter, `False` for OpenAI and the local model on today's
 catalog). Nothing inside `llm/` itself branches on this flag — the selection logic is one layer
 up: `orchestrator/orchestrator.py::_maybe_add_web_search` reads a resolved client's
 `capabilities.native_web_search` to decide, per turn, whether to grant `native_web_search=True`
@@ -107,16 +107,16 @@ real and consumed today, just not by any code inside this module — `llm/` only
 ```python
 ANTHROPIC_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY
     / OPENROUTER_API_KEY          # Settings fields anthropic_api_key, openai_api_key, ...
-OLLAMA_BASE_URL   = http://localhost:11434     # settings.ollama_base_url, keyless
+LOCAL_LLM_BASE_URL = http://localhost:12434/engines  # settings.local_llm_base_url, keyless
 LLM_PROVIDER / LLM_MODEL                       # settings.llm_provider / settings.llm_model,
                                                 # default_client() override
 ```
 
-`ollama` is the sole keyless provider. For every other `provider_id` in
+`local` is the sole keyless provider. For every other `provider_id` in
 `{anthropic, openai, gemini, openrouter}`, a missing key raises
 `ProviderNotConfiguredError` (a `RuntimeError` subclass) — never crashes at import time, only
 when that specific provider is actually requested. An unrecognized `provider_id` (anything
-not in that set plus `ollama`) also raises `ProviderNotConfiguredError`, with a message
+not in that set plus `local`) also raises `ProviderNotConfiguredError`, with a message
 naming the id — a typo'd config value fails loudly instead of silently falling back to a
 different vendor.
 
@@ -146,7 +146,7 @@ MODEL_ROLE_SYNTHESIS    # settings.model_role_synthesis, else the default chain:
 
 Each override is one or more comma-separated `"provider/model"` specs, in try-order
 (`_parse_role_chain`; `_split_provider_model` raises `ValueError` on an individual spec with no
-`/`). Pointing every `MODEL_ROLE_*` at `ollama/qwen3.6` is a pure config change — no code path
+`/`). Pointing every `MODEL_ROLE_*` at `local/qwen3.6` is a pure config change — no code path
 branches on role identity beyond this table lookup.
 
 ### Prompt caching (Anthropic)
@@ -275,7 +275,7 @@ their own key; `resolve_role` and `agent_model_spec` read chains only through it
 | `PLATFORM_MODEL_PROFILE` | Chain per role |
 |---|---|
 | `hosted` (default) | the hosted defaults (Anthropic Haiku/Sonnet, OpenAI mini for synthesis) |
-| `local` | `ollama/<LOCAL_MODEL_ID>` (default `ai/qwen3.6:latest`) at `OLLAMA_BASE_URL`, for all four roles |
+| `local` | `local/<LOCAL_MODEL_ID>` (default `ai/qwen3.6:latest`) at `LOCAL_LLM_BASE_URL`, for all four roles |
 
 - `LOCAL_FALLBACK_TO_HOSTED=true` (default false) appends the hosted chain after the local model.
   Off, an unreachable local endpoint fails the turn rather than silently spending hosted keys.
@@ -320,7 +320,7 @@ constructs a provider client directly or names a provider/model literal itself.
 - `test_byok_scope.py` — BYOK override resolution; `test_pricing.py` / `test_usage_parsing.py` — cost estimates and usage parsing.
 - `test_registry.py` — `build_client` per provider (including the missing-key and
   unimplemented-provider error paths), `default_client` fallback/override, `resolve_role`
-  including the offline-profile-to-Ollama case, and that construction alone never touches the
+  including the offline-profile-to-local-model case, and that construction alone never touches the
   network.
 - `test_stub_client.py` — the stub itself (script replay, exhaustion, reset).
 
@@ -335,6 +335,6 @@ constructs a provider client directly or names a provider/model literal itself.
 - Every client's failure path logs `type(exc).__name__` only, never the exception's raw text
   or the API key — enforced by a dedicated `test_chat_never_logs_api_key_on_failure` in each
   client's test module.
-- **Local/offline caveat:** `ollama` keeps inference on-device; every hosted provider receives
+- **Local/offline caveat:** `local` keeps inference on-device; every hosted provider receives
   whatever the caller sends and nothing more. Provider choice is a `Settings`/role-override
   value, never hardcoded, so an offline/privacy profile is achievable by config alone.

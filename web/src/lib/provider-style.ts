@@ -8,7 +8,7 @@ const KNOWN: Record<string, ProviderStyle> = {
   openai: { label: "OpenAI", color: "var(--chart-2)" },
   gemini: { label: "Gemini", color: "var(--chart-3)" },
   openrouter: { label: "OpenRouter", color: "var(--chart-4)" },
-  ollama: { label: "Ollama", color: "var(--text-muted)" },
+  local: { label: "Docker Model", color: "var(--text-muted)" },
 };
 
 const FALLBACK_COLORS = [

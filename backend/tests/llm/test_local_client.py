@@ -1,4 +1,4 @@
-"""`LocalOllamaClient` tests — keyless local daemon, delegating to `OpenAICompatClient`
+"""`LocalModelClient` tests — keyless local daemon, delegating to `OpenAICompatClient`
 (same wire format as OpenRouter; the shared-base pattern proven to
 generalize even here)."""
 
@@ -9,7 +9,7 @@ import pytest
 
 import llm.openai_compat as openai_compat_module
 from llm.base import Message, MessageRole, StopReason
-from llm.local_client import LocalModelUnavailableError, LocalOllamaClient
+from llm.local_client import LocalModelClient, LocalModelUnavailableError
 from tests.http_support import OwnedLease
 
 _RealAsyncClient = httpx.AsyncClient
@@ -28,15 +28,15 @@ def _patch_json_response(monkeypatch: pytest.MonkeyPatch, body: object) -> None:
 
 
 def test_construction_performs_no_network_call() -> None:
-    client = LocalOllamaClient(model_id="qwen3.6", base_url="http://localhost:11434")
-    assert client.provider_id == "ollama"
+    client = LocalModelClient(model_id="qwen3.6", base_url="http://localhost:12434/engines")
+    assert client.provider_id == "local"
     assert client.model_id == "qwen3.6"
     assert client.capabilities.native_web_search is False
 
 
 def test_no_key_required() -> None:
-    """No API key is ever taken from Settings for Ollama — governance §6 keyless local path."""
-    client = LocalOllamaClient(model_id="qwen3.6", base_url="http://localhost:11434")
+    """No API key is ever taken from Settings for the local model (governance §6 keyless path)."""
+    client = LocalModelClient(model_id="qwen3.6", base_url="http://localhost:12434/engines")
     assert client._delegate._api_key  # a harmless placeholder, never read from env/Settings
 
 
@@ -48,14 +48,14 @@ async def test_chat_delegates_to_openai_compat_wire_format(monkeypatch: pytest.M
             "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
         },
     )
-    client = LocalOllamaClient(model_id="qwen3.6", base_url="http://localhost:11434")
+    client = LocalModelClient(model_id="qwen3.6", base_url="http://localhost:12434/engines")
     response = await client.chat([Message(role=MessageRole.USER, content="hi")])
     assert response.text == "hello"
     assert response.stop_reason is StopReason.END_TURN
 
 
 async def test_count_tokens_heuristic_no_network() -> None:
-    client = LocalOllamaClient(model_id="qwen3.6", base_url="http://localhost:11434")
+    client = LocalModelClient(model_id="qwen3.6", base_url="http://localhost:12434/engines")
     messages = [Message(role=MessageRole.USER, content="a" * 40)]
     assert await client.count_tokens(messages) == 10
 
@@ -72,7 +72,7 @@ async def test_unreachable_endpoint_raises_local_model_unavailable(
     monkeypatch.setattr(
         openai_compat_module, "lease_client", lambda **kwargs: OwnedLease(factory(**kwargs))
     )
-    client = LocalOllamaClient(model_id="qwen3.6", base_url="http://localhost:11434")
+    client = LocalModelClient(model_id="qwen3.6", base_url="http://localhost:12434/engines")
     messages = [Message(role=MessageRole.USER, content="hi")]
     with pytest.raises(LocalModelUnavailableError):
         await client.chat(messages)

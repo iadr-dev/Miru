@@ -111,7 +111,7 @@ def test_the_longest_matching_prefix_wins() -> None:
 
 
 def test_local_models_are_free_and_unknown_models_have_no_estimate() -> None:
-    assert _est("ollama", "qwen3.6:latest", input_tokens=5000, output_tokens=500) == 0
+    assert _est("local", "qwen3.6:latest", input_tokens=5000, output_tokens=500) == 0
     assert _est("openai", "some-model-we-never-priced", input_tokens=10, output_tokens=10) is None
     assert _est("openrouter", "openrouter/auto", input_tokens=10, output_tokens=10) is None
 

@@ -100,8 +100,9 @@ x-app-env: &app-env
   FRED_API_KEY: ${FRED_API_KEY:-}
   FRED_BASE_URL: ${FRED_BASE_URL:-https://api.stlouisfed.org/fred}
   FINMIND_BASE_URL: ${FINMIND_BASE_URL:-https://api.finmindtrade.com/api/v4}
-  # Point the offline path at the compose Ollama service when the `ollama` profile is up.
-  OLLAMA_BASE_URL: http://ollama:11434
+  # Local models run in Docker Model Runner. A container reaches it at this address; the
+  # host-side URL in .env (localhost:<tcp port>) does not resolve inside a container.
+  LOCAL_LLM_BASE_URL: ${DOCKER_MODEL_RUNNER_URL:-http://model-runner.docker.internal/engines}
   # Platform model profile: hosted (default) or local; see llm/profiles.py.
   PLATFORM_MODEL_PROFILE: ${PLATFORM_MODEL_PROFILE:-hosted}
   LOCAL_MODEL_ID: ${LOCAL_MODEL_ID:-ai/qwen3.6:latest}
@@ -424,18 +425,7 @@ services:
       retries: 6
       start_period: 20s
 
-  # Offline / self-host inference path — NOT in the hosted prod image. Disabled by default; bring it
-  # up with `--profile ollama` when running the local LLM stack.
-  ollama:
-    image: ollama/ollama:latest
-    profiles: ["ollama"]
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollamadata:/root/.ollama
-
 volumes:
   pgdata:
   redisdata:
   marketdata:
-  ollamadata:

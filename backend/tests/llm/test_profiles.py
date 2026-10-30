@@ -6,7 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from config.settings import Settings
-from llm.local_client import LocalOllamaClient
+from llm.local_client import LocalModelClient
 from llm.profiles import HOSTED_ROLE_MODELS, ModelRole, parse_role_chain, platform_role_chains
 from llm.registry import FallbackLLMClient, _split_provider_model, agent_model_spec, resolve_role
 
@@ -41,23 +41,23 @@ def test_local_profile_maps_every_role_to_the_local_model() -> None:
     settings = _settings(platform_model_profile="local", local_model_id="ai/qwen3.6:latest")
     chains = platform_role_chains(settings)
     assert set(chains) == set(ModelRole)
-    assert all(chain == ("ollama/ai/qwen3.6:latest",) for chain in chains.values())
+    assert all(chain == ("local/ai/qwen3.6:latest",) for chain in chains.values())
 
 
-def test_local_profile_resolves_to_ollama_without_any_hosted_key() -> None:
-    settings = _settings(platform_model_profile="local", ollama_base_url="http://x:1")
+def test_local_profile_resolves_to_local_model_without_any_hosted_key() -> None:
+    settings = _settings(platform_model_profile="local", local_llm_base_url="http://x:1")
     for role in ModelRole:
         client = resolve_role(role, settings)
-        assert isinstance(client, LocalOllamaClient)
+        assert isinstance(client, LocalModelClient)
         assert client.model_id == "ai/qwen3.6:latest"
-    assert agent_model_spec(None, settings) == ("ollama", "ai/qwen3.6:latest")
+    assert agent_model_spec(None, settings) == ("local", "ai/qwen3.6:latest")
 
 
 def test_local_fallback_flag_appends_hosted_chain() -> None:
     settings = _settings(platform_model_profile="local", local_fallback_to_hosted=True)
     chains = platform_role_chains(settings)
     for role in ModelRole:
-        assert chains[role] == ("ollama/ai/qwen3.6:latest", *_PREVIOUS_DEFAULTS[role])
+        assert chains[role] == ("local/ai/qwen3.6:latest", *_PREVIOUS_DEFAULTS[role])
 
 
 def test_fallback_flag_is_ignored_by_the_hosted_profile() -> None:
@@ -72,13 +72,13 @@ def test_model_role_override_beats_the_profile() -> None:
     )
     chains = platform_role_chains(settings)
     assert chains[ModelRole.AGENT] == ("anthropic/claude-haiku-5-5", "openai/gpt-4o-mini")
-    assert chains[ModelRole.CLASSIFIER] == ("ollama/ai/qwen3.6:latest",)
+    assert chains[ModelRole.CLASSIFIER] == ("local/ai/qwen3.6:latest",)
 
 
 def test_model_role_override_beats_the_hosted_profile_too() -> None:
-    settings = _settings(model_role_subagent="ollama/ai/qwen3.6:latest")
+    settings = _settings(model_role_subagent="local/ai/qwen3.6:latest")
     chains = platform_role_chains(settings)
-    assert chains[ModelRole.SUBAGENT] == ("ollama/ai/qwen3.6:latest",)
+    assert chains[ModelRole.SUBAGENT] == ("local/ai/qwen3.6:latest",)
     assert chains[ModelRole.AGENT] == _PREVIOUS_DEFAULTS[ModelRole.AGENT]
 
 
@@ -88,11 +88,11 @@ def test_unknown_profile_is_rejected() -> None:
 
 
 def test_default_local_model_spec_splits_on_the_first_slash_only() -> None:
-    """`ollama/ai/qwen3.6:latest` carries an extra `/` and a `:`; only the first `/` separates
+    """`local/ai/qwen3.6:latest` carries an extra `/` and a `:`; only the first `/` separates
     the provider, and the `:` tag survives chain parsing."""
     settings = _settings(platform_model_profile="local")
     assert settings.local_model_id == "ai/qwen3.6:latest"
     (spec,) = platform_role_chains(settings)[ModelRole.AGENT]
-    assert spec == "ollama/ai/qwen3.6:latest"
+    assert spec == "local/ai/qwen3.6:latest"
     assert parse_role_chain(spec) == (spec,)
-    assert _split_provider_model(spec) == ("ollama", "ai/qwen3.6:latest")
+    assert _split_provider_model(spec) == ("local", "ai/qwen3.6:latest")
