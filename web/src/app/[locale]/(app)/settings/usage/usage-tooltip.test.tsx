@@ -10,6 +10,12 @@ const series: Series[] = [
     model: "gpt-5.4-mini",
     color: "var(--chart-2)",
   },
+  {
+    key: "local/ai/qwen3.6:latest",
+    provider: "local",
+    model: "ai/qwen3.6:latest",
+    color: "var(--text-muted)",
+  },
   { key: "anthropic/sonnet", provider: "anthropic", model: "sonnet", color: "var(--chart-1)" },
 ];
 
@@ -37,6 +43,11 @@ describe("UsageTooltip", () => {
     expect(html).toContain("OpenAI · gpt-5.4-mini");
     expect(html).toContain("12.1k");
     expect(html).toContain("Total");
+  });
+
+  it("shows the local model's id next to the Docker Model label", () => {
+    const html = render([{ dataKey: "local/ai/qwen3.6:latest", value: 400 }]);
+    expect(html).toContain("Docker Model · ai/qwen3.6:latest");
   });
 
   it("omits models with no usage that day and renders nothing when inactive", () => {
