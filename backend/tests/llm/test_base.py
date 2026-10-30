@@ -15,7 +15,7 @@ from llm.base import (
     ToolResultPart,
     ToolSpec,
 )
-from llm.local_client import LocalOllamaClient
+from llm.local_client import LocalModelClient
 from tests.llm.stubs import StubLLMClient, make_text_response
 
 
@@ -73,10 +73,10 @@ def test_stub_client_satisfies_llmclient_protocol() -> None:
     assert isinstance(stub, LLMClient)
 
 
-def test_local_ollama_client_satisfies_llmclient_protocol() -> None:
-    client = LocalOllamaClient(model_id="qwen3.6", base_url="http://localhost:11434")
+def test_local_model_client_satisfies_llmclient_protocol() -> None:
+    client = LocalModelClient(model_id="qwen3.6", base_url="http://localhost:12434/engines")
     assert isinstance(client, LLMClient)
-    assert client.provider_id == "ollama"
+    assert client.provider_id == "local"
 
 
 def _usage() -> TokenUsage:

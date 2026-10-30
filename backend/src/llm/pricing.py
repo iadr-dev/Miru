@@ -114,7 +114,7 @@ _PRICES: dict[tuple[str, str], tuple[_Schedule, ...]] = {
         _Schedule(date(2027, 1, 1), _price("1.50", "0.15", "7.50")),
     ),
     # ---- Local models cost nothing per token ----
-    ("ollama", ""): (_Schedule(None, _FREE_LOCAL),),
+    ("local", ""): (_Schedule(None, _FREE_LOCAL),),
 }
 
 

@@ -3,8 +3,8 @@
 A profile decides the default fallback chain of each `ModelRole`:
 
 - `hosted` (default): the hosted-provider chains below (Anthropic / OpenAI keys on the server).
-- `local`: every role runs on one local model (`ollama/<LOCAL_MODEL_ID>`, served by Ollama or
-  Docker Model Runner at `OLLAMA_BASE_URL`). If that endpoint is down the turn fails plainly; the
+- `local`: every role runs on one local model (`local/<LOCAL_MODEL_ID>`, served by
+  Docker Model Runner at `LOCAL_LLM_BASE_URL`). If that endpoint is down the turn fails plainly; the
   hosted chain is appended as a fallback only when `LOCAL_FALLBACK_TO_HOSTED` is set, so a dead
   GPU never silently turns into hosted spend.
 
@@ -57,7 +57,7 @@ def parse_role_chain(spec: str) -> tuple[str, ...]:
 def _profile_chains(settings: Settings) -> dict[ModelRole, tuple[str, ...]]:
     if settings.platform_model_profile == "hosted":
         return dict(HOSTED_ROLE_MODELS)
-    local = f"ollama/{settings.local_model_id}"
+    local = f"local/{settings.local_model_id}"
     return {
         role: (local, *HOSTED_ROLE_MODELS[role]) if settings.local_fallback_to_hosted else (local,)
         for role in ModelRole
