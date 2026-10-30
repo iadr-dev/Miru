@@ -47,8 +47,8 @@ or scraper-contract canary** — those markers are manual.
 - **`docker-compose` (dev parity)** (`backend/docker-compose.yml`) brings up the **full** stack: api + scheduler +
   ingest + mcp + Redis + Postgres + a market-data volume — so the Redis-transport path is
   exercised locally, not first discovered in prod.
-- **Ollama** = optional compose profile (large/GPU); the offline/self-host path, **not** in the
-  hosted prod image.
+- **Local model** = served by Docker Model Runner outside compose (`LOCAL_LLM_BASE_URL`); the
+  offline/self-host path, **not** in the hosted prod image.
 
 ## 3. Environments
 

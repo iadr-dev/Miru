@@ -49,7 +49,7 @@ https://github.com/user-attachments/assets/654c2090-b586-4b1f-b166-96f91d4184f0
 | 🔔 **提醒與定時簡報** | 由你自己授權的規則與簡報，可送到 LINE、Telegram、Email 或網頁推播 |
 | 🎭 **Miru 的語氣** | 四種語氣（穩健派・白話派・簡潔派・數據派）：同一個引擎、四種說話方式，不是四位不同的顧問 |
 | 🧠 **記憶** | 對話與長期記憶，可在設定中檢視與編輯 |
-| 🔌 **自選模型** | 不綁定供應商的 LLM 介面：Anthropic、OpenAI、Gemini、OpenRouter，或透過 Ollama 使用本地模型；支援 BYOK |
+| 🔌 **自選模型** | 不綁定供應商的 LLM 介面：Anthropic、OpenAI、Gemini、OpenRouter，或透過 Docker Model Runner 使用本地模型；支援 BYOK |
 | 🛰️ **MCP 伺服器** | 同一套工具以唯讀方式透過 MCP（streamable HTTP）提供，讓其他代理也能使用；可作為 Claude 連接器：claude.ai 自訂連接器、Messages API 的 MCP 連接器，或 Claude Code |
 | 🌐 **雙語** | 繁體中文優先，全站提供英文（`web/messages/`） |
 
@@ -138,7 +138,7 @@ uv run uvicorn api.app:app --reload
 
 | 類別 | 變數 | 說明 |
 |---|---|---|
-| LLM | `ANTHROPIC_API_KEY` · `OPENAI_API_KEY` · `GEMINI_API_KEY` · `OPENROUTER_API_KEY` · `OLLAMA_BASE_URL` | 填你要用的即可；`LLM_PROVIDER`／`MODEL_ROLE_*` 依角色指定模型 |
+| LLM | `ANTHROPIC_API_KEY` · `OPENAI_API_KEY` · `GEMINI_API_KEY` · `OPENROUTER_API_KEY` · `LOCAL_LLM_BASE_URL` | 填你要用的即可；`LLM_PROVIDER`／`MODEL_ROLE_*` 依角色指定模型 |
 | 市場資料 | `FINMIND_API_KEY` | 全市場匯入需 FinMind **Backer** 以上方案；Sponsor 限定的資料（例如法人明細、ETF 成分股）在較低方案下會停止更新，網頁會顯示最後一個有資料的日期 |
 | 選用資料 | `FINNHUB_KEY` · `BRAVE_SEARCH_API_KEY` · `FRED_API_KEY` | 美股分析師預估、網路搜尋備援，以及美國總經儀表板（免費金鑰；未設定時每晚的匯入會略過，面板維持空白） |
 | 參考資料 | `REFERENCE_DATA_DIR` | 你在本機維護的供應鏈、概念題材與關聯資料（預設 `./reference-data`，已加入 gitignore，Docker 內以唯讀方式掛載）。它不在這個儲存庫內；沒有這些資料時，相關面板會顯示誠實的空白狀態。用 `python -m analytics.supply_chain load` 載入，再執行 `positions`；`eval` 會用你自己標註的資料集評分 |

@@ -102,7 +102,7 @@ x-app-env: &app-env
   FINMIND_BASE_URL: ${FINMIND_BASE_URL:-https://api.finmindtrade.com/api/v4}
   # Local models run in Docker Model Runner. A container reaches it at this address; the
   # host-side URL in .env (localhost:<tcp port>) does not resolve inside a container.
-  OLLAMA_BASE_URL: ${DOCKER_MODEL_RUNNER_URL:-http://model-runner.docker.internal/engines}
+  LOCAL_LLM_BASE_URL: ${DOCKER_MODEL_RUNNER_URL:-http://model-runner.docker.internal/engines}
   # Platform model profile: hosted (default) or local; see llm/profiles.py.
   PLATFORM_MODEL_PROFILE: ${PLATFORM_MODEL_PROFILE:-hosted}
   LOCAL_MODEL_ID: ${LOCAL_MODEL_ID:-ai/qwen3.6:latest}
