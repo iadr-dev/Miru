@@ -47,6 +47,8 @@ x-app-env: &app-env
   # Private reference data (supply chain, concept themes) mounted read-only from ../reference-data
   # on the services that load it; kept out of git on purpose.
   REFERENCE_DATA_DIR: /app/reference-data
+  # Adds the 月營收 YoY half to the TW score's revenue_flow factor (off by default).
+  SCORE_REVENUE_YOY_ENABLED: ${SCORE_REVENUE_YOY_ENABLED:-false}
   # Supply-chain research pipeline (off by default; production keeps it off). Caps end a run early.
   SUPPLY_CHAIN_RESEARCH_ENABLED: ${SUPPLY_CHAIN_RESEARCH_ENABLED:-false}
   SUPPLY_CHAIN_RESEARCH_MODEL: ${SUPPLY_CHAIN_RESEARCH_MODEL:-}

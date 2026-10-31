@@ -83,6 +83,12 @@ class Settings(BaseSettings):
     # A directory the operator keeps locally; empty or missing = those features show nothing.
     reference_data_dir: str = "./reference-data"
 
+    # ---- TW stock score ----
+    # Adds the 月營收 YoY half to the TW `revenue_flow` factor (a month counts only from the 10th
+    # of the following month). Off by default: awaiting the internal rank-IC check before it is
+    # turned on. Off, the factor is the 三大法人 chip half alone, exactly as before.
+    score_revenue_yoy_enabled: bool = False
+
     # ---- Supply-chain research pipeline (analytics/supply_chain/verification) ----
     # Budgeted, leader-only web research that writes evidence-backed rows into the private relation
     # files. Off by default and off in production; every cap below ends a run gracefully.

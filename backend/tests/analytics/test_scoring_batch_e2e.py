@@ -30,6 +30,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from analytics.fundamentals import MONTH_REVENUE_DATASET
 from analytics.models import StockScoreBreakdown
 from analytics.scoring_batch import (
     ACTIVE_ETF_HOLDING_CHANGE_DATASET,
@@ -46,6 +47,8 @@ from analytics.scoring_batch import (
     job_scoring_batch,
     job_trend_score_batch,
 )
+from analytics.scoring_batch import scoring as scoring_module
+from config.settings import Settings
 from db import models  # noqa: F401 — registers ORM models onto Base.metadata
 from db.base import Base
 from db.models import StockScoreRow, TrendScoreRow
@@ -675,3 +678,109 @@ async def test_us_trend_score_batch_computes_all_six_us_native_dimensions(
     assert row.broker_concentration_unavailable_reason is None
     assert row.sector_rotation_value is None
     assert row.sector_rotation_unavailable_reason is None
+
+
+def _month_revenue_row(symbol: str, year: int, month: int, revenue: int) -> dict[str, object]:
+    return {
+        "symbol": symbol,
+        "market": "TW",
+        "trade_date": date_(year + month // 12, month % 12 + 1, 1).isoformat(),
+        "country": "Taiwan",
+        "revenue": revenue,
+        "revenue_month": month,
+        "revenue_year": year,
+    }
+
+
+def _seed_month_revenue(store: ParquetStore) -> None:
+    """On the 2024-01-02 run, November 2023 is the latest PUBLISHED month (due 2023-12-10).
+    December 2023 is already stored in the 2024-01-02 partition but is not due until 2024-01-10,
+    and it points the opposite way for every symbol, so reading it would reverse the ranking."""
+    november_yoy = {"STRO": (150, 100), "MID": (120, 100), "WEAK": (90, 100)}
+    december_yoy = {"STRO": (50, 100), "MID": (80, 100), "WEAK": (200, 100)}
+    store.write_partition(
+        MONTH_REVENUE_DATASET,
+        "TW",
+        date_(2022, 12, 1),
+        [_month_revenue_row(sym, 2022, 11, prior) for sym, (_, prior) in november_yoy.items()],
+    )
+    store.write_partition(
+        MONTH_REVENUE_DATASET,
+        "TW",
+        date_(2023, 1, 3),
+        [_month_revenue_row(sym, 2022, 12, prior) for sym, (_, prior) in december_yoy.items()],
+    )
+    store.write_partition(
+        MONTH_REVENUE_DATASET,
+        "TW",
+        date_(2023, 12, 1),
+        [_month_revenue_row(sym, 2023, 11, now) for sym, (now, _) in november_yoy.items()],
+    )
+    store.write_partition(
+        MONTH_REVENUE_DATASET,
+        "TW",
+        _RUN_DATE,
+        [_month_revenue_row(sym, 2023, 12, now) for sym, (now, _) in december_yoy.items()],
+    )
+
+
+async def _stock_rows(session_factory: async_sessionmaker) -> dict[str, StockScoreRow]:
+    async with session_factory() as session:
+        rows = (await session.scalars(select(StockScoreRow))).all()
+    return {
+        row.symbol: row
+        for row in rows
+        if row.as_of == _RUN_DATE.isoformat() and row.profile == "swing"
+    }
+
+
+def _revenue_yoy_flag(monkeypatch: pytest.MonkeyPatch, *, enabled: bool) -> None:
+    monkeypatch.setattr(
+        scoring_module,
+        "get_settings",
+        lambda: Settings(score_revenue_yoy_enabled=enabled),  # type: ignore[call-arg]
+    )
+
+
+async def test_revenue_yoy_flag_off_reads_no_revenue_and_keeps_chip_only_factor(
+    tmp_path: Path, session_factory: async_sessionmaker, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ctx = _ctx(tmp_path, session_factory)
+    _seed_universe(ctx.store, ctx.calendar)
+    _seed_month_revenue(ctx.store)
+    _revenue_yoy_flag(monkeypatch, enabled=False)
+    datasets_read: list[str] = []
+    real_read_range = ctx.store.read_range
+
+    def spy(dataset: str, *args: object, **kwargs: object) -> list[dict[str, object]]:
+        datasets_read.append(dataset)
+        return real_read_range(dataset, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(ctx.store, "read_range", spy)
+
+    await job_scoring_batch(_RUN_DATE, ctx)
+
+    assert MONTH_REVENUE_DATASET not in datasets_read
+    rows = await _stock_rows(session_factory)
+    assert rows["STRO"].revenue_flow_description.startswith("僅反映三大法人")
+
+
+async def test_revenue_yoy_flag_on_scores_from_the_latest_published_month(
+    tmp_path: Path, session_factory: async_sessionmaker, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ctx = _ctx(tmp_path, session_factory)
+    _seed_universe(ctx.store, ctx.calendar)
+    _seed_month_revenue(ctx.store)
+    _revenue_yoy_flag(monkeypatch, enabled=True)
+
+    await job_scoring_batch(_RUN_DATE, ctx)
+
+    rows = await _stock_rows(session_factory)
+    percentiles = {sym: rows[sym].revenue_flow_percentile for sym in ("STRO", "MID", "WEAK")}
+    assert all(value is not None for value in percentiles.values())
+    # Chip flow and the published November YoY both rank STRO > MID > WEAK. Had the unpublished
+    # December rows been read, the revenue half would rank them the other way round.
+    assert percentiles["STRO"] > percentiles["MID"] > percentiles["WEAK"]  # type: ignore[operator]
+    description = rows["STRO"].revenue_flow_description
+    assert "月營收 YoY" in description
+    assert "子訊號本期無資料" not in description

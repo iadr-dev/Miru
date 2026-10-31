@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from analytics.fundamentals import (
     MARKET_VALUE_DATASET,
+    MONTH_REVENUE_DATASET,
     FundamentalMetrics,
     compute_fundamental_metrics,
 )
@@ -63,6 +64,9 @@ from analytics.scoring_batch.datasets import MA_WINDOWS as _MA_WINDOWS
 from analytics.scoring_batch.datasets import (
     MARKET_VALUE_LOOKBACK_DAYS as _MARKET_VALUE_LOOKBACK_DAYS,
 )
+from analytics.scoring_batch.datasets import (
+    MONTH_REVENUE_LOOKBACK_DAYS as _MONTH_REVENUE_LOOKBACK_DAYS,
+)
 from analytics.scoring_batch.datasets import PRICE_LOOKBACK_DAYS as _PRICE_LOOKBACK_DAYS
 from analytics.scoring_batch.datasets import QUALITY_ATTRS as _QUALITY_ATTRS
 from analytics.scoring_batch.datasets import (
@@ -100,11 +104,15 @@ from analytics.scoring_batch.inputs import (
 from analytics.scoring_batch.inputs import lazy_statement_lines as _lazy_statement_lines
 from analytics.scoring_batch.inputs import ma_series_for as _ma_series_for
 from analytics.scoring_batch.inputs import (
+    month_revenue_yoy_by_symbol as _month_revenue_yoy_by_symbol,
+)
+from analytics.scoring_batch.inputs import (
     split_universe_by_symbol_type as _split_universe_by_symbol_type,
 )
 from analytics.scoring_batch.inputs import trailing_trading_days as _trailing_trading_days
 from analytics.scoring_store import upsert_score
 from analytics.symbol_universe import SymbolType, classify_symbol_type, scoreable_symbol_sql
+from config.settings import get_settings
 from ingest.context import IngestContext
 from ingest.jobs.source_chain import fetch_whole_market_chained
 from ingest.journal import JobRun, RunStatus, journal_run
@@ -126,7 +134,8 @@ class _PerSymbolSignals:
     built from them — the output of pass 1, and the per-symbol lookup pass 2 reads from.
 
     `analyst_consensus_by_symbol` is US-only (empty dict for a TW pass — `analyst_revision` has
-    no TW counterpart, see `UsStockScoreBreakdown`'s own docstring)."""
+    no TW counterpart, see `UsStockScoreBreakdown`'s own docstring). `revenue_yoy_by_symbol` is
+    `None` when the TW 月營收 YoY half is off (flag unset, or US): the dataset was not read."""
 
     bars_by_symbol: dict[str, tuple[PriceBar, ...]]
     ma_series_by_symbol: dict[str, dict[str, tuple[float | None, ...]]]
@@ -135,6 +144,7 @@ class _PerSymbolSignals:
     flow_value_by_symbol: dict[str, float | None]
     metrics_by_symbol: dict[str, FundamentalMetrics]
     analyst_consensus_by_symbol: dict[str, AnalystConsensus]
+    revenue_yoy_by_symbol: dict[str, float | None] | None
 
 
 @dataclass(frozen=True)
@@ -154,6 +164,7 @@ class _CrossSectionalUniverses:
     growth_estimate: list[float]
     price_target_upside: list[float]
     dollar_volume: list[float]
+    revenue_yoy: list[float]
 
 
 def _ma_series_or_empty(bars: Sequence[PriceBar]) -> dict[str, tuple[float | None, ...]]:
@@ -186,6 +197,7 @@ def _assemble_signals_and_universes(  # noqa: PLR0913 — one keyword-only field
     lines_by_symbol: Mapping[str, list[FinancialStatementLine]],
     market_value_by_symbol: dict[str, float],
     analyst_consensus_by_symbol: dict[str, AnalystConsensus] | None = None,
+    revenue_yoy_by_symbol: Mapping[str, float | None] | None = None,
 ) -> tuple[_PerSymbolSignals, _CrossSectionalUniverses]:
     """Pass 1 (each symbol's raw momentum, MA series, price/MA50, chip-flow net, and fundamental
     metrics — each computed independently per symbol) plus the cross-sectional universe assembly
@@ -232,6 +244,9 @@ def _assemble_signals_and_universes(  # noqa: PLR0913 — one keyword-only field
         flow_value_by_symbol=flow_value_by_symbol,
         metrics_by_symbol=metrics_by_symbol,
         analyst_consensus_by_symbol=consensus_by_symbol,
+        revenue_yoy_by_symbol=None
+        if revenue_yoy_by_symbol is None
+        else dict(revenue_yoy_by_symbol),
     )
     universes = _CrossSectionalUniverses(
         momentum=_cross_sectional_universe(raw_momentum),
@@ -242,6 +257,9 @@ def _assemble_signals_and_universes(  # noqa: PLR0913 — one keyword-only field
         growth_estimate=_cross_sectional_universe(raw_growth_estimate),
         price_target_upside=_cross_sectional_universe(raw_price_target_upside),
         dollar_volume=_cross_sectional_universe(raw_dollar_volume),
+        revenue_yoy=_cross_sectional_universe(
+            {symbol: (revenue_yoy_by_symbol or {}).get(symbol) for symbol in universe}
+        ),
     )
     return signals, universes
 
@@ -285,6 +303,9 @@ def _score_stock_symbol(
         fundamentals=signals.metrics_by_symbol[symbol],
         quality_universe=universes.quality,
         value_universe=universes.value,
+        revenue_yoy=(signals.revenue_yoy_by_symbol or {}).get(symbol),
+        revenue_yoy_universe=universes.revenue_yoy,
+        revenue_yoy_enabled=signals.revenue_yoy_by_symbol is not None,
     )
     return compute_stock_factor_breakdown(inputs)
 
@@ -543,6 +564,19 @@ async def job_scoring_batch(run_date: date_, ctx: IngestContext) -> JobRun:
         else []
     )
 
+    revenue_yoy_by_symbol = (
+        _month_revenue_yoy_by_symbol(
+            ctx.store.read_range(
+                MONTH_REVENUE_DATASET,
+                market_str,
+                _trailing_trading_days(ctx, run_date, _MONTH_REVENUE_LOOKBACK_DAYS),
+            ),
+            run_date,
+        )
+        if market is Market.TW and get_settings().score_revenue_yoy_enabled
+        else None
+    )
+
     bars_by_symbol = _bars_by_symbol(price_frame, market)
     flow_by_symbol = _flow_rows_by_symbol(flow_frame, market)
     market_value_by_symbol = _latest_market_value_by_symbol(market_value_rows)
@@ -583,6 +617,7 @@ async def job_scoring_batch(run_date: date_, ctx: IngestContext) -> JobRun:
         lines_by_symbol=lines_by_symbol,
         market_value_by_symbol=market_value_by_symbol,
         analyst_consensus_by_symbol=analyst_consensus_by_symbol,
+        revenue_yoy_by_symbol=revenue_yoy_by_symbol,
     )
     etf_signals = _EtfSignals(
         premium_discount_by_symbol=premium_discount_by_symbol,
