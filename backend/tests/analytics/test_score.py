@@ -363,3 +363,97 @@ def test_annualized_ttm_is_disclosed_in_factor_description() -> None:
     )
     assert factor.percentile is not None
     assert "TTM" in factor.description
+
+
+_FLAT_MA = {"ma50": [None] * 5, "ma150": [None] * 5, "ma200": [None] * 5}
+_UNIVERSE = [float(n) for n in range(1, 11)]
+_FLAG_OFF_REVENUE_FLOW_DESCRIPTION = (
+    "僅反映三大法人 20日淨買超趨勢百分位 — 月營收 YoY 子訊號尚未納入計算，"
+    "因子目前僅涵蓋籌碼面設計的一半，特此揭露"
+)
+
+
+def _revenue_flow(
+    *,
+    flow_value: float | None = 9.0,
+    revenue_yoy: float | None = 2.0,
+    enabled: bool = True,
+) -> FactorScore:
+    return compute_stock_factor_breakdown(
+        FactorInputs(
+            closes=[100.0] * 5,
+            ma_series=_FLAT_MA,
+            momentum_universe=[1.0, 2.0],
+            flow_value=flow_value,
+            flow_universe=_UNIVERSE,
+            price=100.0,
+            ma50=None,
+            revenue_yoy=revenue_yoy,
+            revenue_yoy_universe=_UNIVERSE,
+            revenue_yoy_enabled=enabled,
+        )
+    ).revenue_flow
+
+
+def test_revenue_flow_flag_off_keeps_the_chip_only_text_and_ignores_revenue() -> None:
+    factor = _revenue_flow(enabled=False)
+    assert factor.description == _FLAG_OFF_REVENUE_FLOW_DESCRIPTION
+    assert factor.percentile == winsorized_percentile(9.0, _UNIVERSE)
+
+
+def test_revenue_flow_flag_off_without_chip_data_is_unavailable() -> None:
+    factor = _revenue_flow(flow_value=None, enabled=False)
+    assert factor.percentile is None
+    assert factor.unavailable_reason == "此標的/期間尚無三大法人買賣超資料"
+
+
+def test_revenue_flow_averages_both_halves_and_names_both() -> None:
+    chip = winsorized_percentile(9.0, _UNIVERSE)
+    revenue = winsorized_percentile(2.0, _UNIVERSE)
+    assert chip is not None
+    assert revenue is not None
+    factor = _revenue_flow()
+    assert factor.percentile == pytest.approx((chip + revenue) / 2)
+    assert "三大法人 20日淨買超" in factor.description
+    assert "月營收 YoY" in factor.description
+    assert "未納入" not in factor.description
+
+
+def test_revenue_flow_chip_only_discloses_the_missing_revenue_half() -> None:
+    factor = _revenue_flow(revenue_yoy=None)
+    assert factor.percentile == winsorized_percentile(9.0, _UNIVERSE)
+    assert factor.description.startswith("反映三大法人 20日淨買超")
+    assert "月營收 YoY子訊號本期無資料" in factor.description
+
+
+def test_revenue_flow_revenue_only_discloses_the_missing_chip_half() -> None:
+    factor = _revenue_flow(flow_value=None)
+    assert factor.percentile == winsorized_percentile(2.0, _UNIVERSE)
+    assert factor.description.startswith("反映月營收 YoY")
+    assert "三大法人 20日淨買超子訊號本期無資料" in factor.description
+
+
+def test_revenue_flow_with_neither_half_is_unavailable_not_defaulted() -> None:
+    factor = _revenue_flow(flow_value=None, revenue_yoy=None)
+    assert factor.percentile is None
+    assert factor.unavailable_reason is not None
+    assert "三大法人" in factor.unavailable_reason
+    assert "月營收" in factor.unavailable_reason
+
+
+def test_revenue_flow_revenue_half_needs_a_big_enough_universe() -> None:
+    factor = compute_stock_factor_breakdown(
+        FactorInputs(
+            closes=[100.0] * 5,
+            ma_series=_FLAT_MA,
+            momentum_universe=[1.0, 2.0],
+            flow_value=None,
+            flow_universe=[],
+            price=100.0,
+            ma50=None,
+            revenue_yoy=0.3,
+            revenue_yoy_universe=[0.3],
+            revenue_yoy_enabled=True,
+        )
+    ).revenue_flow
+    assert factor.percentile is None
