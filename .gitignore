@@ -61,3 +61,6 @@ data/reference/
 
 # CodeGraph local index (built per developer with `codegraph init`)
 .codegraph/
+
+# Git worktrees created by Claude Code agents and by hand
+.claude/worktrees/
