@@ -58,3 +58,6 @@ promo/
 # work. Lives on the operator's disk and the data volume, never in git.
 /reference-data/
 data/reference/
+
+# CodeGraph local index (built per developer with `codegraph init`)
+.codegraph/
