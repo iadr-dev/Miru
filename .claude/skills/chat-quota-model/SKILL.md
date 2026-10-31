@@ -9,7 +9,7 @@ description: TLA+ model of Miru's daily chat allowance (reserve a unit, run the 
 
 **Harm when broken.** A leaked unit locks a Free user (cap 3, `accounts/entitlements.py` `TIER_LIMITS`) out of chat early. A cap overrun lets turns run that the tier does not pay for.
 
-The model is `model/ChatQuota.tla`. Each `.cfg` in `model/` is one scenario, and `model/expected.tsv` holds the result each one must give. Some are expected to fail. Those failures are the findings below, and they stay expected failures until product code changes.
+The model is `model/ChatQuota.tla`. Each `.cfg` in `model/` is one scenario, and `model/expected.tsv` holds the result each one must give. Some are expected to fail. An `asis_*` failure is an open finding below and stays an expected failure until product code changes; a `broken_*` failure is a variant broken on purpose, which shows the property can fail.
 
 ## Run it
 
@@ -36,31 +36,31 @@ One user. The counter row is keyed by `(user_id, counter, window_key)` and no st
 
 | Model action | Code (line numbers at the sync commit) | Indivisible because |
 |---|---|---|
-| `Arrive` | `api/routers/agent.py:122-124` `_reject_duplicate`: a keyed send whose key has a committed turn gets 409 `duplicate_request` before the gate | one SELECT |
-| `ReserveUpsert` | `usage/store.py:213` window key, `_increment` `store.py:134-163` `INSERT .. ON CONFLICT DO UPDATE n = n + 1 RETURNING n` | one statement; with `RowLock` the row stays locked until the commit |
-| `ReserveDecide` | `store.py:218-231`: over the cap, `UPDATE n = n - 1` then commit and `ChatQuotaVerdict(allowed=False)`, turned into 429 `chat_limit_reached` at `api/turn_driver.py:122`; else commit and grant | one commit |
-| `StepOk` / `StepFail` | the steps between the grant and the start, per route, listed in `Steps` in the model with their lines | each is one call that either returns or raises |
-| `StepOk` on `append_turn` | `conversation/store.py:282-336`, insert flushed at `:313` against `uq_turns_user_idempotency_key` (`db/models/conversation.py:85`). A committed same-key row raises `IntegrityError` (`agent.py:175`); an uncommitted one makes the insert wait | one INSERT |
-| `Refund` | `refund_daily_chat` `store.py:176-183` into `_refund` `store.py:196-208`: own session, `UPDATE n = n - 1 WHERE window_key = <today at refund time> AND n > 0`, commit | one statement plus commit |
+| `Arrive` | `api/routers/agent.py:121-123` `_reject_duplicate`: a keyed send whose key has a committed turn gets 409 `duplicate_request` before the gate | one SELECT |
+| `ReserveUpsert` | `claim_daily_chat` `usage/store.py:175-186` fixes the day (`:182`); `_reserve` `store.py:276` window key, `_increment` `store.py:197-226` `INSERT .. ON CONFLICT DO UPDATE n = n + 1 RETURNING n` | one statement; with `RowLock` the row stays locked until the commit |
+| `ReserveDecide` | `store.py:281-294`: over the cap, `UPDATE n = n - 1` then commit and `ChatQuotaVerdict(allowed=False)`; `claim_daily_chat` returns None, turned into 429 `chat_limit_reached` at `api/turn_driver.py:127`; else commit and grant a `ChatClaim` for that day | one commit |
+| `StepOk` / `StepFail` | the steps between the grant and the start, per route, listed in `Steps` in the model with their lines. Every route runs them inside `ChatClaim.refund_unless_started` (`store.py:153-160`) and calls `turn_started()` (`:150`) once the last one succeeds; leaving the block before that refunds | each is one call that either returns or raises |
+| `StepOk` on `append_turn` | `conversation/store.py:282-336`, insert flushed at `:313` against `uq_turns_user_idempotency_key` (`db/models/conversation.py:85`). A committed same-key row raises `IntegrityError` (`agent.py:176`); an uncommitted one makes the insert wait | one INSERT |
+| `Refund` | `ChatClaim._refund` `store.py:162-173`, at most once per claim: rolls the caller's session back, then `refund_daily_chat` `store.py:239-246` into `_refund` `store.py:259-271`: own session, `UPDATE n = n - 1 WHERE window_key = <the claimed day> AND n > 0`, commit | one statement plus commit |
 | `Crash` | the worker process dies between two steps; its open transaction rolls back | |
 | `Tick` | UTC midnight: `_day_key(datetime.now(UTC).date())` names the next row | |
 
 Routes and the step that starts the turn:
 
-- `query`: `POST /agent/query`, `agent_query` `agent.py:108-214`. Gate at `:136`. Steps `commit_gate_tx` (`:141`), `process_attachments` (`:142`, 422 `too_many_attachments` or `attachment_extraction_failed` in `api/attachments.py`), `resolve_thread` (`:146`, 404 `thread_not_found` at `:239`), `patch_thread` (`:147-158`, `update_thread`, 422 `unknown_personality` from `api/personality_choice.py:21`), `append_turn` (`:166`), `commit_turn` (`:190`). The turn starts at `start_turn_stream` `:198`.
-- `edit`: `edit_turn` `api/routers/threads_actions.py:690`. Gate `:734`, `append_turn` `:736`, `commit_turn` `:750`, start `:753`.
-- `regenerate`: `regenerate_turn` `threads_actions.py:599`. Gate `:653`, `commit_gate_tx` `:660`, start `:661`.
-- `scheduled`: `SchedulerWorker.run_job` `scheduler/worker.py`. `UsageQuotaGate.allows` (`scheduler/quota.py:61-68`) reserves at `worker.py:294`. Steps `daily_limit_check` (`:313`, returns without touching the job), `resolve_inputs` (`:324-337`, `watchlist_empty`), `claim_job` (`:343`, another worker took the job), `commit_claim` (`:347`). The turn starts at `run_skill` `:357`.
+- `query`: `POST /agent/query`, `agent_query` `agent.py:107-214`. Gate at `:135`, claim block from `:138`. Steps `commit_gate_tx` (`:142`), `process_attachments` (`:143`, 422 `too_many_attachments`, `invalid_request` or `attachment_extraction_failed` in `api/attachments.py`), `resolve_thread` (`:147`, 404 `thread_not_found` at `:239`), `patch_thread` (`:148-159`, `update_thread`, 422 `unknown_personality` from `api/personality_choice.py:21`), `append_turn` (`:167`), `commit_turn` (`:188`). The turn starts at `start_turn_stream` `:196`; `turn_started()` at `:213`.
+- `edit`: `edit_turn` `api/routers/threads_actions.py:694`. Gate `:738`, claim block from `:741`, `append_turn` `:742`, `commit_turn` `:756`, start `:759`, `turn_started()` `:773`.
+- `regenerate`: `regenerate_turn` `threads_actions.py:599`. Gate `:653`, claim block from `:656`, `commit_gate_tx` `:662`, start `:663`, `turn_started()` `:678`.
+- `scheduled`: `SchedulerWorker.run_job` `scheduler/worker.py`. `UsageQuotaGate.claim` (`scheduler/quota.py:61-67`) reserves at `worker.py:294-298`, claim block from `:316`. Steps `daily_limit_check` (`:317-326`, returns without touching the job), `resolve_inputs` (`:328-342`, `watchlist_empty`), `claim_job` (`:348`, another worker took the job), `commit_claim` (`:352`). `turn_started()` at `:353`; the turn starts at `run_skill` `:363`.
 
 Switches, each mirroring one code fact. As-is values are the code today:
 
 | Constant | As-is | Meaning |
 |---|---|---|
-| `RefundMode` | `"as_is"` | refund only where the code refunds (`agent.py:182`). `"all"` refunds every pre-start exit |
-| `RefundDay` | `"now"` | `agent.py:182` passes no `today`, so `_refund` uses the day at refund time. `"claim"` refunds the claimed day |
+| `RefundMode` | `"pre_start"` | every exit before the turn starts refunds (`ChatClaim`). `"dup_only"` is the code before `ChatClaim`, which refunded only the `IntegrityError` path |
+| `RefundDay` | `"claim"` | the claim refunds the day it was reserved on (`store.py:169`). `"now"`, the day at refund time, is the code before `ChatClaim` |
 | `RowLock` | `TRUE` | `_reserve` runs the upsert and the decrement in one transaction, so the row lock (Postgres) or the write lock (SQLite) is held until its commit |
 | `UniqueKey` | `TRUE` | `uq_turns_user_idempotency_key` exists |
-| `DupRefund` | `TRUE` | the `IntegrityError` path refunds |
+| `DupRefund` | `TRUE` | the `IntegrityError` path refunds (its raise leaves the claim block, `agent.py:176-184`) |
 | `RefundStarted` | `FALSE` | a started turn keeps its unit |
 | `FailAt`, `CrashIn` | per scenario | which steps may fail, and whether the process may die inside `_reserve` (`"reserve"`) or after the grant (`"post_claim"`) |
 
@@ -77,25 +77,33 @@ Each property was seen failing on a variant broken on purpose, so a pass means s
 
 | Scenario | Result | Shows |
 |---|---|---|
-| `broken_no_dup_refund` | `NoLeak` fails | removing the `agent.py:182` refund leaks the loser's unit in a same-key race |
+| `broken_no_dup_refund` | `NoLeak` fails | if the `IntegrityError` path did not refund, the loser of a same-key race would keep its unit |
+| `broken_dup_only_refund` | `NoLeak` fails | the code before `ChatClaim`: chat sends that fail after the gate keep the unit (F1) |
+| `broken_scheduler_no_refund` | `RejectOnlyWhenFull` fails | the scheduler before `ChatClaim`: a job past its `daily_limit` drains the allowance (F3) |
+| `broken_refund_today` | `CapSafety` fails | refunding the day the refund runs instead of the claimed day lets two turns run on a day-2 cap of 1 (F5) |
 | `broken_refund_started` | `CapSafety` fails | refunding a turn that started lets a second turn run on a cap of 1 |
 | `broken_no_rowlock` | `RejectOnlyWhenFull` fails | if each `_reserve` statement committed alone, an over-cap caller's brief +1 rejects a caller while a unit is free |
 | `broken_no_unique` | `OneTurnPerKey` fails | without the unique index both same-key sends start a turn |
-| `fixed`, `fixed_other_routes` | pass | refunding every pre-start exit on the claimed day keeps all four properties, all routes, with a midnight rollover |
+| `asis_query_exits`, `asis_edit_regen_exits`, `asis_scheduler_exits`, `asis_scheduler_drain` | pass | every pre-start exit of every route gives its unit back (F1, F2, F3 fixed) |
+| `asis_rollover` | pass | a same-key race across UTC midnight refunds the day the loser claimed (F5 fixed), all four properties |
+| `asis_query_rollover`, `asis_other_routes` | pass | every pre-start step of every route may fail, with a midnight rollover and a crash inside `_reserve`; all four properties hold |
 | `asis_dup_race` | pass | the code's same-key race handling is right when nothing else fails |
 | `asis_reserve_crash` | pass | a crash inside `_reserve` leaks nothing |
 
-Findings on the code as-is. Each is a counterexample TLC printed, retold in the code's words:
+Fixed findings. Each was a counterexample TLC printed on the code before the fix; the `broken_*` variant above keeps that code's behaviour as a check that the property still catches it:
 
-- **F1, chat send errors after the gate keep the unit** (`asis_query_exits`, `NoLeak`). A Free user sends a message with an attachment that fails extraction. `enforce_pre_turn_gate` reserves and commits a unit (`turn_driver.py:121`, `store.py:230`). `process_attachments` (`agent.py:142`) raises 422. No code gives the unit back. The same holds for 404 `thread_not_found` (`agent.py:146`), 422 `unknown_personality` (`agent.py:151`), and any `append_turn` error other than `IntegrityError`. Effect: three such errors lock a Free user out for the rest of the UTC day with no answer received.
-- **F2, edit and regenerate keep the unit on a pre-start error** (`asis_edit_regen_exits`, `NoLeak`). The gate grants (`threads_actions.py:734`), then `store.append_turn` (`:736`) or the commit (`:750`, or `:660` for regenerate) raises. No refund exists on either route.
-- **F3, a scheduled job can drain the whole allowance without running** (`asis_scheduler_exits` for `NoLeak`, `asis_scheduler_drain` for the lockout). `UsageQuotaGate.allows` reserves a unit (`worker.py:294`). The job has reached its own `daily_limit`, so `run_job` returns at `:313-322` without refunding and without moving `next_run`. The job is due again on the next poll (`scheduler_poll_interval_seconds`, 60 s by default) and reserves again. TLC's trace: two polls take both units of a cap of 2, then the user's own chat send gets `chat_limit_reached` with zero turns run. The `watchlist_empty` (`:324-337`) and lost `claim_job` (`:343`) exits keep a unit too, once each. The repeat-every-poll part comes from reading `due_jobs` (`scheduler/store.py:607-625`) and the early return; the model encodes it as `Repoll`.
-- **F4, a process crash after the grant keeps the unit** (`asis_crash`, `NoLeak`). The gate's commit is durable before any later step, so a worker killed between `store.py:230` and the turn commit leaks the unit. This includes a crash between the `IntegrityError` rollback (`agent.py:179`) and the refund (`:182`). `fixed_crash` shows a refund-on-error fix cannot close this; it needs the claim and the turn to commit together, or a sweeper.
-- **F5, a refund across UTC midnight lands on the next day** (`asis_rollover`, `CapSafety`). Two copies of one keyed message: copy 1 is granted on day 1. Midnight passes. Copy 2 is granted on day 2 and its turn commits. Copy 1 hits `IntegrityError` and `refund_daily_chat` (`agent.py:182`, no `today`) decrements day 2's row (`store.py:203`). A third send is then granted on day 2, so two turns run on a day-2 cap of 1. Day 1's unit also stays spent; with every property on, TLC reports that shorter side effect as `RejectOnlyWhenFull`. Rare (needs a double-submit straddling 08:00 Taiwan time), one unit per occurrence.
+- **F1, chat send errors after the gate kept the unit.** Fixed in `967e553` (`fix(api): give the chat back when /agent/query fails before its turn starts`). A Free user sent a message with an attachment that failed extraction; `process_attachments` raised 422 after the gate had committed a unit, and no code gave it back. The same held for 404 `thread_not_found`, 422 `unknown_personality`, and any `append_turn` error other than `IntegrityError`; three such errors locked a Free user out for the UTC day. `agent_query` now runs every step after the gate inside the `ChatClaim` block (`agent.py:138-213`). Tests: `backend/tests/api/test_chat_refunds.py`.
+- **F2, edit and regenerate kept the unit on a pre-start error.** Fixed in `61f79d7`. `edit_turn` (`threads_actions.py:741-773`) and `regenerate_turn` (`:656-678`) run their steps after the gate inside the `ChatClaim` block. Tests: `test_chat_refunds.py`.
+- **F3, a scheduled job could drain the whole allowance without running.** Fixed in `c3ca766`. `UsageQuotaGate.allows` reserved a unit; a job at its own `daily_limit` returned without refunding and without moving `next_run`, so it was due again on the next poll (`scheduler_poll_interval_seconds`, 60 s by default) and reserved again. `watchlist_empty` and a lost `claim_job` kept a unit once each. `QuotaGate.claim` now returns the `ChatClaim`, and `run_job` keeps those exits inside its block (`worker.py:316-353`). The job still re-polls each minute while past its `daily_limit`; each poll now reserves and gives back, net zero (`Repoll` in the model). Tests: `backend/tests/scheduler/test_worker.py` (`*spends*`).
+- **F5, a refund across UTC midnight landed on the next day.** Fixed in `967e553` as a side effect of the same claim: the `IntegrityError` loser's refund used to run `refund_daily_chat` with no `today`, so after midnight it decremented the next day's row and a third send ran on a full day. The claim now carries the day it was reserved on (`store.py:182`, `:169`).
 
-Suspicions the model refuted, given `RowLock`: a crash between the upsert and the over-cap decrement in `_reserve` rolls the whole transaction back (`asis_reserve_crash` passes); concurrent over-cap callers cannot push `n` above the cap where others see it, because the second upsert waits for the first commit; the unguarded decrement at `store.py:219-227` only undoes the same transaction's own +1.
+Open findings on the code as-is:
 
-**Open policy question.** Should a turn that started and then failed give its unit back? The code says no on every route: `refund_daily_chat`'s docstring limits refunds to "a turn that was not started" (`store.py:179-180`), the scheduler records a failed `run_skill` without a refund (`worker.py:369-379`), and `docs/backend/modules/24-deep-research.md` §3 says a failed report run is neither claimed back nor refunded. For a normal chat answer that errors mid-stream, no doc states the policy. The model follows the code (`RefundStarted = FALSE`). If product decides otherwise, `CapSafety` must count only turns that succeeded, and `broken_refund_started` stops being a broken variant.
+- **F4, a process crash after the grant keeps the unit** (`asis_crash`, `asis_exits_crash`, `NoLeak`). The gate's commit is durable before any later step, so a worker killed between `store.py:293` and the turn commit leaks the unit, including a crash inside the claim block before its refund runs (`store.py:162-173`). A refund on exit cannot close this; it needs the claim and the turn to commit together, or a sweeper.
+
+Suspicions the model refuted, given `RowLock`: a crash between the upsert and the over-cap decrement in `_reserve` rolls the whole transaction back (`asis_reserve_crash` passes); concurrent over-cap callers cannot push `n` above the cap where others see it, because the second upsert waits for the first commit; the unguarded decrement at `store.py:282-290` only undoes the same transaction's own +1.
+
+**Open policy question.** Should a turn that started and then failed give its unit back? The code says no on every route: a `ChatClaim` is settled by `turn_started()` (`store.py:150-151`) and `refund_daily_chat`'s docstring limits refunds to "a turn that was not started" (`store.py:242-243`), the scheduler records a failed `run_skill` without a refund (`worker.py:375-385`), and `docs/backend/modules/24-deep-research.md` §3 says a failed report run is neither claimed back nor refunded. For a normal chat answer that errors mid-stream, no doc states the policy. The model follows the code (`RefundStarted = FALSE`). If product decides otherwise, `CapSafety` must count only turns that succeeded, and `broken_refund_started` stops being a broken variant.
 
 ## Real bug or modeling error?
 
@@ -117,17 +125,17 @@ Not covered: the per-minute rate limiter (Redis `INCR`, `turn_driver.py:101`) an
 
 ## Coverage record
 
-Sync commit: `b3c8afe3087418dd5d6faec47e85a3d227c51916`
+Sync commit: `90e86e4ba3913d936e7af140cd20ae6298bb4dc9`
 
 Move the sync commit forward only after confirming that the model still describes every file and function below at the new commit. `drift.sh` reads this line and this table.
 
 | File | Functions |
 |---|---|
-| `backend/src/usage/store.py` | `SqlAlchemyUsageStore._increment`, `reserve_daily_chat`, `refund_daily_chat`, `_refund`, `_reserve` |
+| `backend/src/usage/store.py` | `ChatClaim`, `claim_daily_chat`, `SqlAlchemyUsageStore._increment`, `reserve_daily_chat`, `refund_daily_chat`, `_refund`, `_reserve` |
 | `backend/src/api/turn_driver.py` | `enforce_pre_turn_gate`, `start_turn_stream` |
 | `backend/src/api/routers/agent.py` | `agent_query`, `_reject_duplicate`, `_resolve_thread` |
 | `backend/src/api/routers/threads_actions.py` | `regenerate_turn`, `edit_turn` |
-| `backend/src/scheduler/quota.py` | `UsageQuotaGate.allows` |
+| `backend/src/scheduler/quota.py` | `QuotaGate.claim`, `UsageQuotaGate.claim` |
 | `backend/src/scheduler/worker.py` | `SchedulerWorker.run_job` |
 | `backend/src/scheduler/store.py` | `due_jobs`, `claim_job` |
 | `backend/src/conversation/store.py` | `SqlAlchemyConversationStore.append_turn`, `turn_for_idempotency_key` |
