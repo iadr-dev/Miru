@@ -14,9 +14,10 @@ from analytics.fundamentals import (
     load_symbol_financials,
     load_symbol_market_value,
     load_symbol_month_revenue,
+    month_revenue_published_on,
     parse_month_revenue_rows,
 )
-from schemas.capabilities import FinancialStatementLine
+from schemas.capabilities import FinancialStatementLine, MonthRevenueRow
 from schemas.enums import Market
 
 _Q = (date(2023, 12, 31), date(2023, 9, 30), date(2023, 6, 30), date(2023, 3, 31))
@@ -249,3 +250,40 @@ def test_load_symbol_month_revenue_filters_symbol() -> None:
     )
     assert {row.symbol for row in rows} == {"2330"}
     assert rows[0].revenue == 120
+
+
+def _gate_rows() -> list[MonthRevenueRow]:
+    return parse_month_revenue_rows(
+        [
+            _revenue_row(2023, 12, 100),
+            _revenue_row(2024, 12, 150),
+            _revenue_row(2024, 1, 200),
+            _revenue_row(2025, 1, 400),
+        ]
+    )
+
+
+def test_month_is_usable_from_the_tenth_of_the_following_month() -> None:
+    jan = parse_month_revenue_rows([_revenue_row(2025, 1, 300)])[0]
+    assert month_revenue_published_on(jan) == date(2025, 2, 10)
+
+
+def test_december_revenue_rolls_to_january_tenth_of_next_year() -> None:
+    dec = parse_month_revenue_rows([_revenue_row(2024, 12, 150)])[0]
+    assert month_revenue_published_on(dec) == date(2025, 1, 10)
+
+
+def test_yoy_uses_the_latest_published_month_not_the_latest_stored_one() -> None:
+    rows = _gate_rows()
+    assert compute_revenue_yoy(rows, as_of=date(2025, 2, 9)) == 0.5  # Dec 2024 vs Dec 2023
+    assert compute_revenue_yoy(rows, as_of=date(2025, 2, 10)) == 1.0  # Jan 2025 vs Jan 2024
+
+
+def test_yoy_gate_is_inclusive_on_the_publication_day() -> None:
+    rows = _gate_rows()
+    assert compute_revenue_yoy(rows, as_of=date(2025, 1, 9)) is None  # Dec not yet published
+    assert compute_revenue_yoy(rows, as_of=date(2025, 1, 10)) == 0.5
+
+
+def test_yoy_without_as_of_is_ungated() -> None:
+    assert compute_revenue_yoy(_gate_rows()) == 1.0
