@@ -3,7 +3,7 @@
 Before: the gate reserved a unit, then an error between the gate and the turn start (a bad
 attachment, an unknown thread, an unknown 語氣, a failed save) kept it. Three such errors locked a
 Free user (3 chats a day) out for the rest of the UTC day without one answer. The chat-quota model
-(`.claude/skills/chat-quota-model`, finding F1) found these paths."""
+(`.claude/skills/chat-quota-model`, findings F1 and F2) found these paths."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
+from api.routers import threads_actions
 from config.settings import Settings
 from conversation.store import SqlAlchemyConversationStore
 from schemas.enums import Tier
@@ -108,6 +109,43 @@ def test_a_copy_that_slipped_past_the_duplicate_check_is_refunded_once(
         assert again.status_code == 409
         assert again.json()["code"] == "duplicate_request"
         assert _chats_used(client, user_id) == 1
+
+
+def test_an_edit_whose_save_fails_costs_no_chat(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with build_test_client(settings, agent_answer="done") as client:
+        headers, user_id = sign_in(client, settings, tier=Tier.FREE)
+        thread = _answered(client, headers)
+        user_turn = next(t for t in thread["turns"] if t["role"] == "user")
+        monkeypatch.setattr(SqlAlchemyConversationStore, "append_turn", _broken_save)
+
+        with pytest.raises(RuntimeError):
+            client.post(
+                f"/api/v1/threads/{thread['id']}/turns/{user_turn['id']}/edit",
+                json={"message": "edited"},
+                headers=headers,
+            )
+
+        assert _chats_used(client, user_id) == 1  # only the answered send
+
+
+def test_a_regenerate_that_cannot_start_costs_no_chat(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with build_test_client(settings, agent_answer="done") as client:
+        headers, user_id = sign_in(client, settings, tier=Tier.FREE)
+        thread = _answered(client, headers)
+        answer = next(t for t in thread["turns"] if t["role"] == "assistant")
+        monkeypatch.setattr(threads_actions, "start_turn_stream", _broken_save)
+
+        with pytest.raises(RuntimeError):
+            client.post(
+                f"/api/v1/threads/{thread['id']}/turns/{answer['id']}/regenerate",
+                headers=headers,
+            )
+
+        assert _chats_used(client, user_id) == 1  # only the answered send
 
 
 def test_a_started_turn_keeps_its_chat(settings: Settings) -> None:
