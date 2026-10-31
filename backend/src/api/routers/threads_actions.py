@@ -650,29 +650,33 @@ async def regenerate_turn(
         default_model=user.default_model,
     )
     deep_research = _resolve_deep_research(body.deep_research, source_user_turn)
-    await enforce_pre_turn_gate(state, user, deep_research=deep_research, byok=byok is not None)
-
-    new_turn_id = str(uuid.uuid4())
-    personality = PersonalityContext(
-        thread_override=thread.personality_override, user_preference=user.personality_id
+    claim = await enforce_pre_turn_gate(
+        state, user, deep_research=deep_research, byok=byok is not None
     )
-    # End this request's transaction before the answer starts: the turn holds no connection.
-    await session.commit()
-    return start_turn_stream(
-        state=state,
-        user_id=user.id,
-        thread_id=thread_id,
-        turn_id=new_turn_id,
-        message=message,
-        ctx=ctx,
-        personality=personality,
-        answer_parent_message_id=sibling_parent_id,
-        regenerate_of=turn_id,
-        model_override=thread.model_override if byok is not None else None,
-        web_search_enabled=body.web_search,
-        deep_research=deep_research,
-        byok=byok,
-    )
+    async with claim.refund_unless_started(session):
+        new_turn_id = str(uuid.uuid4())
+        personality = PersonalityContext(
+            thread_override=thread.personality_override, user_preference=user.personality_id
+        )
+        # End this request's transaction before the answer starts: the turn holds no connection.
+        await session.commit()
+        response = start_turn_stream(
+            state=state,
+            user_id=user.id,
+            thread_id=thread_id,
+            turn_id=new_turn_id,
+            message=message,
+            ctx=ctx,
+            personality=personality,
+            answer_parent_message_id=sibling_parent_id,
+            regenerate_of=turn_id,
+            model_override=thread.model_override if byok is not None else None,
+            web_search_enabled=body.web_search,
+            deep_research=deep_research,
+            byok=byok,
+        )
+        claim.turn_started()
+    return response
 
 
 class EditTurnRequest(BaseModel):
@@ -731,39 +735,43 @@ async def edit_turn(
         default_model=user.default_model,
     )
     deep_research = _resolve_deep_research(body.deep_research, turn)
-    await enforce_pre_turn_gate(state, user, deep_research=deep_research, byok=byok is not None)
+    claim = await enforce_pre_turn_gate(
+        state, user, deep_research=deep_research, byok=byok is not None
+    )
+    async with claim.refund_unless_started(session):
+        new_user_turn = await store.append_turn(
+            user_id=user.id,
+            thread_id=thread_id,
+            role=TurnRole.USER,
+            blocks=[(MessageBlockType.TEXT, TextBlock(text=body.message))],
+            parent_message_id=sibling_parent_id,
+            mode="deep_research" if deep_research else None,
+        )
 
-    new_user_turn = await store.append_turn(
-        user_id=user.id,
-        thread_id=thread_id,
-        role=TurnRole.USER,
-        blocks=[(MessageBlockType.TEXT, TextBlock(text=body.message))],
-        parent_message_id=sibling_parent_id,
-        mode="deep_research" if deep_research else None,
-    )
-
-    answer_parent_message_id = new_user_turn.messages[-1].id
-    personality = PersonalityContext(
-        thread_override=thread.personality_override, user_preference=user.personality_id
-    )
-    # The edited question is durable before the answer starts, and the connection goes back now.
-    await session.commit()
-    # Streamed under the new user turn's own id, as `/agent/query` does: `stream_events.turn_id`
-    # has a hard FK to `turns.id`, so the durable replay log can only record a persisted turn.
-    return start_turn_stream(
-        state=state,
-        user_id=user.id,
-        thread_id=thread_id,
-        turn_id=new_user_turn.id,
-        message=body.message,
-        ctx=ctx,
-        personality=personality,
-        answer_parent_message_id=answer_parent_message_id,
-        model_override=thread.model_override if byok is not None else None,
-        web_search_enabled=body.web_search,
-        deep_research=deep_research,
-        byok=byok,
-    )
+        answer_parent_message_id = new_user_turn.messages[-1].id
+        personality = PersonalityContext(
+            thread_override=thread.personality_override, user_preference=user.personality_id
+        )
+        # The edited question is durable before the answer starts, and the connection goes back now.
+        await session.commit()
+        # Streamed under the new user turn's own id, as `/agent/query` does: `stream_events.turn_id`
+        # has a hard FK to `turns.id`, so the durable replay log can only record a persisted turn.
+        response = start_turn_stream(
+            state=state,
+            user_id=user.id,
+            thread_id=thread_id,
+            turn_id=new_user_turn.id,
+            message=body.message,
+            ctx=ctx,
+            personality=personality,
+            answer_parent_message_id=answer_parent_message_id,
+            model_override=thread.model_override if byok is not None else None,
+            web_search_enabled=body.web_search,
+            deep_research=deep_research,
+            byok=byok,
+        )
+        claim.turn_started()
+    return response
 
 
 __all__ = ["router"]

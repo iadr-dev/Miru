@@ -24,7 +24,6 @@ from pydantic import BaseModel, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from accounts.entitlements import chat_limit_for
 from accounts.models import User
 from api.attachments import AttachmentInput, process_attachments
 from api.byok import resolve_byok, validated_model_pick
@@ -133,85 +132,86 @@ async def agent_query(
         model_override=model,
         default_model=user.default_model,
     )
-    await enforce_pre_turn_gate(
+    claim = await enforce_pre_turn_gate(
         state, user, deep_research=body.deep_research, byok=byok is not None
     )
-    # End the read-only transaction the sign-in and the checks above opened (it holds share locks
-    # on users/subscriptions) before the one slow step here, so nothing is held while it runs.
-    await session.commit()
-    augmented_message, images, attachment_blocks = await process_attachments(
-        body.attachments, message=body.message, settings=settings
-    )
-
-    thread = await _resolve_thread(store, user_id=user.id, thread_id=body.thread_id)
-    if picked is not None and picked != thread.model_override:
-        thread = await store.update_thread(
-            user_id=user.id, thread_id=thread.id, model_override=picked
+    async with claim.refund_unless_started(session):
+        # End the read-only transaction the sign-in and the checks above opened (it holds share
+        # locks on users/subscriptions) before the one slow step here, so nothing is held while it
+        # runs.
+        await session.commit()
+        augmented_message, images, attachment_blocks = await process_attachments(
+            body.attachments, message=body.message, settings=settings
         )
-    clear_tone, tone = personality_patch(state, body.personality)
-    if clear_tone or (tone is not None and tone != thread.personality_override):
-        thread = await store.update_thread(
-            user_id=user.id,
-            thread_id=thread.id,
-            personality_override=tone,
-            clear_personality_override=clear_tone,
-        )
-    thread_id = thread.id
 
-    blocks: list[tuple[MessageBlockType, MessageBlockContent]] = [
-        (MessageBlockType.TEXT, TextBlock(text=body.message)),
-        *attachment_blocks,
-    ]
-    try:
-        user_turn = await store.append_turn(
+        thread = await _resolve_thread(store, user_id=user.id, thread_id=body.thread_id)
+        if picked is not None and picked != thread.model_override:
+            thread = await store.update_thread(
+                user_id=user.id, thread_id=thread.id, model_override=picked
+            )
+        clear_tone, tone = personality_patch(state, body.personality)
+        if clear_tone or (tone is not None and tone != thread.personality_override):
+            thread = await store.update_thread(
+                user_id=user.id,
+                thread_id=thread.id,
+                personality_override=tone,
+                clear_personality_override=clear_tone,
+            )
+        thread_id = thread.id
+
+        blocks: list[tuple[MessageBlockType, MessageBlockContent]] = [
+            (MessageBlockType.TEXT, TextBlock(text=body.message)),
+            *attachment_blocks,
+        ]
+        try:
+            user_turn = await store.append_turn(
+                user_id=user.id,
+                thread_id=thread_id,
+                role=TurnRole.USER,
+                blocks=blocks,
+                parent_message_id=await current_leaf(store, thread_id),
+                idempotency_key=idempotency_key,
+                mode="deep_research" if body.deep_research else None,
+            )
+        except IntegrityError:
+            # Two copies of the same message arrived together and both passed the check above;
+            # the unique constraint let one through. Undo this one (the thread it may have created
+            # too) and answer as for any duplicate; leaving the block gives its chat back.
+            await session.rollback()
+            if idempotency_key is None:
+                raise
+            await _reject_duplicate(store, user.id, idempotency_key)
+            raise
+        answer_parent_message_id = user_turn.messages[-1].id
+        # The question is durable before the answer starts, and the connection, with the lock on the
+        # thread row the append took, goes back now: the turn holds no connection while it runs.
+        await session.commit()
+
+        # The streaming correlation id must be the persisted turn's own id — `stream_events.turn_id`
+        # has a hard FK to `turns.id`, so a durable-log write for any other id silently no-ops.
+        turn_id = user_turn.id
+        personality = PersonalityContext(
+            thread_override=thread.personality_override, user_preference=user.personality_id
+        )
+        response = start_turn_stream(
+            state=state,
             user_id=user.id,
             thread_id=thread_id,
-            role=TurnRole.USER,
-            blocks=blocks,
-            parent_message_id=await current_leaf(store, thread_id),
-            idempotency_key=idempotency_key,
-            mode="deep_research" if body.deep_research else None,
+            turn_id=turn_id,
+            message=augmented_message,
+            ctx=ctx,
+            personality=personality,
+            answer_parent_message_id=answer_parent_message_id,
+            # a stored override only means something on the caller's own key
+            model_override=thread.model_override if byok is not None else None,
+            web_search_enabled=body.web_search,
+            locale=body.locale,
+            images=images,
+            deep_research=body.deep_research,
+            byok=byok,
         )
-    except IntegrityError:
-        # Two copies of the same message arrived together and both passed the check above; the
-        # unique constraint let one through. Undo this one (the thread it may have created too),
-        # give back the chat it claimed, and answer as for any duplicate.
-        await session.rollback()
-        if idempotency_key is None:
-            raise
-        await state.usage_store.refund_daily_chat(
-            user_id=user.id, limit=chat_limit_for(user, byok_active=byok is not None)
-        )
-        await _reject_duplicate(store, user.id, idempotency_key)
-        raise
-    answer_parent_message_id = user_turn.messages[-1].id
-    # The question is durable before the answer starts, and the connection, with the lock on the
-    # thread row the append took, goes back now: the turn holds no connection while it runs.
-    await session.commit()
-
-    # The streaming correlation id must be the persisted turn's own id — `stream_events.turn_id`
-    # has a hard FK to `turns.id`, so a durable-log write for any other id silently no-ops.
-    turn_id = user_turn.id
-    personality = PersonalityContext(
-        thread_override=thread.personality_override, user_preference=user.personality_id
-    )
-    return start_turn_stream(
-        state=state,
-        user_id=user.id,
-        thread_id=thread_id,
-        turn_id=turn_id,
-        message=augmented_message,
-        ctx=ctx,
-        personality=personality,
-        answer_parent_message_id=answer_parent_message_id,
-        # a stored override only means something on the caller's own key
-        model_override=thread.model_override if byok is not None else None,
-        web_search_enabled=body.web_search,
-        locale=body.locale,
-        images=images,
-        deep_research=body.deep_research,
-        byok=byok,
-    )
+        claim.turn_started()
+    return response
 
 
 async def _model_for_turn(

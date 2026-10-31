@@ -256,7 +256,8 @@ differences:
   cadence moves on, and no chat is spent.
 - **Quota and keys** are those of every skill-backed schedule: a run counts against the owner's daily chat
   allowance (`UsageQuotaGate`) unless they run on their own key (their saved default model; the `byok_key_required`
-  skip applies); it is not a platform-only job, so there is no `assert_no_byok_scope`. It counts toward
+  skip applies). A run that reserved its chat and then does not start (the job's own `daily_limit`, an empty
+  watchlist, a job another worker took) gives the chat back; it is not a platform-only job, so there is no `assert_no_byok_scope`. It counts toward
   `MAX_SCHEDULES` like any schedule and is open to every signed-in tier (the tool is `private`).
 - Every string of the report passes `governance/textscan.py` (tests render each state through `check_output`);
   nothing in it ranks symbols to act on or suggests an action.

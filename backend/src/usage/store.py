@@ -19,7 +19,9 @@ counters use, never a read-then-write.
 
 from __future__ import annotations
 
+import contextlib
 import uuid
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from typing import Literal, Protocol, cast, runtime_checkable
@@ -123,6 +125,67 @@ class UsageStore(Protocol):
     ) -> bool: ...
 
 
+class ChatClaim:
+    """One chat reserved from a user's daily allowance for a turn that has not started yet.
+
+    The caller wraps every step between the reservation and the turn start in
+    `async with claim.refund_unless_started(session):` and calls `turn_started()` once the turn
+    runs. Leaving the block before that (an error, an early return) gives the unit back once, to
+    the UTC day it was claimed on. A started turn keeps its unit, whatever happens to it later."""
+
+    def __init__(
+        self, store: UsageStore | None, *, user_id: str, limit: int | None, day: date
+    ) -> None:
+        self._store = store
+        self._user_id = user_id
+        self._limit = limit
+        self._day = day
+        self._settled = store is None or limit is None
+
+    @classmethod
+    def unmetered(cls) -> ChatClaim:
+        """A caller with no daily cap (Pro, their own key): nothing was reserved."""
+        return cls(None, user_id="", limit=None, day=date.min)
+
+    def turn_started(self) -> None:
+        self._settled = True
+
+    @contextlib.asynccontextmanager
+    async def refund_unless_started(self, session: AsyncSession) -> AsyncGenerator[None]:
+        """`session` is the caller's own, rolled back before the refund: on SQLite a write it still
+        holds would block the refund's separate connection."""
+        try:
+            yield
+        finally:
+            await self._refund(session)
+
+    async def _refund(self, session: AsyncSession) -> None:
+        if self._settled or self._store is None:
+            return
+        self._settled = True
+        try:
+            await session.rollback()
+            await self._store.refund_daily_chat(
+                user_id=self._user_id, limit=self._limit, today=self._day
+            )
+        except Exception:  # the request's own error is the one to report, not the refund's
+            logger.exception("chat_refund_failed", user_id=self._user_id)
+
+
+async def claim_daily_chat(
+    store: UsageStore, *, user_id: str, limit: int | None, today: date | None = None
+) -> ChatClaim | None:
+    """Reserve one chat from the caller's allowance for `today` (default: the UTC date now), or
+    None when the cap is reached."""
+    if limit is None:
+        return ChatClaim.unmetered()
+    day = today or datetime.now(UTC).date()
+    verdict = await store.reserve_daily_chat(user_id=user_id, limit=limit, today=day)
+    if not verdict.allowed:
+        return None
+    return ChatClaim(store, user_id=user_id, limit=limit, day=day)
+
+
 class SqlAlchemyUsageStore:
     """`UsageStore` over `usage_counters`/`usage_events`. Each call opens its own short session
     from the injected factory, so one shared store is safe across the concurrent turns a
@@ -176,8 +239,8 @@ class SqlAlchemyUsageStore:
     async def refund_daily_chat(
         self, *, user_id: str, limit: int | None, today: date | None = None
     ) -> None:
-        """Give back a chat claimed by `reserve_daily_chat` for a turn that was not started (a
-        duplicate of one already running). An unlimited caller never claimed one."""
+        """Give back a chat claimed by `reserve_daily_chat` for a turn that was not started
+        (`ChatClaim`). An unlimited caller never claimed one."""
         if limit is None:
             return
         await self._refund(_CHAT_COUNTER, user_id=user_id, today=today)
@@ -272,4 +335,11 @@ class SqlAlchemyUsageStore:
             return landed
 
 
-__all__ = ["ChatQuotaVerdict", "SqlAlchemyUsageStore", "UsageStore", "write_turn_usage"]
+__all__ = [
+    "ChatClaim",
+    "ChatQuotaVerdict",
+    "SqlAlchemyUsageStore",
+    "UsageStore",
+    "claim_daily_chat",
+    "write_turn_usage",
+]

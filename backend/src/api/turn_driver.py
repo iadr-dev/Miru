@@ -70,7 +70,7 @@ from orchestrator.models import OrchestratorResult
 from orchestrator.orchestrator import PersonalityContext
 from tools.base import ToolContext
 from usage.llm_usage import estimate_turn_cost_micros, write_model_usage
-from usage.store import write_turn_usage
+from usage.store import ChatClaim, claim_daily_chat, write_turn_usage
 
 _RATE_WINDOW_SECONDS = 60
 
@@ -83,10 +83,14 @@ async def enforce_pre_turn_gate(
     *,
     deep_research: bool = False,
     byok: bool,
-) -> None:
+) -> ChatClaim:
     """Reject a turn before it is created when the caller is over their per-minute request rate or
     would exceed their daily-chat allowance. Shared by every route that starts a real turn
     (`/agent/query`, `regenerate`, `edit`) — a retry/regenerate/edit can never dodge the cap.
+
+    Returns the reserved chat. The route runs its steps up to `start_turn_stream` inside
+    `claim.refund_unless_started(session)` and calls `claim.turn_started()` once it has the
+    response, so a request that fails before its turn starts costs no chat.
 
     Rate limit: an atomic Redis `INCR`+TTL check-and-increment keyed on the caller and window (the
     shared multi-worker backend) or its single-process in-memory equivalent — a `429` with a
@@ -118,17 +122,18 @@ async def enforce_pre_turn_gate(
     # than looked up again here: the cap is lifted only for a turn that really runs on a user key,
     # so a key deleted between two lookups cannot leave a platform-key turn uncapped.
     limit = chat_limit_for(user, byok_active=byok)
-    quota = await state.usage_store.reserve_daily_chat(user_id=user.id, limit=limit)
-    if not quota.allowed:
+    claim = await claim_daily_chat(state.usage_store, user_id=user.id, limit=limit)
+    if claim is None:
         raise ApiError(
             status_code=429,
             code="chat_limit_reached",
             message=(
-                f"Daily chat limit reached ({quota.limit} messages/day). "
+                f"Daily chat limit reached ({limit} messages/day). "
                 "Upgrade your plan or add your own API key to continue."
             ),
             retryable=False,
         )
+    return claim
 
 
 def _require_deep_research_feature(user: User) -> None:

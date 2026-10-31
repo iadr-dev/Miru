@@ -202,7 +202,10 @@ Enforced by `api.turn_driver.enforce_pre_turn_gate` — the `pre_turn` gate ever
 route (`/agent/query`, `regenerate`, `edit`) calls before a turn is created ([10-events-hooks.md](10-events-hooks.md)
 (hook taxonomy):
 
-- **Request rate** (per-minute abuse bound, `rate_limit_per_minute`; an internal protection, no longer shown to users) and **daily chat count** per tier. Deep research has no daily cap (Pro-only).
+- **Request rate** (per-minute abuse bound, `rate_limit_per_minute`; an internal protection, no longer shown to users) and **daily chat count** per tier. Deep research has no daily cap (Pro-only). A chat is claimed at
+  the gate and given back when the request fails before its turn starts (a bad attachment, an
+  unknown thread, a failed save), to the UTC day it was claimed on (`usage.store.ChatClaim`). A turn
+  that started keeps its chat, even if it later fails.
 - **FinMind quota is not a live upstream poll.** There is one FinMind token, and every call to
   it, from any tier and from ingest, is counted against its **6000 per hour** cap; ingest may use
   at most its share, so users keep the rest ([16](../modules/16-infrastructure.md) §4). Premium/Pro

@@ -8,7 +8,7 @@ from datetime import date
 
 import pytest
 
-from usage.store import SqlAlchemyUsageStore
+from usage.store import SqlAlchemyUsageStore, claim_daily_chat
 
 
 def _store(session_factory) -> SqlAlchemyUsageStore:
@@ -107,6 +107,64 @@ async def test_a_refunded_chat_gives_its_slot_back(session_factory) -> None:
 
     assert again.allowed is True
     assert again.used == 2  # the message, and this one: the duplicate no longer counts
+
+
+async def _chats_on(store: SqlAlchemyUsageStore, day: date) -> int:
+    return (await store.today_counts(user_id="u", today=day))["chats"]
+
+
+async def test_a_claim_whose_turn_never_started_is_given_back_once(session_factory) -> None:
+    store = _store(session_factory)
+    day = date(2026, 8, 5)
+    await store.reserve_daily_chat(user_id="u", limit=3, today=day)  # a turn that ran
+    claim = await claim_daily_chat(store, user_id="u", limit=3, today=day)
+    assert claim is not None
+
+    async with session_factory() as session:
+        with pytest.raises(LookupError):
+            async with claim.refund_unless_started(session):
+                raise LookupError("thread_not_found")
+        async with claim.refund_unless_started(session):
+            pass  # leaving again gives nothing more back
+
+    assert await _chats_on(store, day) == 1
+
+
+async def test_a_claim_whose_turn_started_keeps_its_unit(session_factory) -> None:
+    store = _store(session_factory)
+    day = date(2026, 8, 5)
+    claim = await claim_daily_chat(store, user_id="u", limit=3, today=day)
+    assert claim is not None
+
+    async with session_factory() as session, claim.refund_unless_started(session):
+        claim.turn_started()
+
+    assert await _chats_on(store, day) == 1
+
+
+async def test_a_claim_is_given_back_to_the_day_it_was_taken_from(session_factory) -> None:
+    store = _store(session_factory)
+    before_midnight, after_midnight = date(2026, 8, 5), date(2026, 8, 6)
+    claim = await claim_daily_chat(store, user_id="u", limit=1, today=before_midnight)
+    assert claim is not None
+    await store.reserve_daily_chat(user_id="u", limit=1, today=after_midnight)
+
+    async with session_factory() as session, claim.refund_unless_started(session):
+        pass
+
+    assert await _chats_on(store, before_midnight) == 0
+    assert await _chats_on(store, after_midnight) == 1  # the next day's chat is untouched
+
+
+async def test_an_unlimited_caller_claims_nothing(session_factory) -> None:
+    store = _store(session_factory)
+    claim = await claim_daily_chat(store, user_id="u", limit=None)
+    assert claim is not None
+
+    async with session_factory() as session, claim.refund_unless_started(session):
+        pass
+
+    assert (await store.today_counts(user_id="u")).get("chats", 0) == 0
 
 
 async def test_refunding_an_unlimited_chat_touches_nothing(session_factory) -> None:
