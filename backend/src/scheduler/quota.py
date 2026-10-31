@@ -23,31 +23,31 @@ from typing import Protocol, runtime_checkable
 
 from accounts.entitlements import TIER_LIMITS
 from schemas.enums import Tier
-from usage.store import UsageStore
+from usage.store import ChatClaim, UsageStore, claim_daily_chat
 
 
 @runtime_checkable
 class QuotaGate(Protocol):
-    async def allows(self, *, user_id: str, tier: Tier) -> bool:
-        """True if the owner has quota headroom for one more scheduled run right now. Never
-        blocks; a `False` result means skip-and-report, never retry."""
+    async def claim(self, *, user_id: str, tier: Tier) -> ChatClaim | None:
+        """The chat one more scheduled run would spend, reserved now, or None when the owner has
+        no headroom. Never blocks; None means skip-and-report, never retry."""
         ...
 
 
 class AllowAllQuotaGate:
     """Permissive default until the real usage-layer quota manager is wired."""
 
-    async def allows(self, *, user_id: str, tier: Tier) -> bool:
+    async def claim(self, *, user_id: str, tier: Tier) -> ChatClaim | None:
         del user_id, tier
-        return True
+        return ChatClaim.unmetered()
 
 
 class DenyAllQuotaGate:
     """Test double: always reports no headroom, so a test can assert the skip-and-report path."""
 
-    async def allows(self, *, user_id: str, tier: Tier) -> bool:
+    async def claim(self, *, user_id: str, tier: Tier) -> ChatClaim | None:
         del user_id, tier
-        return False
+        return None
 
 
 class UsageQuotaGate:
@@ -58,14 +58,13 @@ class UsageQuotaGate:
     def __init__(self, usage_store: UsageStore) -> None:
         self._usage = usage_store
 
-    async def allows(self, *, user_id: str, tier: Tier) -> bool:
-        limit = TIER_LIMITS[tier].chat_limit_per_day
-        if limit is None:
-            return True
-        verdict = await self._usage.reserve_daily_chat(
-            user_id=user_id, limit=limit, today=datetime.now(UTC).date()
+    async def claim(self, *, user_id: str, tier: Tier) -> ChatClaim | None:
+        return await claim_daily_chat(
+            self._usage,
+            user_id=user_id,
+            limit=TIER_LIMITS[tier].chat_limit_per_day,
+            today=datetime.now(UTC).date(),
         )
-        return verdict.allowed
 
 
 __all__ = ["AllowAllQuotaGate", "DenyAllQuotaGate", "QuotaGate", "UsageQuotaGate"]

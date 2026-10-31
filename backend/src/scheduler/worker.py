@@ -123,7 +123,7 @@ from schemas.schedule_templates import (
 from tools.base import Tool, dispatch_tool
 from tools.morning_brief_models import GetMorningBriefOutput, MorningBriefInput
 from usage.llm_usage import write_model_usage
-from usage.store import SqlAlchemyUsageStore, write_turn_usage
+from usage.store import ChatClaim, SqlAlchemyUsageStore, write_turn_usage
 
 logger = structlog.get_logger(__name__)
 
@@ -291,9 +291,12 @@ class SchedulerWorker:
             if await self._nothing_to_review(store, session, job, user, now):
                 return False
 
-            if byok is None and not await self._ctx.quota_gate.allows(
-                user_id=user.id, tier=user.tier
-            ):
+            chat_claim = (
+                ChatClaim.unmetered()
+                if byok is not None
+                else await self._ctx.quota_gate.claim(user_id=user.id, tier=user.tier)
+            )
+            if chat_claim is None:
                 # Advance next_run too: with a real resolver the job stays "due" otherwise, and
                 # an over-quota job must be skipped once per cadence, not retried every poll.
                 await store.set_job_status(
@@ -310,41 +313,44 @@ class SchedulerWorker:
                 logger.info("schedule_job_skipped_quota", job_id=job.id)
                 return False
 
-            if self._daily_limit_reached(
-                await store.deliveries_today(
-                    user_id=user.id, source_id=job.id, trigger_date=now.date()
-                ),
-                job.daily_limit,
-            ):
-                self._emit(
-                    EventKind.SCHEDULE_SKIPPED_LIMIT, user_id=user.id, data={"job_id": job.id}
-                )
-                return False
+            async with chat_claim.refund_unless_started(session):
+                if self._daily_limit_reached(
+                    await store.deliveries_today(
+                        user_id=user.id, source_id=job.id, trigger_date=now.date()
+                    ),
+                    job.daily_limit,
+                ):
+                    self._emit(
+                        EventKind.SCHEDULE_SKIPPED_LIMIT, user_id=user.id, data={"job_id": job.id}
+                    )
+                    return False
 
-            inputs = await self._resolved_inputs(store, job)
-            if inputs is None:
-                # The watchlist is gone or holds no Taiwan stocks: nothing to brief on. Say so and
-                # move on to the next cadence instead of running the skill on an empty target.
-                await store.set_job_status(
-                    job_id=job.id,
-                    status=JobStatus.ERROR,
-                    last_run=now,
-                    next_run=self._next_run(job, now),
-                    reason="watchlist_empty",
-                )
+                inputs = await self._resolved_inputs(store, job)
+                if inputs is None:
+                    # The watchlist is gone or holds no Taiwan stocks: nothing to brief on. Say so
+                    # and move on to the next cadence instead of running the skill on an empty
+                    # target.
+                    await store.set_job_status(
+                        job_id=job.id,
+                        status=JobStatus.ERROR,
+                        last_run=now,
+                        next_run=self._next_run(job, now),
+                        reason="watchlist_empty",
+                    )
+                    await session.commit()
+                    self._emit(EventKind.SCHEDULE_SKIPPED, user_id=user.id, data={"job_id": job.id})
+                    return False
+
+                # Take the job atomically. `due_jobs` is only a scan, so a second worker (a
+                # restart overlap, a lease handover) may be looking at the same job; whoever wins
+                # this claim runs it, the other stands down. It also marks the job running, so a
+                # crash mid-run is detectable as an orphaned run.
+                if not await store.claim_job(job_id=job.id, now=now):
+                    await session.rollback()
+                    logger.info("schedule_job_claim_lost", job_id=job.id)
+                    return False
                 await session.commit()
-                self._emit(EventKind.SCHEDULE_SKIPPED, user_id=user.id, data={"job_id": job.id})
-                return False
-
-            # Take the job atomically. `due_jobs` is only a scan, so a second worker (a restart
-            # overlap, a lease handover) may be looking at the same job; whoever wins this claim
-            # runs it, the other stands down. It also marks the job running, so a crash mid-run is
-            # detectable as an orphaned run.
-            if not await store.claim_job(job_id=job.id, now=now):
-                await session.rollback()
-                logger.info("schedule_job_claim_lost", job_id=job.id)
-                return False
-            await session.commit()
+                chat_claim.turn_started()
 
             tool_context = self._ctx.entitlement_resolver.tool_context_for(user)
             self._emit(

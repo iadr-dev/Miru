@@ -37,6 +37,7 @@ from schemas.enums import (
 )
 from schemas.market import Symbol
 from schemas.source import HealthStatus, SourceHealth, SourceResult
+from tests.scheduler import clock
 from tests.scheduler.conftest import insert_user
 from usage.store import SqlAlchemyUsageStore
 
@@ -225,9 +226,9 @@ async def test_usage_quota_gate_skips_over_finite_cap(session_factory) -> None:
         Tier.FREE: TierLimits(chat_limit_per_day=2, requests_per_minute=60, finmind_class=Tier.FREE)
     }
     with patch("scheduler.quota.TIER_LIMITS", patched):
-        assert await gate.allows(user_id=user, tier=Tier.FREE) is True
-        assert await gate.allows(user_id=user, tier=Tier.FREE) is True
-        assert await gate.allows(user_id=user, tier=Tier.FREE) is False
+        assert await gate.claim(user_id=user, tier=Tier.FREE) is not None
+        assert await gate.claim(user_id=user, tier=Tier.FREE) is not None
+        assert await gate.claim(user_id=user, tier=Tier.FREE) is None
 
 
 async def test_free_user_job_runs_and_is_rescheduled(session_factory) -> None:
@@ -255,6 +256,86 @@ async def test_free_user_job_runs_and_is_rescheduled(session_factory) -> None:
         assert refreshed.enabled is True
         assert refreshed.next_run is not None
         assert refreshed.next_run.replace(tzinfo=UTC) > now
+
+
+def _metered_worker(session_factory, orch: _StubOrchestrator) -> SchedulerWorker:
+    return SchedulerWorker(
+        _ctx(
+            session_factory,
+            orchestrator=orch,
+            router=_StubRouter({}),
+            leader=AlwaysLeader(),
+            quota_gate=UsageQuotaGate(SqlAlchemyUsageStore(session_factory)),
+        )
+    )
+
+
+async def _chats_used(session_factory, user_id: str) -> int:
+    store = SqlAlchemyUsageStore(session_factory)
+    return (await store.today_counts(user_id=user_id, today=clock.current().date()))["chats"]
+
+
+async def test_a_job_past_its_daily_limit_spends_no_chat_however_often_it_is_polled(
+    session_factory,
+) -> None:
+    # Chat-quota model finding F3: the daily-limit skip leaves the job due, so every poll
+    # reserved a chat and kept it, and a few polls emptied the owner's whole allowance.
+    user = await insert_user(session_factory, tier=Tier.FREE)
+    await _make_job(session_factory, user, daily_limit=0)
+    orch = _StubOrchestrator(_CLEAN_ANSWER)
+    worker = _metered_worker(session_factory, orch)
+
+    for _ in range(4):  # more polls than the Free allowance of 3
+        assert await worker.run_due_jobs() == []
+
+    assert orch.calls == []
+    assert await _chats_used(session_factory, user) == 0
+
+
+async def test_a_job_with_an_empty_watchlist_spends_no_chat(session_factory) -> None:
+    user = await insert_user(session_factory, tier=Tier.FREE)
+    async with session_factory() as session:
+        job = await SqlAlchemySchedulerStore(session).create_job(
+            user_id=user,
+            trigger=ScheduleTrigger(type=TriggerType.MARKET_EVENT, spec="after_close"),
+            action=ScheduleAction(
+                skill_ref="daily-context-brief", inputs={"watchlist_id": "no-such-list"}
+            ),
+            delivery_channels=(DeliveryChannelKind.IN_APP,),
+            next_run=datetime.now(UTC) - timedelta(minutes=1),
+        )
+        await session.commit()
+    orch = _StubOrchestrator(_CLEAN_ANSWER)
+
+    assert await _metered_worker(session_factory, orch).run_job(job) is False
+
+    assert orch.calls == []
+    assert await _chats_used(session_factory, user) == 0
+
+
+async def test_a_job_another_worker_took_spends_no_chat(session_factory) -> None:
+    user = await insert_user(session_factory, tier=Tier.FREE)
+    job = await _make_job(session_factory, user)
+    now = datetime.now(UTC)
+    async with session_factory() as session:
+        assert await SqlAlchemySchedulerStore(session).claim_job(job_id=job.id, now=now)
+        await session.commit()
+    orch = _StubOrchestrator(_CLEAN_ANSWER)
+
+    assert await _metered_worker(session_factory, orch).run_job(job, now=now) is False
+
+    assert orch.calls == []
+    assert await _chats_used(session_factory, user) == 0
+
+
+async def test_a_job_that_runs_spends_one_chat(session_factory) -> None:
+    user = await insert_user(session_factory, tier=Tier.FREE)
+    job = await _make_job(session_factory, user)
+    orch = _StubOrchestrator(_CLEAN_ANSWER)
+
+    assert await _metered_worker(session_factory, orch).run_due_jobs() == [job.id]
+
+    assert await _chats_used(session_factory, user) == 1
 
 
 async def test_orphaned_job_auto_disables(session_factory) -> None:
