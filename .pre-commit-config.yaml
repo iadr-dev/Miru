@@ -35,8 +35,8 @@ repos:
         files: '^web/.*\.(ts|tsx|js|jsx|json|css)$'
         pass_filenames: false
       - id: backend-layering
-        name: backend architecture tests (layering, network I/O, explicit Any)
+        name: backend architecture tests (layering, network I/O, explicit Any, curl HTTPS)
         entry: uv run --project backend pytest backend/tests/arch -q -p no:cacheprovider
         language: system
-        files: '^backend/(src|tests/arch)/.*\.py$'
+        files: '^(backend/(src|tests/arch)/.*\.py|.*\.sh)$'
         pass_filenames: false
