@@ -17,7 +17,9 @@ from pandas.api.types import (
 from analytics.coerce import as_float, as_int
 from analytics.fundamentals import (
     FundamentalMetrics,
+    compute_revenue_yoy,
     parse_market_value_rows,
+    parse_month_revenue_rows,
     parse_statement_lines,
 )
 from analytics.indicators import PriceBar, sma
@@ -36,6 +38,7 @@ from schemas.capabilities import (
     InstitutionalFlowRow,
     InstitutionalHolderRow,
     MarketValueRow,
+    MonthRevenueRow,
     SectorClassification,
     StockInfoRow,
 )
@@ -308,6 +311,20 @@ def latest_market_value_by_symbol(rows: Sequence[dict[str, object]]) -> dict[str
         if current is None or row.trade_date > current.trade_date:
             latest[row.symbol] = row
     return {symbol: float(row.market_value) for symbol, row in latest.items()}
+
+
+def month_revenue_yoy_by_symbol(
+    rows: Sequence[dict[str, object]], run_date: date_
+) -> dict[str, float | None]:
+    """Each symbol's revenue YoY as knowable on `run_date`: months not yet published (before the
+    10th of the following month) are ignored, however early the store holds them."""
+    by_symbol: dict[str, list[MonthRevenueRow]] = defaultdict(list)
+    for row in parse_month_revenue_rows(rows):
+        by_symbol[row.symbol].append(row)
+    return {
+        symbol: compute_revenue_yoy(symbol_rows, as_of=run_date)
+        for symbol, symbol_rows in by_symbol.items()
+    }
 
 
 _ANALYST_CONSENSUS_FIELDS = frozenset(AnalystConsensus.model_fields)

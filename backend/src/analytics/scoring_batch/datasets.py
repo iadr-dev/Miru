@@ -126,6 +126,13 @@ FINANCIALS_LOOKBACK_DAYS = 400
 MARKET_VALUE_LOOKBACK_DAYS = 10
 
 
+# A month's revenue is usable only from the 10th of the following month, and its YoY needs the
+# same month a year earlier: the latest published month plus its year-ago is 13-14 months back.
+# Rows land in the partition of the 1st (or next trading day) of the month after, so 300 trading
+# days (~14 months) covers both with slack.
+MONTH_REVENUE_LOOKBACK_DAYS = 300
+
+
 # `etf_nav`/active-ETF-holding snapshots are also daily whole-market pulls — same short-lookback
 # reasoning as `MARKET_VALUE_LOOKBACK_DAYS`.
 ETF_NAV_LOOKBACK_DAYS = 10

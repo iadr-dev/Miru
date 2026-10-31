@@ -6,7 +6,7 @@ import { AiPanel } from "@/components/stock/ai-panel";
 import { getStockScore, getStockSummary, getTrendScore } from "@/lib/api/stock-detail";
 import { messages, renderWithIntl } from "@/test/render";
 import type { Market } from "@/types/settings";
-import type { TrendScoreData } from "@/types/stock/ai";
+import type { StockScoreResponse, TrendScoreData } from "@/types/stock/ai";
 
 vi.mock("recharts", async (importOriginal) =>
   (await import("@/test/fixed-size-recharts")).withFixedSizeContainer(
@@ -56,14 +56,10 @@ function trend(over: Partial<TrendScoreData> = {}): TrendScoreData {
   };
 }
 
-function mount(market: Market = "TW"): HTMLElement {
-  vi.mocked(getStockScore).mockResolvedValue({
-    found: false,
-    symbol: "2330",
-    market,
-    profile: "swing",
-    message: "",
-  });
+function mount(market: Market = "TW", score?: StockScoreResponse): HTMLElement {
+  vi.mocked(getStockScore).mockResolvedValue(
+    score ?? { found: false, symbol: "2330", market, profile: "swing", message: "" },
+  );
   vi.mocked(getStockSummary).mockResolvedValue({
     found: false,
     symbol: "2330",
@@ -192,6 +188,48 @@ describe("AiPanel trend score card", () => {
     cleanup();
     const empty = await trendCard(trend({ history: [] }));
     expect(empty.textContent).toContain(copy.noHistoryYet);
+  });
+});
+
+function scoreWithRevenueFlow(description: string): StockScoreResponse {
+  return {
+    found: true,
+    symbol: "2330",
+    market: "TW",
+    profile: "swing",
+    message: "",
+    result: {
+      symbol: "2330",
+      symbol_type: "stock",
+      composite: 62.9,
+      band: "偏多",
+      breakdown: {
+        revenue_flow: {
+          name: "revenue_flow",
+          percentile: 66.7,
+          description,
+          unavailable_reason: null,
+        },
+      },
+    },
+  };
+}
+
+describe("AiPanel score factors", () => {
+  beforeEach(() => {
+    vi.mocked(getTrendScore).mockReturnValue(new Promise(() => undefined));
+  });
+
+  it("captions revenue_flow with the description the backend sent, not the fixed translation", async () => {
+    const description = "反映三大法人 20日淨買超與月營收 YoY（等權平均百分位）";
+    const container = mount("TW", scoreWithRevenueFlow(description));
+    expect(await screen.findByText(description)).toBeTruthy();
+    expect(container.textContent).not.toContain(copy.factorCaption.revenue_flow);
+  });
+
+  it("falls back to the translated caption when the backend sends no description", async () => {
+    mount("TW", scoreWithRevenueFlow(""));
+    expect(await screen.findByText(copy.factorCaption.revenue_flow)).toBeTruthy();
   });
 });
 

@@ -120,7 +120,7 @@ unavailable.
 | **Trend quality** | Minervini trend-template condition count (0–8, `trend_template_score`) → `(count/8)*100`; the 8th condition (RS percentile ≥ 70) counts as *not met* when no momentum percentile is supplied | Turns "is it in an uptrend" into a graded number |
 | **Value guard** | Z-scored composite of whichever of **EV/EBITDA, FCF yield, P/E, P/B** the ingested data can assemble (`analytics/fundamentals.py`); each present sub-metric winsorized, z-scored vs the comparison universe, equal-weighted, mapped through the normal CDF | **The anti-追高 brake** |
 | **Quality** | Same construction over whichever of **ROE, debt/equity (penalty), earnings variability (penalty), ROIC, gross profitability** the data supports | Filters "empty rockets" |
-| **Revenue / flow (籌碼)** | **三大法人 20-day net-buy trend** only (`net_buy_20d_trend`), winsorized cross-sectional percentile. The **月營收 YoY sub-signal is not part of the factor**; its description discloses it reports the chip-flow half only | TW is flow-driven |
+| **Revenue / flow (籌碼)** | **三大法人 20-day net-buy trend** (`net_buy_20d_trend`), winsorized cross-sectional percentile. By default the **月營收 YoY sub-signal is not part of the factor** and the description discloses it reports the chip-flow half only. With `SCORE_REVENUE_YOY_ENABLED=true` the factor is the equal-weight mean of the chip-flow and published-month YoY percentiles (see [§2e](#2e-proposed-additions-not-implemented)) | TW is flow-driven |
 
 **US stock (seven factors)** — `momentum`, `trend_quality`, `value_guard`, `quality` as above, plus
 `analyst_revision` (EPS-trend delta + revision breadth from `AnalystConsensus`; takes
@@ -200,6 +200,33 @@ quality .10/.30, analyst_revision .15/.10, growth .15/.15, liquidity .10/.10. ET
   factors (look-ahead bias) — the factors read whichever partitions have landed.
 - No liquidity factor for TW stocks and no liquidity gate in the score; liquidity is a **gate in
   the screener** (§5), never a weighted TW factor.
+
+### 2e. Proposed additions (not implemented)
+
+Reviewed against an external 20-factor TW system (`nrps9909/twstock-predictor`, 2026-10). Most of
+its factors are already covered here: 融資融券 and sector rotation by the trend score (§3), TAIEX
+co-movement by §3's 大盤連動, chip flow by `revenue_flow`. Four ideas are genuine gaps. The
+lean-set rule above still applies, so each one either fills an existing slot or becomes a
+trend-score sub-signal. None adds a new weighted composite factor.
+
+| Candidate | Where it goes | Prerequisite |
+|-----------|---------------|--------------|
+| **月營收 YoY** | Completes `revenue_flow`'s missing half (`score.py:27-28`). The slot already exists, so weights don't change. **Implemented behind `SCORE_REVENUE_YOY_ENABLED` (off by default)**: the factor is the equal-weight mean of the chip-flow and revenue-YoY percentiles, or whichever half is available, and its description names the half it lacks | Monthly revenue is already ingested nightly (`job_month_revenue`, 21:30). The batch applies a **publication-date gate**: a month's revenue is usable only from the 10th of the following month, judged on `revenue_year`/`revenue_month`, not the partition date (revenue for month M is stored under the 1st of M+1, before it is published). The external system shipped a look-ahead bug at exactly this boundary |
+| **法人同步** (foreign + 投信 same direction) | Sub-signal inside §3's 籌碼 dimension. It is correlated with `net_buy_20d_trend`, so it is not a composite factor | **Magnitude-weighted.** Counting direction only lets 1 lot of buying count the same as 5,000 lots |
+| **量能異常** (volume vs its 20-day mean) | Sub-signal inside §3's 技術 dimension | Keep volume in one unit (張). The external system mixed lots and shares |
+| **國際連動** (SOX, TSM ADR) | **Not a score input.** It is sector-scoped (semis only), so it can't be ranked cross-sectionally | None. It stays chat context through the existing morning-brief / index-strip tools |
+
+**Adoption gate.** No candidate ships until an internal check shows two things on history: (1) a
+positive rank IC against forward returns, and (2) low correlation with the existing factors.
+These are internal-only numbers. They are never shown to the user and never phrased as a return
+or win rate (§5c, §7). Exposing them, even internally, is an owner decision, because this spec
+otherwise stays out of backtesting.
+
+**Rejected from the same review:**
+- ML price prediction (LSTM/XGBoost). It is forward-looking, its accuracy barely beats a coin flip, and it cannot be explained under §7.
+- HMM regime-switched weights. They are opaque and overfit-prone; `regime_caveat` stays.
+- A buy/sell label, position sizing, and ATR stops. These are barred by §7.
+- A weighted TW liquidity factor. Liquidity stays a screener gate.
 
 ## 3. Trend score (`analytics/trend_score.py`, `analytics/trend_score_store.py`)
 

@@ -536,6 +536,13 @@ function ScoreGaugeCard({
   );
 }
 
+// `revenue_flow` is the one factor whose makeup changes at run time (the 月營收 YoY half is
+// counted only when the backend flag is on), so its caption is the description the backend
+// returned with the number. A fixed translation would claim YoY is excluded after it is counted.
+function factorCaptionFor(name: FactorName, description: string, translated: string): string {
+  return name === "revenue_flow" && description !== "" ? description : translated;
+}
+
 function FactorRow({
   name,
   factor,
@@ -572,7 +579,7 @@ function FactorRow({
       </div>
       <p className="text-[11px] text-[var(--text-muted)] leading-[1.5]">
         {hasValue
-          ? t(`factorCaption.${name}` as const)
+          ? factorCaptionFor(name, factor.description, t(`factorCaption.${name}` as const))
           : (factor.unavailable_reason ?? t("dimensionUnavailable"))}
       </p>
     </div>
