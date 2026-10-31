@@ -24,10 +24,12 @@ docstrings for the full reasoning):
   (a penalty direction), earnings variability (a penalty direction), plus ROIC and gross
   profitability where the more data-hungry line items are present. Sub-metric-by-sub-metric
   graceful degradation, same convention.
-- **Revenue / flow (TW)** — partially available. The 三大法人 sub-signal is computable from
-  `institutional_flow`; the 月營收 YoY sub-signal is unavailable (monthly revenue isn't ingested
-  yet). The factor is reported from the chip sub-signal alone, with that gap disclosed in its
-  description — never silently backfilled.
+- **Revenue / flow (TW)** — two halves, equal-weighted over whichever are available. The 三大法人
+  sub-signal is computable from `institutional_flow`. The 月營收 YoY half is computed from the
+  ingested monthly revenue only when `FactorInputs.revenue_yoy_enabled` (the off-by-default
+  `score_revenue_yoy_enabled` flag), using only months already published (the 10th of the
+  following month). With the flag off the factor is the chip half alone and says so; with it on,
+  the description names the halves it reflects and any missing one — never silently backfilled.
 
 **ETF factor coverage** (four-factor design — see `compute_etf_factor_breakdown`):
 
@@ -663,6 +665,11 @@ class FactorInputs:
     # dollar-volume comparison universe for `_liquidity_factor`.
     volumes: Sequence[int] = field(default_factory=tuple)
     dollar_volume_universe: Sequence[float] = field(default_factory=tuple)
+    # TW-only: the 月營收 YoY half of `revenue_flow`, point-in-time gated by the caller. Ignored
+    # (and the factor reports the chip half alone) unless `revenue_yoy_enabled`.
+    revenue_yoy: float | None = None
+    revenue_yoy_universe: Sequence[float] = field(default_factory=tuple)
+    revenue_yoy_enabled: bool = False
 
 
 def _fundamental_factor(
@@ -791,28 +798,67 @@ def _price_and_fundamental_factors(
     return momentum, trend_quality, value_guard, quality
 
 
-def compute_stock_factor_breakdown(inputs: FactorInputs) -> StockScoreBreakdown:
-    """Build the five-factor TW stock breakdown from `inputs`. Pure computation — no I/O, no
-    dependency on the ingest store."""
-    momentum, trend_quality, value_guard, quality = _price_and_fundamental_factors(inputs)
+_CHIP_FLOW_LABEL = "三大法人 20日淨買超"
+_CHIP_FLOW_MISSING_REASON = "此標的/期間尚無三大法人買賣超資料"
+_REVENUE_YOY_LABEL = "月營收 YoY"
+_REVENUE_YOY_MISSING_REASON = (
+    "此標的尚無已公告（每月10日起可用）的月營收及其去年同月資料，或當日全市場有效樣本不足"
+)
 
-    flow_percentile = (
+
+def _revenue_flow_factor(inputs: FactorInputs) -> FactorScore:
+    """TW `revenue_flow`: the equal-weight mean of whichever of its two halves (三大法人 chip flow,
+    月營收 YoY) are available, with the description always naming the halves it reflects and the
+    one it lacks. With `revenue_yoy_enabled` off the YoY half does not exist yet, so the factor is
+    the chip half alone, as before."""
+    chip = (
         winsorized_percentile(inputs.flow_value, inputs.flow_universe)
         if inputs.flow_value is not None
         else None
     )
-    revenue_flow = (
-        FactorScore(
+    if not inputs.revenue_yoy_enabled:
+        if chip is None:
+            return unavailable_factor("revenue_flow", _CHIP_FLOW_MISSING_REASON)
+        return FactorScore(
             name="revenue_flow",
-            percentile=flow_percentile,
+            percentile=chip,
             description=(
                 "僅反映三大法人 20日淨買超趨勢百分位 — 月營收 YoY 子訊號尚未納入計算，"
                 "因子目前僅涵蓋籌碼面設計的一半，特此揭露"
             ),
         )
-        if flow_percentile is not None
-        else unavailable_factor("revenue_flow", "此標的/期間尚無三大法人買賣超資料")
+    revenue = (
+        winsorized_percentile(inputs.revenue_yoy, inputs.revenue_yoy_universe)
+        if inputs.revenue_yoy is not None
+        else None
     )
+    halves = (
+        (_CHIP_FLOW_LABEL, chip, _CHIP_FLOW_MISSING_REASON),
+        (_REVENUE_YOY_LABEL, revenue, _REVENUE_YOY_MISSING_REASON),
+    )
+    present = [(label, value) for label, value, _ in halves if value is not None]
+    missing = [(label, reason) for label, value, reason in halves if value is None]
+    if not present:
+        return unavailable_factor("revenue_flow", "；".join(reason for _, reason in missing))
+    description = f"反映{'與'.join(label for label, _ in present)}（等權平均百分位）"
+    if missing:
+        description += "；" + "；".join(
+            f"{label}子訊號本期無資料（{reason}），未納入計算、不以虛構數值替代"
+            for label, reason in missing
+        )
+    return FactorScore(
+        name="revenue_flow",
+        percentile=statistics.fmean(value for _, value in present),
+        description=description,
+    )
+
+
+def compute_stock_factor_breakdown(inputs: FactorInputs) -> StockScoreBreakdown:
+    """Build the five-factor TW stock breakdown from `inputs`. Pure computation — no I/O, no
+    dependency on the ingest store."""
+    momentum, trend_quality, value_guard, quality = _price_and_fundamental_factors(inputs)
+
+    revenue_flow = _revenue_flow_factor(inputs)
 
     return StockScoreBreakdown(
         momentum=momentum,

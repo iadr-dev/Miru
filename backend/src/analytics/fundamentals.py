@@ -316,10 +316,27 @@ def parse_month_revenue_rows(rows: Sequence[dict[str, object]]) -> list[MonthRev
     return values
 
 
-def compute_revenue_yoy(rows: Sequence[MonthRevenueRow]) -> float | None:
+_REVENUE_PUBLICATION_DAY = 10  # TW listed companies must file last month's revenue by the 10th
+
+
+def month_revenue_published_on(row: MonthRevenueRow) -> date_:
+    """The first date a month's revenue may be used: the 10th of the FOLLOWING month. The row's
+    partition/`trade_date` is the 1st of that month, before the filing deadline, so it must never
+    stand in for this."""
+    carry, month_index = divmod(row.revenue_month, 12)  # December carries into next January
+    year, month = row.revenue_year + carry, month_index + 1
+    return date_(year, month, _REVENUE_PUBLICATION_DAY)
+
+
+def compute_revenue_yoy(
+    rows: Sequence[MonthRevenueRow], *, as_of: date_ | None = None
+) -> float | None:
     """Year-over-year change of the most recently filed month's revenue vs the same calendar
     month one year prior — `None` when either month is absent (never a fabricated comparison
-    from a mismatched month)."""
+    from a mismatched month). With `as_of`, months not yet published on that date are dropped
+    first, so a point-in-time caller never sees a month that was not yet knowable."""
+    if as_of is not None:
+        rows = [row for row in rows if month_revenue_published_on(row) <= as_of]
     if not rows:
         return None
     latest = max(rows, key=lambda row: (row.revenue_year, row.revenue_month))
@@ -467,6 +484,7 @@ __all__ = [
     "load_symbol_financials",
     "load_symbol_market_value",
     "load_symbol_month_revenue",
+    "month_revenue_published_on",
     "parse_market_value_rows",
     "parse_month_revenue_rows",
     "parse_statement_lines",
