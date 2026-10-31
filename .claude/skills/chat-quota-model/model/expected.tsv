@@ -1,0 +1,15 @@
+asis_query_exits	NoLeak
+asis_edit_regen_exits	NoLeak
+asis_scheduler_exits	NoLeak
+asis_scheduler_drain	RejectOnlyWhenFull
+asis_dup_race	pass
+asis_reserve_crash	pass
+asis_crash	NoLeak
+asis_rollover	CapSafety
+fixed	pass
+fixed_other_routes	pass
+fixed_crash	NoLeak
+broken_no_dup_refund	NoLeak
+broken_refund_started	CapSafety
+broken_no_rowlock	RejectOnlyWhenFull
+broken_no_unique	OneTurnPerKey
