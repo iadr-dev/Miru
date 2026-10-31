@@ -6,6 +6,8 @@ from __future__ import annotations
 from calendar.trading_days import TradingDayCalendar
 from datetime import date
 
+import pytest
+
 from ingest.context import IngestContext
 from ingest.jobs import FINANCIALS_JOB, PRICE_EOD_JOB, run_whole_market_job
 from ingest.jobs.source_chain import (
@@ -15,7 +17,6 @@ from ingest.jobs.source_chain import (
     fetch_whole_market_chained,
     load_whole_market_priority,
     resolve_chain,
-    taipei_today,
 )
 from ingest.journal import RunStatus
 from ingest.leader import AlwaysLeader, NeverLeader
@@ -323,15 +324,19 @@ async def test_an_empty_answer_that_is_not_explicit_falls_back(tmp_path: object)
     assert len(finmind.calls) == 1
 
 
-async def test_explicit_empty_today_is_not_a_closure_yet(tmp_path: object) -> None:
+async def test_explicit_empty_today_is_not_a_closure_yet(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The real clock made this test skip on a weekend (a non-trading day is calendar-gated).
+    monkeypatch.setattr("ingest.jobs.source_chain.taipei_today", lambda: TRADING_DAY)
     finmind = _finmind([], status=HealthStatus.UNREACHABLE, detail="HTTP 400")
     ctx = _ctx(tmp_path, finmind, _closed())
 
-    run = await run_whole_market_job(PRICE_EOD_JOB, taipei_today(), ctx)
+    run = await run_whole_market_job(PRICE_EOD_JOB, TRADING_DAY, ctx)
 
     assert run.status is RunStatus.FAILED  # not published yet: retried later
     assert len(finmind.calls) == 1
-    assert not ctx.store.is_closed(PRICE_EOD_JOB.dataset, "TW", taipei_today())
+    assert not ctx.store.is_closed(PRICE_EOD_JOB.dataset, "TW", TRADING_DAY)
 
 
 async def test_finmind_alone_never_declares_a_closure(tmp_path: object) -> None:
