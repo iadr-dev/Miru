@@ -456,3 +456,29 @@ async def test_twse_without_its_taiex_row_falls_back_to_finmind(
     assert "no TAIEX row (TWSE: www.twse.com.tw MI_5MINS_HIST: HTTP 503" in run.detail
     rows = ctx.store.read_partition(PRICE_EOD_JOB.dataset, "TW", day)
     assert sorted(str(r["symbol"]) for r in rows) == ["2330", "TAIEX"]
+
+
+async def test_tpex_without_its_index_row_falls_back_to_finmind(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The recorded 2026-10-22 reports with the OTC index report down: the day is FinMind's, `TPEx`
+    row included, never the exchange's stocks without the index."""
+    web = FakeWeb(TRADING)
+    web.by_report[("www.tpex.org.tw", "/indexInfo/inx")] = [httpx.Response(503)] * 3
+    monkeypatch.setattr(exchange_client, "build_async_client", web.factory)
+    day = date(2026, 10, 22)
+    finmind = _finmind(
+        [
+            _bar("2330", trade_date="2026-10-22"),
+            _bar("TPEx", trade_date="2026-10-22", close=381.69),
+        ]
+    )
+    ctx = _ctx(tmp_path, finmind, exchange_adapter())  # type: ignore[arg-type]
+
+    run = await run_whole_market_job(PRICE_EOD_JOB, day, ctx)
+
+    assert run.status is RunStatus.SUCCESS
+    assert run.detail.startswith(f"served by {FINMIND_ID}: ok (after {EXCHANGE_ID}: ")
+    assert "no TPEx index row (TPEx: www.tpex.org.tw inx: HTTP 503" in run.detail
+    rows = ctx.store.read_partition(PRICE_EOD_JOB.dataset, "TW", day)
+    assert sorted(str(r["symbol"]) for r in rows) == ["2330", "TPEx"]

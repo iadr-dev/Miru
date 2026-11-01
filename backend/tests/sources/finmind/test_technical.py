@@ -54,14 +54,14 @@ def _dump_row(stock_id: str, close: float, volume: int, money: int) -> dict[str,
     }
 
 
-def test_map_eod_bars_keeps_taiex_and_drops_the_other_aggregate_rows() -> None:
+def test_map_eod_bars_keeps_the_two_index_rows_and_drops_the_other_aggregate_rows() -> None:
     """The whole-market pull (`sym=None`, `stock_id` read off each row) carries FinMind's
     index/sector aggregate labels (`TAIEX`, `TPEx`, named industry sectors like `Semiconductor`)
     next to the real security codes, each with a nonzero `close` that survives the `close <= 0`
     no-trade-day filter — confirmed live against the real derived store. Every real TW security
-    code starts with a digit; an aggregate label never does. `TAIEX` alone is kept: the stored
-    price partitions carry the index as a row of each day, its volume/turnover the whole listed
-    market's (the values below are the stored 2023-09-28 row)."""
+    code starts with a digit; an aggregate label never does. `TAIEX` and `TPEx` alone are kept: the
+    stored price partitions carry both indexes as a row of each day, TAIEX's volume/turnover the
+    whole listed market's and TPEx's 0 (the values below are the stored 2023-09-28 rows)."""
     rows = [
         _dump_row("2330", 523.0, 28_350_350, 14_826_254_349),
         _dump_row("TAIEX", 16353.74, 5_113_712_427, 267_191_678_046),
@@ -71,7 +71,7 @@ def test_map_eod_bars_keeps_taiex_and_drops_the_other_aggregate_rows() -> None:
 
     bars = _map_eod_bars(rows, sym=None)
 
-    assert [bar["symbol"] for bar in bars] == ["2330", "TAIEX"]
+    assert [bar["symbol"] for bar in bars] == ["2330", "TAIEX", "TPEx"]
     assert bars[1] == {
         "symbol": "TAIEX",
         "market": "TW",
@@ -82,6 +82,17 @@ def test_map_eod_bars_keeps_taiex_and_drops_the_other_aggregate_rows() -> None:
         "close": 16353.74,
         "volume": 5_113_712_427,
         "turnover": 267_191_678_046,
+    }
+    assert bars[2] == {
+        "symbol": "TPEx",
+        "market": "TW",
+        "trade_date": "2023-09-28",
+        "open": 225.5,
+        "high": 228.5,
+        "low": 223.5,
+        "close": 226.5,
+        "volume": 0,
+        "turnover": 0,
     }
 
 

@@ -286,7 +286,7 @@ class TestRunScreenerRoute:
         """`roe_ttm` is computed by grouping the whole-market income + balance-sheet partitions
         by symbol and reusing `analytics/fundamentals.py::compute_fundamental_metrics` — the same
         ROE formula the per-symbol score path already uses, here run once over a bulk read instead
-        of a per-symbol store call. `HIGH`: 400 net income / 1000 equity = 40% ROE. `LOW`: 50 net
+        of a per-symbol store call. `1201`: 400 net income / 1000 equity = 40% ROE. `1202`: 50 net
         income / 1000 equity = 5% ROE."""
         client = _client_with_screener(settings, agent_answer, tmp_path)
         store = ParquetStore(root=tmp_path)
@@ -294,7 +294,7 @@ class TestRunScreenerRoute:
             "TaiwanStockPrice",
             "TW",
             _RUN_DATE,
-            [_price_row("HIGH", 100.0), _price_row("LOW", 50.0)],
+            [_price_row("1201", 100.0), _price_row("1202", 50.0)],
         )
         income_rows = [
             {
@@ -307,7 +307,7 @@ class TestRunScreenerRoute:
                 "origin_name": "NetIncome",
                 "value": net_income,
             }
-            for symbol, net_income in (("HIGH", 100.0), ("LOW", 12.5))
+            for symbol, net_income in (("1201", 100.0), ("1202", 12.5))
             for quarter in range(1, 5)
         ]
         balance_rows = [
@@ -321,7 +321,7 @@ class TestRunScreenerRoute:
                 "origin_name": "Equity",
                 "value": 1000.0,
             }
-            for symbol in ("HIGH", "LOW")
+            for symbol in ("1201", "1202")
         ]
         store.write_partition(
             "TaiwanStockFinancialStatements", "TW", date(2023, 12, 30), income_rows
@@ -336,7 +336,7 @@ class TestRunScreenerRoute:
         )
         assert resp.status_code == 200
         survivors = {s["symbol"] for s in resp.json()["result"]["survivors"]}
-        assert survivors == {"HIGH"}
+        assert survivors == {"1201"}
 
     def test_tw_rsi_condition_filters_via_whole_market_price_history(
         self, settings: Settings, agent_answer: str, tmp_path: Path
