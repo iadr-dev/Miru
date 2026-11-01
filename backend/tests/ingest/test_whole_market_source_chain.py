@@ -6,8 +6,10 @@ from __future__ import annotations
 from calendar.trading_days import TradingDayCalendar
 from datetime import date
 
+import httpx
 import pytest
 
+import sources.exchange_whole_market._client as exchange_client
 from ingest.context import IngestContext
 from ingest.jobs import FINANCIALS_JOB, PRICE_EOD_JOB, run_whole_market_job
 from ingest.jobs.source_chain import (
@@ -31,6 +33,8 @@ from tests.ingest.test_whole_market_runner import (
     _bar,
     _result,
 )
+from tests.sources.test_exchange_whole_market import TRADING, FakeWeb
+from tests.sources.test_exchange_whole_market import _adapter as exchange_adapter
 
 OFFICIAL_DETAIL = "TWSE 1 + TPEx 1 rows"
 
@@ -423,3 +427,32 @@ async def test_a_failed_answer_without_the_tag_is_never_served_for_its_rows(
 
     assert run.status is RunStatus.FAILED
     assert run.rows_written == 0
+
+
+# ------------------------------------------------- TAIEX row (TWSE's two index reports)
+
+
+async def test_twse_without_its_taiex_row_falls_back_to_finmind(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The real exchange adapter on the recorded 2026-10-22 reports, its MI_5MINS_HIST down: the
+    day is FinMind's, TAIEX row included, never the exchange's stocks without the index."""
+    web = FakeWeb(TRADING)
+    web.by_report[("www.twse.com.tw", "/TAIEX/MI_5MINS_HIST")] = [httpx.Response(503)] * 3
+    monkeypatch.setattr(exchange_client, "build_async_client", web.factory)
+    day = date(2026, 10, 22)
+    finmind = _finmind(
+        [
+            _bar("2330", trade_date="2026-10-22"),
+            _bar("TAIEX", trade_date="2026-10-22", close=46041.43),
+        ]
+    )
+    ctx = _ctx(tmp_path, finmind, exchange_adapter())  # type: ignore[arg-type]
+
+    run = await run_whole_market_job(PRICE_EOD_JOB, day, ctx)
+
+    assert run.status is RunStatus.SUCCESS
+    assert run.detail.startswith(f"served by {FINMIND_ID}: ok (after {EXCHANGE_ID}: ")
+    assert "no TAIEX row (TWSE: www.twse.com.tw MI_5MINS_HIST: HTTP 503" in run.detail
+    rows = ctx.store.read_partition(PRICE_EOD_JOB.dataset, "TW", day)
+    assert sorted(str(r["symbol"]) for r in rows) == ["2330", "TAIEX"]

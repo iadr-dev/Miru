@@ -35,6 +35,7 @@ from sources.exchange_whole_market._client import (
     RequestPolicy,
     ThrottledJsonClient,
 )
+from sources.exchange_whole_market.twse import parse_index_ohlc, parse_market_totals, roc_date
 from tests.sources.conftest import load_fixture
 
 DAY = date(2026, 10, 22)
@@ -46,6 +47,8 @@ TRADING: dict[tuple[str, str], str] = {
     ("www.twse.com.tw", "/fund/T86"): "twse_t86.json",
     ("www.twse.com.tw", "/marginTrading/MI_MARGN"): "twse_mi_margn.json",
     ("www.twse.com.tw", "/afterTrading/BWIBBU_d"): "twse_bwibbu.json",
+    ("www.twse.com.tw", "/TAIEX/MI_5MINS_HIST"): "twse_mi_5mins_hist.json",
+    ("www.twse.com.tw", "/afterTrading/FMTQIK"): "twse_fmtqik.json",
     ("www.tpex.org.tw", "/afterTrading/otc"): "tpex_otc.json",
     ("www.tpex.org.tw", "/afterTrading/dailyQuotes"): "tpex_daily_quotes.json",
     ("www.tpex.org.tw", "/insti/dailyTrade"): "tpex_daily_trade.json",
@@ -63,6 +66,10 @@ EMPTY: dict[tuple[str, str], str] = {
     ("www.tpex.org.tw", "/margin/balance"): "tpex_margin_balance_empty.json",
     ("www.tpex.org.tw", "/afterTrading/peQryDate"): "tpex_pe_empty.json",
 }
+
+
+# The securities of the trimmed 2026-10-22 price fixtures (TWSE 3, TPEx 2).
+STOCKS = {("00400A",), ("1101",), ("2330",), ("00411A",), ("00679B",)}
 
 
 class FakeWeb:
@@ -169,7 +176,7 @@ async def test_price_merges_listed_and_otc_in_the_finmind_row_shape(web: FakeWeb
     rows = _rows(result)
     _all_valid(EODBar, rows)
     by = _by(rows, "symbol")
-    assert set(by) == {("00400A",), ("1101",), ("2330",), ("00411A",), ("00679B",)}
+    assert set(by) == {*STOCKS, ("TAIEX",)}
     assert by[("1101",)] == {  # TWSE, comma-formatted numbers
         "symbol": "1101",
         "market": "TW",
@@ -195,7 +202,7 @@ async def test_tpex_volume_and_turnover_are_the_all_session_totals_like_finmind(
     result = await _fetch(Capability.PRICE_EOD)
 
     assert result.health.status is HealthStatus.OK
-    assert result.health.detail == "TWSE 3 + TPEx 2 rows"
+    assert result.health.detail == "TWSE 4 + TPEx 2 rows"  # 3 stocks and TAIEX
     rows = _by(_rows(result), "symbol")
     _all_valid(EODBar, list(_rows(result)))
     assert rows[("00411A",)]["volume"] == 10688945
@@ -234,7 +241,7 @@ def _assert_round_lot_only(result: SourceResult, reason: str) -> None:
     assert ROUND_LOT_VOLUME in result.health.detail
     assert reason in result.health.detail
     rows = _by(_rows(result), "symbol")
-    assert set(rows) == {("00400A",), ("1101",), ("2330",), ("00411A",), ("00679B",)}
+    assert set(rows) == {*STOCKS, ("TAIEX",)}
     assert rows[("00411A",)]["volume"] == 10545000  # the otc (round-lot) figure, labelled as such
 
 
@@ -327,7 +334,128 @@ async def test_price_drops_untraded_stocks_and_index_labels(web: FakeWeb) -> Non
     symbols = {r["symbol"] for r in rows}
     assert "9958" not in symbols  # TWSE: prices '--', volume 0
     assert "6488" not in symbols  # TPEx: prices '---'
-    assert "TAIEX" not in symbols  # not a security code
+    # A label row of the quotes table is not a security; the one TAIEX row is the index's own.
+    assert [r["close"] for r in rows if r["symbol"] == "TAIEX"] == [46041.43]
+
+
+# ---------------------------------------------------------------------- TAIEX row (TWSE price)
+
+TAIEX_REPORTS = ("/TAIEX/MI_5MINS_HIST", "/afterTrading/FMTQIK")
+
+
+def _index_row(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    return [r for r in rows if r["symbol"] == "TAIEX"]
+
+
+async def test_twse_price_carries_the_taiex_row_of_the_two_monthly_reports(web: FakeWeb) -> None:
+    """MI_5MINS_HIST gives the index OHLC, FMTQIK the whole listed market's traded shares and
+    value: the row FinMind's dump carried, in its units."""
+    result = await _fetch(Capability.PRICE_EOD)
+
+    assert result.health.status is HealthStatus.OK
+    assert _index_row(_rows(result)) == [
+        {
+            "symbol": "TAIEX",
+            "market": "TW",
+            "trade_date": "2026-10-22",
+            "open": 46942.75,
+            "high": 47332.18,
+            "low": 46041.43,
+            "close": 46041.43,
+            "volume": 11999249506,
+            "turnover": 933437473560,
+        }
+    ]
+    _all_valid(EODBar, _index_row(_rows(result)))
+    twse = [r for r in web.requests if r.url.host == "www.twse.com.tw"]
+    assert [r.url.path.removeprefix("/rwd/zh") for r in twse] == [
+        "/afterTrading/MI_INDEX",
+        *TAIEX_REPORTS,
+    ]
+    assert {r.url.params["date"] for r in twse} == {"20261022"}
+
+
+def test_the_monthly_reports_are_read_by_their_roc_dates() -> None:
+    hist = load_fixture("exchange_whole_market", "twse_mi_5mins_hist.json")
+    totals = load_fixture("exchange_whole_market", "twse_fmtqik.json")
+
+    assert roc_date("115/10/30") == date(2026, 10, 30)
+    assert roc_date("合計") is None
+    assert parse_index_ohlc(hist, date(2026, 10, 30))[0] == {
+        "symbol": "TAIEX",
+        "market": "TW",
+        "trade_date": "2026-10-30",
+        "open": 46139.79,
+        "high": 46139.79,
+        "low": 44726.26,
+        "close": 45211.83,
+    }
+    assert parse_market_totals(totals, date(2026, 10, 6)) == [
+        {
+            "symbol": "TAIEX",
+            "volume": 10889677530,
+            "turnover": 1026204771139,
+            "close": 49822.55,
+        }
+    ]
+
+
+def _totals_with_close(close: str) -> httpx.Response:
+    body = load_fixture("exchange_whole_market", "twse_fmtqik.json")
+    for row in body["data"]:
+        if row[0] == "115/10/22":
+            row[4] = close
+    return httpx.Response(200, json=body)
+
+
+async def test_closes_that_disagree_leave_the_day_to_the_next_source(web: FakeWeb) -> None:
+    web.by_report[("www.twse.com.tw", "/afterTrading/FMTQIK")] = [_totals_with_close("46,041.53")]
+
+    result = await _fetch(Capability.PRICE_EOD)
+
+    assert result.health.status is HealthStatus.UNREACHABLE
+    assert "no TAIEX row" in result.health.detail
+    assert "disagrees" in result.health.detail
+    assert _rows(result) == []
+    assert ROUND_LOT_VOLUME not in result.health.detail  # never served as a last resort
+
+
+def _hist_without(day: str) -> httpx.Response:
+    body = load_fixture("exchange_whole_market", "twse_mi_5mins_hist.json")
+    body["data"] = [row for row in body["data"] if row[0] != day]
+    return httpx.Response(200, json=body)
+
+
+@pytest.mark.parametrize(
+    ("report", "responses", "reason"),
+    [
+        ("/TAIEX/MI_5MINS_HIST", [httpx.Response(503)] * 3, "HTTP 503"),
+        ("/TAIEX/MI_5MINS_HIST", [_hist_without("115/10/22")], "no row for 2026-10-22"),
+        ("/afterTrading/FMTQIK", [httpx.Response(403)], "HTTP 403"),
+    ],
+)
+async def test_a_taiex_report_that_fails_leaves_the_day_to_the_next_source(
+    web: FakeWeb, report: str, responses: list[httpx.Response], reason: str
+) -> None:
+    web.by_report[("www.twse.com.tw", report)] = list(responses)
+
+    result = await _fetch(Capability.PRICE_EOD)
+
+    assert result.health.status is HealthStatus.UNREACHABLE
+    assert "no TAIEX row" in result.health.detail
+    assert reason in result.health.detail
+    assert _rows(result) == []
+
+
+async def test_the_taiex_reports_are_not_asked_on_a_day_nothing_was_published(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake = FakeWeb(EMPTY)
+    monkeypatch.setattr(client_module, "build_async_client", fake.factory)
+
+    await _fetch(Capability.PRICE_EOD, SATURDAY)
+
+    assert not any(r.url.path.endswith(TAIEX_REPORTS) for r in fake.requests)
 
 
 async def test_request_carries_date_params_user_agent_and_tls_policy(
@@ -668,7 +796,8 @@ async def test_requests_to_one_host_are_spaced_by_the_gap(
 
     for host in ("www.twse.com.tw", "www.tpex.org.tw"):
         times = [t for h, t in started if h == host]
-        assert len(times) == (4 if host == "www.tpex.org.tw" else 3)
+        # TWSE price asks MI_INDEX then the two TAIEX reports; TPEx price asks otc then dailyQuotes
+        assert len(times) == (4 if host == "www.tpex.org.tw" else 5)
         assert all(b - a >= 2.5 for a, b in pairwise(times))
 
 

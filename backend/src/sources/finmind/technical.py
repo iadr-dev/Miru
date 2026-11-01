@@ -6,6 +6,7 @@ suspension/limit reference streams. 19 datasets.
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import Final
 
 from schemas.enums import Capability, DataClass, Market, TimingClass
 from schemas.market import Symbol
@@ -18,6 +19,10 @@ from ._shared import (
     _row_symbol,
 )
 
+# The one aggregate the whole-market price dump keeps: the stored price partitions carry the index
+# as a row of each day (the trend batch reads it there; the stock universe never counts it).
+_TAIEX_ID: Final = "TAIEX"
+
 
 def _map_eod_bars(rows: list[dict[str, object]], sym: Symbol | None) -> list[dict[str, object]]:
     bars: list[dict[str, object]] = []
@@ -27,7 +32,7 @@ def _map_eod_bars(rows: list[dict[str, object]], sym: Symbol | None) -> list[dic
             # TaiwanStockPrice publishes 0 for no-trade days — filter on close, not volume.
             continue
         row_sym = _row_symbol(row, sym)
-        if sym is None and not row_sym.id[:1].isdigit():
+        if sym is None and not row_sym.id[:1].isdigit() and row_sym.id != _TAIEX_ID:
             # The whole-market pull's `stock_id` occasionally carries a FinMind index/sector
             # aggregate label instead of a real security code — confirmed live: `TAIEX`,
             # `TPEx`, and TWSE's ~30 named industry sectors (`Semiconductor`, `Textiles`, …)
@@ -35,6 +40,7 @@ def _map_eod_bars(rows: list[dict[str, object]], sym: Symbol | None) -> list[dic
             # filter above since it isn't a no-trade day for the aggregate. Every real TW
             # security code (stock/ETF/warrant/bond) starts with a digit; an aggregate label
             # never does — cheap, exact discriminator, no hardcoded label list to maintain.
+            # `TAIEX` alone is kept (`_TAIEX_ID`).
             # Gated on `sym is None` (the ingest-only whole-market path): a per-symbol fetch
             # (`sym` set) echoes the caller's own `sym.id` back as `row_sym.id` regardless of
             # what the row itself carried, so this same digit check previously rejected every

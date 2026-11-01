@@ -52,8 +52,9 @@ class Endpoint:
 @dataclass(frozen=True)
 class Supplement:
     """A second report of the same exchange that completes the rows of `Endpoint`'s answer (TPEx
-    price: the all-session volume). `merge(rows, supplement_rows)` returns the completed rows or
-    raises `ExchangeFetchError` when the supplement cannot complete every one of them."""
+    price: the all-session volume; TWSE price: the TAIEX row). `merge(rows, supplement_rows)`
+    returns the completed rows or raises `ExchangeFetchError` when the supplement cannot complete
+    every one of them. An endpoint's supplements are applied in order."""
 
     report: Endpoint
     merge: Callable[[list[Row], list[Row]], list[Row]]
