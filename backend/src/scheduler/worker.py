@@ -374,6 +374,9 @@ class SchedulerWorker:
                         personality=PersonalityContext(user_preference=user.personality_id),
                     )
             except Exception as exc:
+                # First: the status write below can fail too, and the owner's chat must not
+                # depend on it.
+                await chat_claim.give_back()
                 await store.set_job_status(
                     job_id=job.id,
                     status=JobStatus.ERROR,
@@ -383,7 +386,6 @@ class SchedulerWorker:
                 )
                 await session.commit()
                 logger.warning("schedule_job_run_failed", job_id=job.id, error=str(exc))
-                await chat_claim.give_back()
                 return False
 
             thread_id = await self._persist_turn(
