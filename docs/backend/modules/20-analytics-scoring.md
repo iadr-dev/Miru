@@ -240,6 +240,37 @@ return or win rate (§5c, §7); they are recorded here with the owner's agreemen
 - **Reuse.** The check tool is kept on the unmerged branch `feat/factor-check` (commit `f319361`).
   It can be rerun when there is more history, or adapted to test another candidate.
 
+**Follow-up: chip-flow measurement (2026-11-01).** This tested whether chip flow's missing rank
+signal came from how it was measured. A raw net-share count could rank stock size more than flow.
+The operator tool `python -m analytics.factor_check [--start] [--end] [--step 5] [--horizons 5,20,60]`
+(`analytics/factor_check/`) reads the local Parquet store only. It changes no shipped scoring code.
+The tool is kept on the unmerged branch `feat/chip-flow-check` (commit `1891ae3`); it was not merged.
+- **Candidates, fixed before the run.** C0 is the shipped `net_buy_20d_trend`: net shares of
+  Foreign_Investor + Investment_Trust over the 20 trading days ending t. C1 divides C0 by the
+  shares the stock traded in those 20 days. Flow and price volume are both shares (股), so C1 lies
+  in [-1, 1]. C2 is net NTD value (net shares x each day's close) over market value at t. Each is
+  ranked with `winsorized_percentile`. Every IC on a date covers the same stocks: those with all
+  three values and a forward return.
+- **Criteria, fixed before the run.** For C1 and C2 at 20 days only: (a) mean rank IC above 0 with
+  an overlap-adjusted t-stat of at least 2; (b) a mean paired improvement over C0 with t of at
+  least 2. Any criterion is INSUFFICIENT below 12 effective dates. The 5- and 60-day rows are
+  context only.
+- **Result.** 155 sampling dates, every 5 trading days, from 2023-08-22 (the first full 20-day
+  flow window) to 2026-10-29. That is about 2,070 stocks per date and 37.8 effective dates at 20
+  days. All four criteria failed. C1 had a mean IC of -0.001 (t -0.17), improving on C0 by -0.001
+  (t -0.38). C2 had a mean IC of 0.001 (t 0.09), improving on C0 by 0.001 (t 0.48). C0 scored
+  -0.000 (t -0.01). No candidate reached |t| 1 at any horizon.
+- **What it says about size.** C0's percentile barely moves with size. Its mean rank correlation
+  is -0.025 with market value and -0.022 with 20-day traded value. A likely reason, not tested:
+  net flow is signed, so large stocks fill both tails rather than one end. Normalizing did not
+  reorder stocks in a way that mattered. The IC series of C0 and C1 move together closely,
+  implying a correlation of about 0.92 between them (0.98 for C2). On this history, the missing
+  signal is not a size artifact of the raw share count.
+- **Unit check.** 14 of 373,631 symbol-date C1 ratios fell outside [-1, 1] (largest 3.67). The
+  largest daily cases are institutional prints that exceed the day's stored volume, often a round
+  lot such as 1,000,000 shares, or days with no stored price row. A lots-for-shares mixup is ruled
+  out, since it would put every ratio near 1,000 times its value.
+
 **Rejected from the same review:**
 - ML price prediction (LSTM/XGBoost). It is forward-looking, its accuracy barely beats a coin flip, and it cannot be explained under §7.
 - HMM regime-switched weights. They are opaque and overfit-prone; `regime_caveat` stays.
