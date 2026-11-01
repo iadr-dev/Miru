@@ -525,7 +525,6 @@ async def _drive_turn(
         result=result,
         parent_message_id=answer_parent_message_id,
         regenerate_of=regenerate_of,
-        claim=claim,
     )
     if not saved:
         return
@@ -665,10 +664,10 @@ async def _save_answer(
     result: OrchestratorResult,
     parent_message_id: str,
     regenerate_of: str | None,
-    claim: ChatClaim | None,
 ) -> bool:
-    """Persist the answer on its own short unit. On failure the chat is given back and the stream
-    ends with an error frame (never left open), and the caller stops."""
+    """Persist the answer on its own short unit. On failure the stream ends with an error frame
+    (never left open) and the caller stops. The chat is kept: the model ran and the answer was
+    streamed, and a save that fails (a thread deleted mid-turn) must not make the work free."""
     try:
         async with _unit(state) as session:
             await _persist_answer(
@@ -681,7 +680,6 @@ async def _save_answer(
             )
     except Exception as exc:  # the answer could not be saved: say so, never leave the stream open
         logger.error("turn_persist_failed", turn_id=turn_id, error=repr(exc))
-        await _give_back(claim)
         event_bus.publish(
             EventKind.TURN_END,
             turn_id=turn_id,

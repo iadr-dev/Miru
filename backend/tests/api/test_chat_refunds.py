@@ -176,7 +176,7 @@ def test_a_turn_that_fails_before_an_answer_gives_its_chat_back(
         assert _chats_used(client, user_id) == 0
 
 
-def test_a_turn_whose_answer_cannot_be_saved_gives_its_chat_back(
+def test_a_turn_whose_answer_cannot_be_saved_keeps_its_chat(
     settings: Settings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     async def _unsaved(*args: object, **kwargs: object) -> None:
@@ -187,8 +187,7 @@ def test_a_turn_whose_answer_cannot_be_saved_gives_its_chat_back(
         headers, user_id = sign_in(client, settings, tier=Tier.FREE)
         monkeypatch.setattr(turn_driver, "_persist_answer", _unsaved)
 
-        for _ in range(_FREE_CAP + 1):
-            events = _parse_sse(_query(client, headers).text)
-            assert events[-1]["data"]["status"] == "error"
+        events = _parse_sse(_query(client, headers).text)
 
-        assert _chats_used(client, user_id) == 0
+        assert events[-1]["data"]["status"] == "error"
+        assert _chats_used(client, user_id) == 1  # the model ran and the answer was streamed
