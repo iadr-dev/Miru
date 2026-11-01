@@ -1,20 +1,12 @@
 #!/usr/bin/env bash
 # Launch an isolated Miru API for verification: scratch dir, synthetic data, own port.
 # Prints SCRATCH=<dir>, PORT=<n> and PID=<n> on success. Tear down with down.sh <scratch>.
-# Usage: up.sh [--monthly-revenue] [--revenue-yoy]
+# Usage: up.sh
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
 PORT="${VERIFY_PORT:-8765}"
-SEED_ARGS=()
-REVENUE_YOY=false
-for arg in "$@"; do
-  case "$arg" in
-    --monthly-revenue) SEED_ARGS+=(--monthly-revenue) ;;
-    --revenue-yoy) SEED_ARGS+=(--monthly-revenue); REVENUE_YOY=true ;;
-    *) echo "unknown arg: $arg" >&2; exit 2 ;;
-  esac
-done
+if [[ $# -gt 0 ]]; then echo "usage: up.sh (no arguments)" >&2; exit 2; fi
 
 if curl -fs "http://127.0.0.1:${PORT}/livez" >/dev/null 2>&1; then
   echo "port ${PORT} already answers; not double-driving it. Set VERIFY_PORT or stop that instance." >&2
@@ -51,13 +43,12 @@ export JWT_SECRET_KEY="verify-$(date +%s)-local-only-secret-not-for-anything-rea
 SECRET_ENCRYPTION_KEYS="$(cd "$SCRATCH" && "$PY" -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
 export SECRET_ENCRYPTION_KEYS
 export CORS_ALLOWED_ORIGINS="http://localhost:3000"
-export SCORE_REVENUE_YOY_ENABLED="$REVENUE_YOY"
-printf 'DATABASE_URL=%s\nPARQUET_ROOT=%s\nJWT_SECRET_KEY=%s\nSCORE_REVENUE_YOY_ENABLED=%s\n' \
-  "$DATABASE_URL" "$PARQUET_ROOT" "$JWT_SECRET_KEY" "$SCORE_REVENUE_YOY_ENABLED" > "$SCRATCH/env.txt"
+printf 'DATABASE_URL=%s\nPARQUET_ROOT=%s\nJWT_SECRET_KEY=%s\n' \
+  "$DATABASE_URL" "$PARQUET_ROOT" "$JWT_SECRET_KEY" > "$SCRATCH/env.txt"
 
 cd "$SCRATCH"
 if ! "$PY" "$REPO/.claude/skills/verify/scripts/seed_and_score.py" \
-    "${SEED_ARGS[@]+"${SEED_ARGS[@]}"}" > "$SCRATCH/seed.log" 2>&1; then
+    > "$SCRATCH/seed.log" 2>&1; then
   tail -n 30 "$SCRATCH/seed.log" >&2
   exit 1
 fi

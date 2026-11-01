@@ -18,19 +18,12 @@ buy/sell/target language is a governance failure, not a pass.
 ## Launch
 
 ```bash
-bash .claude/skills/verify/scripts/up.sh                  # score as shipped
-bash .claude/skills/verify/scripts/up.sh --revenue-yoy    # also seed monthly revenue, set SCORE_REVENUE_YOY_ENABLED=true
+bash .claude/skills/verify/scripts/up.sh
 ```
 
 To verify a git worktree's code instead of this checkout, export
 `VERIFY_BACKEND_REPO=<worktree root>` (it must have its own synced `backend/.venv`); the scripts still
 come from this skill.
-
-`--revenue-yoy` seeds Nov and Dec 2023 revenue with **opposite** YoY orderings. On the 2024-01-02 run
-only November (published Dec 10) is knowable, so with the publication gate 9001 keeps
-`revenue_flow` 100.0 (9002 66.7, 9003 33.3) and the description reads 反映三大法人 20日淨買超與月營收 YoY.
-A look-ahead leak of December would drop 9001 to 66.7. Without the flag the description is the
-chip-only disclosure, unchanged. Proven against the revenue-YoY worktree on 2026-10-31.
 
 Needs `uv` and a synced backend venv (`cd backend && uv sync`, about 15 s warm). It creates
 `$TMPDIR/miru-verify.XXXXXX` (scratch), seeds 260 trading days of prices and 20 days of 三大法人 flow for 9001
@@ -95,8 +88,7 @@ the scratch dir so teardown cannot delete them. Save the raw response bodies (`s
   and `partial_factors`, not just `composite`.
 - Check the order and the honesty rules: unavailable factors say why, no buy/sell/hold/target words
   (`pytest tests/analytics/test_scoring_batch_e2e.py` is the offline unit-level twin).
-- Compare against the baseline above when the change should alter output (for example the
-  `revenue_flow` description changes only with `--revenue-yoy`).
+- Compare against the baseline above when the change should alter output .
 
 ## Cleanup
 
