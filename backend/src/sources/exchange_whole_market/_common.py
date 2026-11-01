@@ -52,12 +52,15 @@ class Endpoint:
 @dataclass(frozen=True)
 class Supplement:
     """A second report of the same exchange that completes the rows of `Endpoint`'s answer (TPEx
-    price: the all-session volume; TWSE price: the TAIEX row). `merge(rows, supplement_rows)`
-    returns the completed rows or raises `ExchangeFetchError` when the supplement cannot complete
-    every one of them. An endpoint's supplements are applied in order."""
+    price: the all-session volume; TWSE and TPEx price: the index row). `merge(rows,
+    supplement_rows)` returns the completed rows or raises `ExchangeFetchError` when the
+    supplement cannot complete every one of them. An endpoint's supplements are applied in order.
+    `index_row` marks the ones that complete the index row of the stored day: without it the
+    exchange's rows are not offered at all, where a failed volume leaves them usable."""
 
     report: Endpoint
     merge: Callable[[list[Row], list[Row]], list[Row]]
+    index_row: bool = False
 
 
 def clean_cell(value: object) -> str:

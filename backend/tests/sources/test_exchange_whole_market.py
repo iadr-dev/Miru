@@ -35,6 +35,8 @@ from sources.exchange_whole_market._client import (
     RequestPolicy,
     ThrottledJsonClient,
 )
+from sources.exchange_whole_market._common import ExchangeFetchError
+from sources.exchange_whole_market.tpex import parse_index as parse_otc_index
 from sources.exchange_whole_market.twse import parse_index_ohlc, parse_market_totals, roc_date
 from tests.sources.conftest import load_fixture
 
@@ -51,6 +53,7 @@ TRADING: dict[tuple[str, str], str] = {
     ("www.twse.com.tw", "/afterTrading/FMTQIK"): "twse_fmtqik.json",
     ("www.tpex.org.tw", "/afterTrading/otc"): "tpex_otc.json",
     ("www.tpex.org.tw", "/afterTrading/dailyQuotes"): "tpex_daily_quotes.json",
+    ("www.tpex.org.tw", "/indexInfo/inx"): "tpex_inx.json",
     ("www.tpex.org.tw", "/insti/dailyTrade"): "tpex_daily_trade.json",
     ("www.tpex.org.tw", "/margin/balance"): "tpex_margin_balance.json",
     ("www.tpex.org.tw", "/afterTrading/peQryDate"): "tpex_pe.json",
@@ -176,7 +179,7 @@ async def test_price_merges_listed_and_otc_in_the_finmind_row_shape(web: FakeWeb
     rows = _rows(result)
     _all_valid(EODBar, rows)
     by = _by(rows, "symbol")
-    assert set(by) == {*STOCKS, ("TAIEX",)}
+    assert set(by) == {*STOCKS, ("TAIEX",), ("TPEx",)}
     assert by[("1101",)] == {  # TWSE, comma-formatted numbers
         "symbol": "1101",
         "market": "TW",
@@ -202,7 +205,7 @@ async def test_tpex_volume_and_turnover_are_the_all_session_totals_like_finmind(
     result = await _fetch(Capability.PRICE_EOD)
 
     assert result.health.status is HealthStatus.OK
-    assert result.health.detail == "TWSE 4 + TPEx 2 rows"  # 3 stocks and TAIEX
+    assert result.health.detail == "TWSE 4 + TPEx 3 rows"  # each with its index row
     rows = _by(_rows(result), "symbol")
     _all_valid(EODBar, list(_rows(result)))
     assert rows[("00411A",)]["volume"] == 10688945
@@ -217,8 +220,9 @@ async def test_tpex_volume_and_turnover_are_the_all_session_totals_like_finmind(
     assert tpex_paths == [
         "/www/zh-tw/afterTrading/otc",
         "/www/zh-tw/afterTrading/dailyQuotes",
+        "/www/zh-tw/indexInfo/inx",
     ]
-    quotes = web.requests[-1].url.params
+    quotes = web.requests[-2].url.params
     assert (quotes["type"], quotes["date"], quotes["response"]) == ("EW", "2026/10/22", "json")
 
 
@@ -456,6 +460,119 @@ async def test_the_taiex_reports_are_not_asked_on_a_day_nothing_was_published(
     await _fetch(Capability.PRICE_EOD, SATURDAY)
 
     assert not any(r.url.path.endswith(TAIEX_REPORTS) for r in fake.requests)
+
+
+# ---------------------------------------------------------------------- TPEx row (TPEx price)
+
+
+def _otc_index_row(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    return [r for r in rows if r["symbol"] == "TPEx"]
+
+
+async def test_tpex_price_carries_the_otc_index_row_of_the_monthly_report(web: FakeWeb) -> None:
+    """indexInfo/inx answers a whole month; the day's open/high/low/close become the `TPEx` row
+    of FinMind's dump, whose volume and turnover are 0 (the report prints none)."""
+    result = await _fetch(Capability.PRICE_EOD)
+
+    assert result.health.status is HealthStatus.OK
+    assert _otc_index_row(_rows(result)) == [
+        {
+            "symbol": "TPEx",
+            "market": "TW",
+            "trade_date": "2026-10-22",
+            "open": 396.32,
+            "high": 400.30,
+            "low": 381.30,
+            "close": 381.69,
+            "volume": 0,
+            "turnover": 0,
+        }
+    ]
+    _all_valid(EODBar, _otc_index_row(_rows(result)))
+    inx = web.requests[-1].url
+    assert inx.path == "/www/zh-tw/indexInfo/inx"
+    assert (inx.params["date"], inx.params["response"]) == ("2026/10/22", "json")
+
+
+def test_the_month_of_the_otc_index_is_read_by_the_requested_day() -> None:
+    month = load_fixture("exchange_whole_market", "tpex_inx.json")
+
+    assert parse_otc_index(month, date(2026, 10, 22))[0]["close"] == 381.69
+    with pytest.raises(ExchangeFetchError, match="answered for 20261022, not 2026-10-21"):
+        parse_otc_index(month, date(2026, 10, 21))
+
+
+def _inx_with(edit: Callable[[dict[str, Any]], None]) -> httpx.Response:
+    body = load_fixture("exchange_whole_market", "tpex_inx.json")
+    edit(body)
+    return httpx.Response(200, json=body)
+
+
+def _answered_for_another_day(body: dict[str, Any]) -> None:
+    body["date"] = "20261023"
+
+
+def _price_not_printed(body: dict[str, Any]) -> None:
+    body["tables"][0]["data"][1][4] = "--"
+
+
+def _without_the_day(body: dict[str, Any]) -> None:
+    body["tables"][0]["data"].pop(1)
+
+
+@pytest.mark.parametrize(
+    ("responses", "reason"),
+    [
+        ([httpx.Response(503)] * 3, "HTTP 503"),
+        ([httpx.Response(403)], "HTTP 403"),
+        ([_inx_with(_without_the_day)], "inx: no row for 2026-10-22"),
+        ([_inx_with(_price_not_printed)], "unreadable index price"),
+        ([_inx_with(_answered_for_another_day)], "answered for 20261023, not 2026-10-22"),
+        (
+            [
+                httpx.Response(
+                    200, json=load_fixture("exchange_whole_market", "tpex_inx_empty.json")
+                )
+            ],
+            "no rows published",
+        ),
+    ],
+)
+async def test_an_otc_index_report_that_fails_leaves_the_day_to_the_next_source(
+    web: FakeWeb, responses: list[httpx.Response], reason: str
+) -> None:
+    web.by_report[("www.tpex.org.tw", "/indexInfo/inx")] = list(responses)
+
+    result = await _fetch(Capability.PRICE_EOD)
+
+    assert result.health.status is HealthStatus.UNREACHABLE
+    assert "no TPEx index row (TPEx: " in result.health.detail
+    assert reason in result.health.detail
+    assert _rows(result) == []
+    assert ROUND_LOT_VOLUME not in result.health.detail  # never served as a last resort
+
+
+async def test_the_otc_index_report_is_not_asked_on_a_day_nothing_was_published(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake = FakeWeb(EMPTY)
+    monkeypatch.setattr(client_module, "build_async_client", fake.factory)
+
+    await _fetch(Capability.PRICE_EOD, SATURDAY)
+
+    assert not any(r.url.path.endswith("/indexInfo/inx") for r in fake.requests)
+
+
+async def test_a_failing_all_session_report_leaves_the_otc_index_report_unasked(
+    web: FakeWeb,
+) -> None:
+    web.by_report[("www.tpex.org.tw", "/afterTrading/dailyQuotes")] = [httpx.Response(503)] * 3
+
+    result = await _fetch(Capability.PRICE_EOD)
+
+    assert ROUND_LOT_VOLUME in result.health.detail
+    assert not any(r.url.path.endswith("/indexInfo/inx") for r in web.requests)
+    assert _otc_index_row(_rows(result)) == []
 
 
 async def test_request_carries_date_params_user_agent_and_tls_policy(
@@ -796,8 +913,8 @@ async def test_requests_to_one_host_are_spaced_by_the_gap(
 
     for host in ("www.twse.com.tw", "www.tpex.org.tw"):
         times = [t for h, t in started if h == host]
-        # TWSE price asks MI_INDEX then the two TAIEX reports; TPEx price asks otc then dailyQuotes
-        assert len(times) == (4 if host == "www.tpex.org.tw" else 5)
+        # price asks three reports of each exchange, flow and margin one each
+        assert len(times) == 5
         assert all(b - a >= 2.5 for a, b in pairwise(times))
 
 
