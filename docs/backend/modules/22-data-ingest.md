@@ -67,7 +67,7 @@ FinMind only when they fail or return nothing. The order is data, in
 
 | Capability (job) | 1st: `exchange_official` (`sources/exchange_whole_market/`) | 2nd |
 |---|---|---|
-| `price_eod` | TWSE `afterTrading/MI_INDEX` (`ALLBUT0999`, the `每日收盤行情` table) + TPEx `afterTrading/otc` (`EW`, prices) completed by TPEx `afterTrading/dailyQuotes` (`EW`, volume/turnover; below) | `finmind` |
+| `price_eod` | TWSE `afterTrading/MI_INDEX` (`ALLBUT0999`, the `每日收盤行情` table) plus the `TAIEX` row from TWSE `TAIEX/MI_5MINS_HIST` + `afterTrading/FMTQIK` (below) + TPEx `afterTrading/otc` (`EW`, prices) completed by TPEx `afterTrading/dailyQuotes` (`EW`, volume/turnover; below) | `finmind` |
 | `institutional_flow` | TWSE `fund/T86` (`ALLBUT0999`) + TPEx `insti/dailyTrade` (`EW`) | `finmind` |
 | `margin_short` | TWSE `marginTrading/MI_MARGN` (`ALL`: stocks + ETFs) + TPEx `margin/balance` | `finmind` |
 | `valuation_ratios` | TWSE `afterTrading/BWIBBU_d` (`ALL`) + TPEx `afterTrading/peQryDate` | `finmind` |
@@ -140,11 +140,24 @@ symbol's date range.
   The partition then holds round-lot TPEx volume for that date until a later run overwrites it
   (the tag in the journal is how to find such dates). A failing `otc` itself is unchanged (UNREACHABLE,
   no rows). No schema change: the tag lives in the existing journal detail.
+- **The `TAIEX` row.** Each stored price partition carries the index as one more row, symbol
+  `TAIEX` (the trend batch's 大盤連動 reads it there; `analytics/symbol_universe.py` never counts it
+  as a security). Its open/high/low/close come from TWSE `TAIEX/MI_5MINS_HIST`, its `volume`/
+  `turnover` are the whole listed market's traded shares and value from `afterTrading/FMTQIK`
+  (FinMind's units); both are monthly reports, read as two more `Supplement`s of the TWSE price
+  answer. FMTQIK prints the close too and the two must agree to the cent; a disagreement, or
+  either report failing, makes the exchange answer UNREACHABLE (`... no TAIEX row (TWSE: <why>)`,
+  no rows) so the chain takes the day from FinMind, whose whole-market mapper keeps `TAIEX` and
+  still drops every other aggregate label. Unlike round-lot volume, a day without its index row
+  is never served as a last resort. Checked against the 699 stored FinMind rows (2023-09-28 to
+  2026-08-19): open/high/low/close equal on all 699, volume/turnover equal on 687; on the other 12
+  (February 2026) FinMind had stored 0.
 - **Politeness.** TWSE bans an IP above about 3 requests / 5 s: each host has a minimum gap
   between request starts (TWSE 2.5 s, TPEx 2.0 s; `asyncio.Lock` + monotonic clock, never
   blocking the loop), a hard 20 s timeout, at most 3 tries with a doubling backoff on 429 / 5xx /
   timeout / non-JSON (the block page), a descriptive `User-Agent`, TLS strict. A dataset-date
-  costs one request per exchange (two for TPEx price: `otc` + `dailyQuotes`).
+  costs one request per exchange (three for TWSE price: `MI_INDEX` + the two TAIEX reports; two
+  for TPEx price: `otc` + `dailyQuotes`).
 - **Known differences from FinMind** (accepted, measured on 2026-06-16 and 2026-09-24 against
   stored FinMind rows: open/high/low/close, volume/turnover, every margin column, institutional buy/sell and
   PER/PBR/yield match 100% on the symbols both have): warrants and CBBC are not ingested (about 21k
