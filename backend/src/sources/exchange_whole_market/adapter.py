@@ -58,8 +58,6 @@ class _Outcome:
     no_data: bool = False
     # Rows are usable but incomplete: why the supplementary report could not complete them.
     incomplete: str | None = None
-    # The report that failed was the one adding the index row: the rows are not usable as a day.
-    lacks_index: bool = False
 
 
 class ExchangeWholeMarketAdapter:
@@ -148,7 +146,7 @@ class ExchangeWholeMarketAdapter:
                     run_date=run_date.isoformat(),
                     reason=reason,
                 )
-                return _Outcome(rows=rows, incomplete=reason, lacks_index=supplement.index_row)
+                return _Outcome(rows=rows, incomplete=reason)
         return _Outcome(rows=completed)
 
 
@@ -203,16 +201,12 @@ def _combine(cap: Capability, listed: _Outcome, otc: _Outcome) -> SourceResult:
         seen.add(key)
         merged.append(row)
     detail = f"TWSE {len(listed.rows)} + TPEx {len(otc.rows)} rows"
-    for name, index_label, out in (("TWSE", "TAIEX", listed), ("TPEx", "TPEx index", otc)):
-        if out.lacks_index:
-            # The stock rows are there but not the index row the stored day carries: UNREACHABLE,
-            # so the chain asks the next source (FinMind's dump has the row).
-            return _result(
-                cap,
-                [],
-                HealthStatus.UNREACHABLE,
-                f"{detail}, no {index_label} row ({name}: {out.incomplete})",
-            )
+    if listed.incomplete is not None:
+        # The stock rows are there but not the TAIEX row the stored day carries: UNREACHABLE, so
+        # the chain asks the next source (FinMind's dump has the row).
+        return _result(
+            cap, [], HealthStatus.UNREACHABLE, f"{detail}, no TAIEX row (TWSE: {listed.incomplete})"
+        )
     if otc.incomplete is not None:
         # The rows are all there but TPEx volume/turnover are round-lot only: not OK, so the chain
         # asks the next source first; the rows ride along for a chain that ends without one.

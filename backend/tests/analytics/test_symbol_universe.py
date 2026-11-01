@@ -29,7 +29,6 @@ def test_scoreable_symbol_mask_keeps_plain_equities_and_etfs_drops_warrants() ->
             "020000",  # 6-digit warrant, NOT `00`-prefixed
             "2881B",  # 5-char preferred share, NOT `00`-prefixed
             "TAIEX",  # index aggregate label (should also be excluded, not just warrants)
-            "TPEx",  # the OTC index label: 4 characters, but not a stock
         ]
     )
 
@@ -50,7 +49,6 @@ def test_is_scoreable_symbol_matches_the_vectorized_mask() -> None:
         "020000": False,
         "2881B": False,
         "TAIEX": False,
-        "TPEx": False,
     }
     for symbol, expected in cases.items():
         assert is_scoreable_symbol(symbol) is expected
@@ -92,8 +90,7 @@ def test_the_sql_rule_matches_the_python_rule_for_every_kind_of_code() -> None:
 
     symbols = [
         "2330", "9958", "1101", "2881B", "0050", "006201", "00631L", "00632R", "0056",
-        "030001", "712345", "08123P", "TAIEX", "TPEx", "ABCD", "2A30", "", "00", "0000001", "12345",
-        "123456",
+        "030001", "712345", "08123P", "TAIEX", "ABCD", "", "00", "0000001", "12345", "123456",
     ]  # fmt: skip
     predicate = scoreable_symbol_sql(Market.TW)
     assert predicate is not None

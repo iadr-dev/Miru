@@ -284,12 +284,10 @@ SUPPLEMENTS: Final[dict[Capability, tuple[Supplement, ...]]] = {
         Supplement(
             Endpoint("MI_5MINS_HIST", f"{_BASE}/TAIEX/MI_5MINS_HIST", _query(), parse_index_ohlc),
             with_index_ohlc,
-            index_row=True,
         ),
         Supplement(
             Endpoint("FMTQIK", f"{_BASE}/afterTrading/FMTQIK", _query(), parse_market_totals),
             with_market_totals,
-            index_row=True,
         ),
     )
 }
