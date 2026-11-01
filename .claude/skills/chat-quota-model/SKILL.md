@@ -134,7 +134,7 @@ Not covered: the per-minute rate limiter (Redis `INCR`, `turn_driver.py:105`) an
 
 ## Coverage record
 
-Sync commit: `720747585a4897de90d5b7c0390bfbe37f927b5d`
+Sync commit: `c07052b3ab56dba80d0fe67920811c97004cc8a4`
 
 Move the sync commit forward only after confirming that the model still describes every file and function below at the new commit. `drift.sh` reads this line and this table.
 
