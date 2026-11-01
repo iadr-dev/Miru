@@ -7,6 +7,7 @@ import asyncio
 from datetime import date
 
 import pytest
+from structlog.testing import capture_logs
 
 from usage.store import SqlAlchemyUsageStore, claim_daily_chat
 
@@ -173,3 +174,41 @@ async def test_refunding_an_unlimited_chat_touches_nothing(session_factory) -> N
     await store.refund_daily_chat(user_id="pro", limit=None)
 
     assert (await store.today_counts(user_id="pro")).get("chats", 0) == 0
+
+
+class _DeadSession:
+    """The caller's session on a connection that died: its rollback raises."""
+
+    async def rollback(self) -> None:
+        raise ConnectionError("connection lost")
+
+
+async def test_a_failed_rollback_still_gives_the_chat_back(session_factory) -> None:
+    store = _store(session_factory)
+    day = date(2026, 8, 5)
+    claim = await claim_daily_chat(store, user_id="u", limit=3, today=day)
+    assert claim is not None
+
+    with pytest.raises(LookupError):
+        async with claim.refund_unless_started(_DeadSession()):  # type: ignore[arg-type]
+            raise LookupError("thread_not_found")
+
+    assert await _chats_on(store, day) == 0
+
+
+class _RefundFails(SqlAlchemyUsageStore):
+    async def refund_daily_chat(self, **kwargs: object) -> None:
+        del kwargs
+        raise ConnectionError("connection lost")
+
+
+async def test_a_failed_refund_lets_the_requests_own_error_through(session_factory) -> None:
+    store = _RefundFails(session_factory)
+    claim = await claim_daily_chat(store, user_id="u", limit=3, today=date(2026, 8, 5))
+    assert claim is not None
+
+    with capture_logs() as logs, pytest.raises(LookupError):
+        async with session_factory() as session, claim.refund_unless_started(session):
+            raise LookupError("thread_not_found")
+
+    assert [e["event"] for e in logs] == ["chat_refund_failed"]
