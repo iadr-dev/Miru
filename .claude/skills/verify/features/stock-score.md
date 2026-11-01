@@ -9,8 +9,8 @@ caveats. Descriptive context, never a signal. Spec: `docs/backend/modules/20-ana
 - Two horizon profiles: `swing` (default) and `position`.
 - Honest gaps: a factor with no usable input is `percentile: null` plus `unavailable_reason`, and its
   name appears in `partial_factors`. The composite renormalizes over the available factors.
-- `revenue_flow` reports the 三大法人 20-day chip half; its `description` discloses whether the 月營收 YoY
-  half is included (only with `SCORE_REVENUE_YOY_ENABLED=true`).
+- `revenue_flow` reports the 三大法人 20-day chip half only; its `description` discloses that the 月營收 YoY
+  half is not counted.
 - ETFs (`00xxxx`) use a different factor set; US symbols use seven factors. Not seeded by `up.sh`.
 
 ## How to get to it (user POV)
