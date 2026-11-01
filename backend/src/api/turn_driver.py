@@ -183,6 +183,7 @@ async def run_and_stream(
     images: tuple[ImagePart, ...] = (),
     deep_research: bool = False,
     byok: ByokOverride | None = None,
+    claim: ChatClaim | None = None,
 ) -> AsyncIterator[str]:
     """Subscribe to the bus first, then drive the orchestrator in a background task so no frame
     published between `turn.start` and `turn.end` is missed. Yields SSE frames until `turn.end`.
@@ -229,6 +230,7 @@ async def run_and_stream(
             images=images,
             deep_research=deep_research,
             byok=byok,
+            claim=claim,
         )
 
     runner = asyncio.create_task(_noop())
@@ -342,6 +344,7 @@ def start_turn_stream(
     images: tuple[ImagePart, ...] = (),
     deep_research: bool = False,
     byok: ByokOverride | None = None,
+    claim: ChatClaim | None = None,
 ) -> StreamingResponse:
     """Register the turn + return the `StreamingResponse` — the one call every route that starts
     a real turn makes, so registration/streaming plumbing exists in exactly one place.
@@ -376,8 +379,16 @@ def start_turn_stream(
         images=images,
         deep_research=deep_research,
         byok=byok,
+        claim=claim,
     )
     return StreamingResponse(stream, media_type="text/event-stream")
+
+
+async def _give_back(claim: ChatClaim | None) -> None:
+    """A turn that ended in failure with no answer costs no chat. A cancelled one keeps its unit:
+    the caller stopped it."""
+    if claim is not None:
+        await claim.give_back()
 
 
 async def _load_history(
@@ -435,6 +446,7 @@ async def _drive_turn(
     images: tuple[ImagePart, ...] = (),
     deep_research: bool = False,
     byok: ByokOverride | None = None,
+    claim: ChatClaim | None = None,
 ) -> None:
     event_bus.publish(EventKind.TURN_START, turn_id=turn_id, data={"thread_id": thread_id})
     # Which 語氣 preset will shape this answer (turn > chat > account > default), shown under it.
@@ -493,6 +505,8 @@ async def _drive_turn(
         raise
     except Exception as exc:  # a failed turn ends the stream with an error frame, never a hang
         logger.error("turn_drive_failed", turn_id=turn_id, error=str(exc))
+        # Before the closing frame: a client that sees the turn end can send the next one at once.
+        await _give_back(claim)
         event_bus.publish(
             EventKind.TURN_END, turn_id=turn_id, data={"status": "error", "message": str(exc)}
         )
@@ -652,7 +666,8 @@ async def _save_answer(
     regenerate_of: str | None,
 ) -> bool:
     """Persist the answer on its own short unit. On failure the stream ends with an error frame
-    (never left open) and the caller stops."""
+    (never left open) and the caller stops. The chat is kept: the model ran and the answer was
+    streamed, and a save that fails (a thread deleted mid-turn) must not make the work free."""
     try:
         async with _unit(state) as session:
             await _persist_answer(

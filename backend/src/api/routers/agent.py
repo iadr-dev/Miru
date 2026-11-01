@@ -209,6 +209,7 @@ async def agent_query(
             images=images,
             deep_research=body.deep_research,
             byok=byok,
+            claim=claim,
         )
         claim.turn_started()
     return response

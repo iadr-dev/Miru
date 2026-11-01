@@ -143,6 +143,38 @@ async def test_a_claim_whose_turn_started_keeps_its_unit(session_factory) -> Non
     assert await _chats_on(store, day) == 1
 
 
+async def test_a_started_turn_that_ends_without_an_answer_gives_its_unit_back_once(
+    session_factory,
+) -> None:
+    store = _store(session_factory)
+    day = date(2026, 8, 5)
+    claim = await claim_daily_chat(store, user_id="u", limit=3, today=day)
+    assert claim is not None
+
+    async with session_factory() as session, claim.refund_unless_started(session):
+        claim.turn_started()
+    await claim.give_back()
+    await claim.give_back()
+
+    assert await _chats_on(store, day) == 0
+
+
+async def test_a_claim_refunded_before_its_turn_started_is_not_given_back_again(
+    session_factory,
+) -> None:
+    store = _store(session_factory)
+    day = date(2026, 8, 5)
+    await store.reserve_daily_chat(user_id="u", limit=3, today=day)  # another chat of the day
+    claim = await claim_daily_chat(store, user_id="u", limit=3, today=day)
+    assert claim is not None
+
+    async with session_factory() as session, claim.refund_unless_started(session):
+        pass
+    await claim.give_back()
+
+    assert await _chats_on(store, day) == 1
+
+
 async def test_a_claim_is_given_back_to_the_day_it_was_taken_from(session_factory) -> None:
     store = _store(session_factory)
     before_midnight, after_midnight = date(2026, 8, 5), date(2026, 8, 6)

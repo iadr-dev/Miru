@@ -131,7 +131,8 @@ class ChatClaim:
     The caller wraps every step between the reservation and the turn start in
     `async with claim.refund_unless_started(session):` and calls `turn_started()` once the turn
     runs. Leaving the block before that (an error, an early return) gives the unit back once, to
-    the UTC day it was claimed on. A started turn keeps its unit, whatever happens to it later."""
+    the UTC day it was claimed on. A started turn keeps its unit, unless it ends in failure with
+    no answer (`give_back`): a chat never delivered is not spent. A cancelled one keeps it."""
 
     def __init__(
         self, store: UsageStore | None, *, user_id: str, limit: int | None, day: date
@@ -141,6 +142,7 @@ class ChatClaim:
         self._limit = limit
         self._day = day
         self._settled = store is None or limit is None
+        self._returned = False
 
     @classmethod
     def unmetered(cls) -> ChatClaim:
@@ -149,6 +151,11 @@ class ChatClaim:
 
     def turn_started(self) -> None:
         self._settled = True
+
+    async def give_back(self) -> None:
+        """Return the unit of a started turn that ended in failure with no answer saved. Once."""
+        self._settled = True
+        await self._return_unit()
 
     @contextlib.asynccontextmanager
     async def refund_unless_started(self, session: AsyncSession) -> AsyncGenerator[None]:
@@ -167,6 +174,12 @@ class ChatClaim:
             await session.rollback()
         except Exception:  # the refund runs on its own connection, so it is still attempted
             logger.exception("chat_refund_rollback_failed", user_id=self._user_id)
+        await self._return_unit()
+
+    async def _return_unit(self) -> None:
+        if self._returned or self._store is None:
+            return
+        self._returned = True
         try:
             await self._store.refund_daily_chat(
                 user_id=self._user_id, limit=self._limit, today=self._day
@@ -242,8 +255,8 @@ class SqlAlchemyUsageStore:
     async def refund_daily_chat(
         self, *, user_id: str, limit: int | None, today: date | None = None
     ) -> None:
-        """Give back a chat claimed by `reserve_daily_chat` for a turn that was not started
-        (`ChatClaim`). An unlimited caller never claimed one."""
+        """Give back a chat claimed by `reserve_daily_chat` for a turn that was not started or
+        ended without an answer (`ChatClaim`). An unlimited caller never claimed one."""
         if limit is None:
             return
         await self._refund(_CHAT_COUNTER, user_id=user_id, today=today)

@@ -674,6 +674,7 @@ async def regenerate_turn(
             web_search_enabled=body.web_search,
             deep_research=deep_research,
             byok=byok,
+            claim=claim,
         )
         claim.turn_started()
     return response
@@ -769,6 +770,7 @@ async def edit_turn(
             web_search_enabled=body.web_search,
             deep_research=deep_research,
             byok=byok,
+            claim=claim,
         )
         claim.turn_started()
     return response
