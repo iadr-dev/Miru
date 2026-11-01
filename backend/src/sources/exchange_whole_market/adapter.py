@@ -96,9 +96,11 @@ class ExchangeWholeMarketAdapter:
 
         started = datetime.now(UTC)
         twse_out, tpex_out = await asyncio.gather(
-            self._one(self._twse, twse.ENDPOINTS[cap], run_date, tls_policy),
             self._one(
-                self._tpex, tpex.ENDPOINTS[cap], run_date, tls_policy, tpex.SUPPLEMENTS.get(cap)
+                self._twse, twse.ENDPOINTS[cap], run_date, tls_policy, twse.SUPPLEMENTS.get(cap, ())
+            ),
+            self._one(
+                self._tpex, tpex.ENDPOINTS[cap], run_date, tls_policy, tpex.SUPPLEMENTS.get(cap, ())
             ),
         )
         result = _combine(cap, twse_out, tpex_out)
@@ -118,7 +120,7 @@ class ExchangeWholeMarketAdapter:
         endpoint: Endpoint,
         run_date: date,
         tls_policy: TLSPolicy,
-        supplement: Supplement | None = None,
+        supplements: tuple[Supplement, ...] = (),
     ) -> _Outcome:
         try:
             rows = await _read(client, endpoint, run_date, tls_policy)
@@ -126,22 +128,26 @@ class ExchangeWholeMarketAdapter:
             return _Outcome(rows=[], no_data=True)
         except ExchangeFetchError as exc:
             return _Outcome(error=exc.detail)
-        if supplement is None or not rows:
+        if not rows:
             return _Outcome(rows=rows)
-        try:
-            supplied = await _read(client, supplement.report, run_date, tls_policy)
-            return _Outcome(rows=supplement.merge(rows, supplied))
-        except (ExchangeFetchError, NoDataPublishedError) as exc:
-            # A challenge page, an HTTP error, an unreadable or short report: the base rows stand
-            # but are not whole. The request budget is the client's (throttled, bounded retries).
-            reason = exc.detail if isinstance(exc, ExchangeFetchError) else "no rows published"
-            logger.warning(
-                "exchange_supplement_failed",
-                report=supplement.report.label,
-                run_date=run_date.isoformat(),
-                reason=reason,
-            )
-            return _Outcome(rows=rows, incomplete=reason)
+        completed = rows
+        for supplement in supplements:
+            try:
+                supplied = await _read(client, supplement.report, run_date, tls_policy)
+                completed = supplement.merge(completed, supplied)
+            except (ExchangeFetchError, NoDataPublishedError) as exc:
+                # A challenge page, an HTTP error, an unreadable or short report: the base rows
+                # stand but are not whole. The request budget is the client's (throttled, bounded
+                # retries).
+                reason = exc.detail if isinstance(exc, ExchangeFetchError) else "no rows published"
+                logger.warning(
+                    "exchange_supplement_failed",
+                    report=supplement.report.label,
+                    run_date=run_date.isoformat(),
+                    reason=reason,
+                )
+                return _Outcome(rows=rows, incomplete=reason)
+        return _Outcome(rows=completed)
 
 
 async def _read(
@@ -195,6 +201,12 @@ def _combine(cap: Capability, listed: _Outcome, otc: _Outcome) -> SourceResult:
         seen.add(key)
         merged.append(row)
     detail = f"TWSE {len(listed.rows)} + TPEx {len(otc.rows)} rows"
+    if listed.incomplete is not None:
+        # The stock rows are there but not the TAIEX row the stored day carries: UNREACHABLE, so
+        # the chain asks the next source (FinMind's dump has the row).
+        return _result(
+            cap, [], HealthStatus.UNREACHABLE, f"{detail}, no TAIEX row (TWSE: {listed.incomplete})"
+        )
     if otc.incomplete is not None:
         # The rows are all there but TPEx volume/turnover are round-lot only: not OK, so the chain
         # asks the next source first; the rows ride along for a chain that ends without one.

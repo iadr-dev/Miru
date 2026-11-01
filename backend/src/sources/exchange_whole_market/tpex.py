@@ -239,15 +239,17 @@ def _query(**fixed: str) -> Callable[[date_], dict[str, str]]:
     return build
 
 
-SUPPLEMENTS: Final[dict[Capability, Supplement]] = {
-    Capability.PRICE_EOD: Supplement(
-        Endpoint(
-            "dailyQuotes",
-            f"{_BASE}/afterTrading/dailyQuotes",
-            _query(type="EW"),
-            parse_all_session_volume,
+SUPPLEMENTS: Final[dict[Capability, tuple[Supplement, ...]]] = {
+    Capability.PRICE_EOD: (
+        Supplement(
+            Endpoint(
+                "dailyQuotes",
+                f"{_BASE}/afterTrading/dailyQuotes",
+                _query(type="EW"),
+                parse_all_session_volume,
+            ),
+            with_all_session_volume,
         ),
-        with_all_session_volume,
     )
 }
 
