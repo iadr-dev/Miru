@@ -288,7 +288,35 @@ class SchedulerWorker:
                 logger.info("schedule_job_skipped_byok_key", job_id=job.id)
                 return False
 
+            # The job's own reasons not to run are checked before the quota gate, so they spend
+            # no chat. A job at its daily_limit stays due and is polled again every minute.
             if await self._nothing_to_review(store, session, job, user, now):
+                return False
+
+            if self._daily_limit_reached(
+                await store.deliveries_today(
+                    user_id=user.id, source_id=job.id, trigger_date=now.date()
+                ),
+                job.daily_limit,
+            ):
+                self._emit(
+                    EventKind.SCHEDULE_SKIPPED_LIMIT, user_id=user.id, data={"job_id": job.id}
+                )
+                return False
+
+            inputs = await self._resolved_inputs(store, job)
+            if inputs is None:
+                # The watchlist is gone or holds no Taiwan stocks: nothing to brief on. Say so and
+                # move on to the next cadence instead of running the skill on an empty target.
+                await store.set_job_status(
+                    job_id=job.id,
+                    status=JobStatus.ERROR,
+                    last_run=now,
+                    next_run=self._next_run(job, now),
+                    reason="watchlist_empty",
+                )
+                await session.commit()
+                self._emit(EventKind.SCHEDULE_SKIPPED, user_id=user.id, data={"job_id": job.id})
                 return False
 
             chat_claim = (
@@ -314,33 +342,6 @@ class SchedulerWorker:
                 return False
 
             async with chat_claim.refund_unless_started(session):
-                if self._daily_limit_reached(
-                    await store.deliveries_today(
-                        user_id=user.id, source_id=job.id, trigger_date=now.date()
-                    ),
-                    job.daily_limit,
-                ):
-                    self._emit(
-                        EventKind.SCHEDULE_SKIPPED_LIMIT, user_id=user.id, data={"job_id": job.id}
-                    )
-                    return False
-
-                inputs = await self._resolved_inputs(store, job)
-                if inputs is None:
-                    # The watchlist is gone or holds no Taiwan stocks: nothing to brief on. Say so
-                    # and move on to the next cadence instead of running the skill on an empty
-                    # target.
-                    await store.set_job_status(
-                        job_id=job.id,
-                        status=JobStatus.ERROR,
-                        last_run=now,
-                        next_run=self._next_run(job, now),
-                        reason="watchlist_empty",
-                    )
-                    await session.commit()
-                    self._emit(EventKind.SCHEDULE_SKIPPED, user_id=user.id, data={"job_id": job.id})
-                    return False
-
                 # Take the job atomically. `due_jobs` is only a scan, so a second worker (a
                 # restart overlap, a lease handover) may be looking at the same job; whoever wins
                 # this claim runs it, the other stands down. It also marks the job running, so a

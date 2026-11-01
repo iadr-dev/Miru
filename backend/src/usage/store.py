@@ -165,6 +165,9 @@ class ChatClaim:
         self._settled = True
         try:
             await session.rollback()
+        except Exception:  # the refund runs on its own connection, so it is still attempted
+            logger.exception("chat_refund_rollback_failed", user_id=self._user_id)
+        try:
             await self._store.refund_daily_chat(
                 user_id=self._user_id, limit=self._limit, today=self._day
             )

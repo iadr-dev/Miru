@@ -24,9 +24,22 @@ CONSTANTS
     RowLock,       \* TRUE: the _reserve upsert holds the counter row until its commit (code)
     UniqueKey,     \* TRUE: uq_turns_user_idempotency_key exists (code)
     DupRefund,     \* TRUE: the IntegrityError path refunds (code, via the request's ChatClaim)
-    RefundStarted  \* FALSE: a turn that started keeps its unit (code)
+    RefundStarted, \* FALSE: a turn that started keeps its unit (code)
+    SchedOrder     \* "check_first": the scheduler checks the job's daily_limit and watchlist before
+                   \* the gate (code); "claim_first": after it, inside the claim (the code before)
 
 NoOne == 0
+
+(* scheduler/worker.py:296-320: a scheduled run's own checks, before the quota gate at :322. *)
+(* They read and write no counter row.                                                       *)
+SchedChecks == <<"daily_limit_check",  \* worker.py:296 _daily_limit_reached -> return False :305
+                 "resolve_inputs">>    \* worker.py:307-320 inputs is None -> watchlist_empty, return False
+PreSteps == [
+    query      |-> <<>>,
+    edit       |-> <<>>,
+    regenerate |-> <<>>,
+    scheduled  |-> IF SchedOrder = "check_first" THEN SchedChecks ELSE <<>>
+]
 
 (* The steps between a granted reservation and the turn start, per route. *)
 (* The last step of each route is the one whose success starts the turn.  *)
@@ -42,14 +55,13 @@ Steps == [
     edit       |-> <<"append_turn",          \* api/routers/threads_actions.py:742 store.append_turn
                      "commit_turn">>,        \* threads_actions.py:756 session.commit(); start_turn_stream :759, turn_started :773
     regenerate |-> <<"commit_gate_tx">>,     \* threads_actions.py:662 session.commit(); start_turn_stream :663, turn_started :678
-    scheduled  |-> <<"daily_limit_check",    \* scheduler/worker.py:317 _daily_limit_reached -> return False :326
-                     "resolve_inputs",       \* worker.py:328-342 inputs is None -> watchlist_empty, return False
-                     "claim_job",            \* worker.py:348 claim_job lost to another worker -> return False
-                     "commit_claim">>        \* worker.py:352 session.commit(); turn_started :353, run_skill :363
+    scheduled  |-> (IF SchedOrder = "check_first" THEN <<>> ELSE SchedChecks)
+                   \o <<"claim_job",         \* scheduler/worker.py:349 claim_job lost to another worker -> return False
+                       "commit_claim">>      \* worker.py:353 session.commit(); turn_started :354, run_skill :364
 ]
 
 Terminal == {"rejected_dup", "rejected_full", "failed", "refunded", "crashed",
-             "started", "started_refunded"}
+             "started", "started_refunded", "skipped"}
 ClaimedPhases == {"claimed", "refund_fail", "refund_dup"}
 
 VARIABLES
@@ -58,8 +70,8 @@ VARIABLES
     lock,       \* [1..Days -> Req \cup {NoOne}]: holder of the counter row lock (RowLock only)
     pend,       \* [Req -> 0..1]: the reserve transaction's uncommitted +1 (RowLock only)
     pc,         \* [Req -> phase]
-    step,       \* [Req -> Nat]: index into Steps[Route[r]] while claimed
-    wk,         \* [Req -> 0..Days]: window_key _reserve computed (store.py:213)
+    step,       \* [Req -> Nat]: index into PreSteps[Route[r]] in "pre", Steps[Route[r]] while claimed
+    wk,         \* [Req -> 0..Days]: window_key _reserve computed (store.py:279)
     used,       \* [Req -> Nat]: the n the upsert RETURNING gave this request
     claimDay,   \* [Req -> 0..Days]: day of the granted claim
     startedOn,  \* [Req -> 0..Days]: day charged for a started turn, 0 = not started
@@ -77,7 +89,8 @@ Occupied(d)  == Cardinality(Ran(d)) + Cardinality(Held(d))
 
 CurStep(r)  == Steps[Route[r]][step[r]]
 IsLast(r)   == step[r] = Len(Steps[Route[r]])
-(* worker.py:317-326: the daily-limit skip returns without set_job_status, so next_run is not  *)
+CurPre(r)   == PreSteps[Route[r]][step[r]]
+(* worker.py:296-305: the daily-limit skip returns without set_job_status, so next_run is not  *)
 (* advanced and the next poll (scheduler_poll_interval_seconds) runs the same job again.       *)
 Repoll(r)   == Route[r] = "scheduled" /\ CurStep(r) = "daily_limit_check"
 KeyClash(r) == UniqueKey /\ Key[r] /= "none"
@@ -106,20 +119,42 @@ Init ==
     /\ badReject = FALSE
 
 (* agent.py:121-123 _reject_duplicate: a keyed query whose key already has a committed turn  *)
-(* gets 409 duplicate_request before the gate, so it claims nothing. Other routes go to the  *)
-(* gate (turn_driver.py:125, quota.py:62), both claim_daily_chat (usage/store.py:175-186).   *)
+(* gets 409 duplicate_request before the gate, so it claims nothing. A scheduled run first   *)
+(* makes its own checks (PreSteps). Then each route goes to the gate (turn_driver.py:125,    *)
+(* quota.py:62), both claim_daily_chat (usage/store.py:178-189).                             *)
 Arrive(r) ==
     /\ pc[r] = "init"
     /\ pc' = [pc EXCEPT ![r] =
                 IF Route[r] = "query" /\ Key[r] /= "none"
                    /\ \E o \in SameKey(r) : turnRow[o] = "committed"
-                THEN "rejected_dup" ELSE "reserve"]
+                THEN "rejected_dup"
+                ELSE IF PreSteps[Route[r]] /= <<>> THEN "pre" ELSE "reserve"]
+    /\ step' = [step EXCEPT ![r] = 1]
+    /\ UNCHANGED <<day, n, lock, pend, wk, used, claimDay, startedOn, turnRow, badReject>>
+
+(* A check before the gate passes; after the last one the run goes to the gate. *)
+PreOk(r) ==
+    /\ pc[r] = "pre"
+    /\ IF step[r] = Len(PreSteps[Route[r]])
+         THEN /\ pc' = [pc EXCEPT ![r] = "reserve"]
+              /\ UNCHANGED step
+         ELSE /\ step' = [step EXCEPT ![r] = step[r] + 1]
+              /\ UNCHANGED pc
+    /\ UNCHANGED <<day, n, lock, pend, wk, used, claimDay, startedOn, turnRow, badReject>>
+
+(* A check before the gate ends the run. Nothing was reserved, so nothing is given back. The *)
+(* daily-limit skip leaves the job due, so the next poll runs it again; an empty watchlist   *)
+(* moves next_run on.                                                                        *)
+PreExit(r) ==
+    /\ pc[r] = "pre"
+    /\ CurPre(r) \in FailAt
+    /\ pc' = [pc EXCEPT ![r] = IF CurPre(r) = "daily_limit_check" THEN "init" ELSE "skipped"]
     /\ UNCHANGED <<day, n, lock, pend, step, wk, used, claimDay, startedOn, turnRow, badReject>>
 
-(* store.py:276 window_key (the day claim_daily_chat fixed at :182), then _increment          *)
-(* store.py:197-226: one INSERT .. ON CONFLICT DO UPDATE n = n + 1 RETURNING n. With RowLock *)
-(* the +1 stays uncommitted and the row stays locked until the commit at store.py:291 or     *)
-(* :293; a second upsert on the row waits.                                                   *)
+(* store.py:279 window_key (the day claim_daily_chat fixed at :185), then _increment          *)
+(* store.py:200-229: one INSERT .. ON CONFLICT DO UPDATE n = n + 1 RETURNING n. With RowLock *)
+(* the +1 stays uncommitted and the row stays locked until the commit at store.py:294 or     *)
+(* :296; a second upsert on the row waits.                                                   *)
 ReserveUpsert(r) ==
     /\ pc[r] = "reserve"
     /\ wk' = [wk EXCEPT ![r] = day]
@@ -134,7 +169,7 @@ ReserveUpsert(r) ==
     /\ pc' = [pc EXCEPT ![r] = "reserve_decide"]
     /\ UNCHANGED <<day, step, claimDay, startedOn, turnRow, badReject>>
 
-(* store.py:281-294. Over the cap: UPDATE n = n - 1 in the same session, commit, refuse      *)
+(* store.py:284-297. Over the cap: UPDATE n = n - 1 in the same session, commit, refuse      *)
 (* (claim_daily_chat returns None, turn_driver.py:127 429 chat_limit_reached). Else commit   *)
 (* and grant: the caller now holds a ChatClaim for day wk[r].                                *)
 ReserveDecide(r) ==
@@ -178,7 +213,7 @@ StepOk(r) ==
     /\ LET s == CurStep(r) IN
        CASE s = "append_turn" /\ KeyClash(r) /\ \E o \in SameKey(r) : turnRow[o] = "committed" ->
                  \* agent.py:180 rollback, :183 409 duplicate_request; the raise leaves the
-                 \* ChatClaim block, which refunds (usage/store.py:162-173)
+                 \* ChatClaim block, which refunds (usage/store.py:162-176)
                  /\ pc' = [pc EXCEPT ![r] = IF DupRefund THEN "refund_dup" ELSE "rejected_dup"]
                  /\ UNCHANGED <<step, startedOn, turnRow>>
          [] s = "append_turn" ->
@@ -208,8 +243,8 @@ StepFail(r) ==
 
 RefundTarget(r) == IF RefundDay = "now" THEN day ELSE claimDay[r]
 
-(* ChatClaim._refund store.py:162-173, at most once per claim, into refund_daily_chat       *)
-(* store.py:239-246 and _refund store.py:259-271: its own session, one UPDATE n = n - 1      *)
+(* ChatClaim._refund store.py:162-176, at most once per claim, into refund_daily_chat       *)
+(* store.py:242-249 and _refund store.py:262-274: its own session, one UPDATE n = n - 1      *)
 (* WHERE window_key = <claimed day> AND n > 0, then commit. The claim passes the day it was  *)
 (* reserved on (RefundDay "claim"); "now", the day the refund runs, is the code before it.   *)
 Refund(r) ==
@@ -253,8 +288,8 @@ Finished ==
     /\ UNCHANGED vars
 
 Next ==
-    \/ \E r \in Req : Arrive(r) \/ ReserveUpsert(r) \/ ReserveDecide(r) \/ StepOk(r)
-                      \/ StepFail(r) \/ Refund(r) \/ Crash(r)
+    \/ \E r \in Req : Arrive(r) \/ PreOk(r) \/ PreExit(r) \/ ReserveUpsert(r)
+                      \/ ReserveDecide(r) \/ StepOk(r) \/ StepFail(r) \/ Refund(r) \/ Crash(r)
     \/ Tick
     \/ Finished
 
