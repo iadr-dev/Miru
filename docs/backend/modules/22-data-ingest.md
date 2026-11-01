@@ -67,7 +67,7 @@ FinMind only when they fail or return nothing. The order is data, in
 
 | Capability (job) | 1st: `exchange_official` (`sources/exchange_whole_market/`) | 2nd |
 |---|---|---|
-| `price_eod` | TWSE `afterTrading/MI_INDEX` (`ALLBUT0999`, the `每日收盤行情` table) plus the `TAIEX` row from TWSE `TAIEX/MI_5MINS_HIST` + `afterTrading/FMTQIK` (below) + TPEx `afterTrading/otc` (`EW`, prices) completed by TPEx `afterTrading/dailyQuotes` (`EW`, volume/turnover; below) plus the `TPEx` row from `indexInfo/inx` (below) | `finmind` |
+| `price_eod` | TWSE `afterTrading/MI_INDEX` (`ALLBUT0999`, the `每日收盤行情` table) plus the `TAIEX` row from TWSE `TAIEX/MI_5MINS_HIST` + `afterTrading/FMTQIK` (below) + TPEx `afterTrading/otc` (`EW`, prices) completed by TPEx `afterTrading/dailyQuotes` (`EW`, volume/turnover; below) | `finmind` |
 | `institutional_flow` | TWSE `fund/T86` (`ALLBUT0999`) + TPEx `insti/dailyTrade` (`EW`) | `finmind` |
 | `margin_short` | TWSE `marginTrading/MI_MARGN` (`ALL`: stocks + ETFs) + TPEx `margin/balance` | `finmind` |
 | `valuation_ratios` | TWSE `afterTrading/BWIBBU_d` (`ALL`) + TPEx `afterTrading/peQryDate` | `finmind` |
@@ -152,24 +152,12 @@ symbol's date range.
   is never served as a last resort. Checked against the 699 stored FinMind rows (2023-09-28 to
   2026-08-19): open/high/low/close equal on all 699, volume/turnover equal on 687; on the other 12
   (February 2026) FinMind had stored 0.
-- **The `TPEx` row.** The OTC index (櫃買指數) is the same kind of row, symbol `TPEx` (FinMind's own
-  label for it). Its open/high/low/close come from TPEx `indexInfo/inx` (`date=YYYY/MM/DD`,
-  `response=json`; one request answers the whole month, read by the requested day), a
-  `Supplement` of the TPEx price answer applied after the all-session volume. The report prints no
-  volume or turnover, and neither is invented: the row carries 0 for both, as FinMind's `TPEx` row
-  does (`EODBar.volume` is required). The index report failing, a month without the day, or an
-  answer for another day makes the exchange answer UNREACHABLE (`... no TPEx index row (TPEx:
-  <why>)`, no rows) and the chain takes the day from FinMind, whose whole-market mapper keeps
-  `TPEx` next to `TAIEX` (it publishes the label only now and then, so such a day can lack the
-  row). `analytics/symbol_universe.py` counts only all-digit codes of at most four
-  characters as plain equities, so neither label is ever scored, ranked or counted as a stock;
-  `TPEx` is four characters long, which the old length-only rule would have accepted.
 - **Politeness.** TWSE bans an IP above about 3 requests / 5 s: each host has a minimum gap
   between request starts (TWSE 2.5 s, TPEx 2.0 s; `asyncio.Lock` + monotonic clock, never
   blocking the loop), a hard 20 s timeout, at most 3 tries with a doubling backoff on 429 / 5xx /
   timeout / non-JSON (the block page), a descriptive `User-Agent`, TLS strict. A dataset-date
-  costs one request per exchange (three for TWSE price: `MI_INDEX` + the two TAIEX reports; three
-  for TPEx price: `otc` + `dailyQuotes` + `inx`).
+  costs one request per exchange (three for TWSE price: `MI_INDEX` + the two TAIEX reports; two
+  for TPEx price: `otc` + `dailyQuotes`).
 - **Known differences from FinMind** (accepted, measured on 2026-06-16 and 2026-09-24 against
   stored FinMind rows: open/high/low/close, volume/turnover, every margin column, institutional buy/sell and
   PER/PBR/yield match 100% on the symbols both have): warrants and CBBC are not ingested (about 21k

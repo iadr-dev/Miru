@@ -9,9 +9,7 @@ codes (~2.3K/day); ETFs are `00`-prefixed 5-6-digit codes (~350/day, e.g. `0050`
 share of the raw partition) plus a residual few hundred 5-char preferred-share/other exotic codes
 not starting with `00`. A plain length cutoff alone is not enough: some real preferred-share
 codes ARE 5 characters (e.g. `2881B`), same length as the 5-char ETF codes, but a warrant is
-never `00`-prefixed — hence the two-part rule below. A plain equity code is also all digits: the
-stored price partitions carry the index labels `TAIEX` and `TPEx` as rows (the second is 4
-characters long), and an index is not a stock.
+never `00`-prefixed — hence the two-part rule below.
 
 A tool/batch that reads `TaiwanStockPrice` (or any dataset keyed by the same symbol universe)
 without this filter silently mixes ~17K warrant rows into what should be a ~2.65K-symbol
@@ -74,7 +72,7 @@ def is_scoreable_symbol(symbol: str, market: Market = Market.TW) -> bool:
     section for why the TW length/prefix rule doesn't apply and no pre-filter is needed."""
     if market is Market.US:
         return True
-    is_plain_equity = len(symbol) <= _MAX_PLAIN_EQUITY_LENGTH and symbol.isdigit()
+    is_plain_equity = len(symbol) <= _MAX_PLAIN_EQUITY_LENGTH
     is_etf = len(symbol) <= _MAX_ETF_LENGTH and symbol.startswith(_ETF_PREFIX)
     return is_plain_equity or is_etf
 
@@ -106,8 +104,7 @@ def scoreable_symbol_mask(symbols: pd.Series, market: Market = Market.TW) -> pd.
     if market is Market.US:
         return pd.Series(True, index=symbols.index)
     lengths = cast("pd.Series", symbols.str.len())
-    is_numeric = cast("pd.Series", symbols.str.isdigit())
-    is_plain_equity = cast("pd.Series", (lengths <= _MAX_PLAIN_EQUITY_LENGTH) & is_numeric)
+    is_plain_equity = cast("pd.Series", lengths <= _MAX_PLAIN_EQUITY_LENGTH)
     starts_with_etf_prefix = cast("pd.Series", symbols.str.startswith(_ETF_PREFIX))
     is_etf = cast("pd.Series", (lengths <= _MAX_ETF_LENGTH) & starts_with_etf_prefix)
     return cast("pd.Series", is_plain_equity | is_etf)
@@ -125,11 +122,10 @@ def scoreable_symbol_sql(market: Market = Market.TW, *, keep: Sequence[str] = ()
     input. `tests/analytics/test_symbol_universe.py` checks it against `is_scoreable_symbol`."""
     if market is Market.US:
         return None
-    plain_equity = (
-        f"length(symbol) <= {_MAX_PLAIN_EQUITY_LENGTH} AND regexp_matches(symbol, '^[0-9]+$')"
+    rule = (
+        f"(length(symbol) <= {_MAX_PLAIN_EQUITY_LENGTH} OR "
+        f"(length(symbol) <= {_MAX_ETF_LENGTH} AND starts_with(symbol, '{_ETF_PREFIX}')))"
     )
-    etf = f"length(symbol) <= {_MAX_ETF_LENGTH} AND starts_with(symbol, '{_ETF_PREFIX}')"
-    rule = f"(({plain_equity}) OR ({etf}))"
     if not keep:
         return rule
     quoted = ", ".join("'" + symbol.replace("'", "''") + "'" for symbol in keep)

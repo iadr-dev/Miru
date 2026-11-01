@@ -10,9 +10,7 @@ report in `tables[0]` (its own `date` is ROC, which is never used: the root date
   round lots + 盤後定價 (fixed price) + 盤中零股 + 盤後零股 (odd lots), block trades excluded;
   it equals FinMind on 100% of the symbols checked. So PRICE_EOD is a `Supplement`: the
   dailyQuotes volume/turnover replace the otc ones, and if they cannot be had for EVERY bar the
-  adapter reports the round-lot rows as incomplete (never as if they were whole). The `TPEx` index
-  row FinMind's dump carries (the 櫃買指數) is a second `Supplement`: indexInfo/inx answers a whole
-  month with the open/high/low/close, and no volume or turnover, which are 0 as in FinMind's row.
+  adapter reports the round-lot rows as incomplete (never as if they were whole).
 - INSTITUTIONAL_FLOW: insti/dailyTrade (EW); 24 unnamed columns, read by position.
 - MARGIN_SHORT: margin/balance; note the order, 券賣 comes before 券買.
 - VALUATION_RATIOS: afterTrading/peQryDate; a `-` PER is 0.0, as in FinMind.
@@ -27,7 +25,6 @@ from typing import Final
 from schemas.enums import Capability
 
 from ._common import (
-    TAIWAN_MARKET,
     BarColumns,
     Endpoint,
     ExchangeFetchError,
@@ -48,13 +45,10 @@ from ._common import (
     margin_row,
     table_rows,
     to_count,
-    to_number,
     valuations_from_rows,
 )
 
 _BASE: Final = "https://www.tpex.org.tw/www/zh-tw"
-# FinMind's id of the OTC index row, the other non-security code the stored price partitions carry.
-_INDEX_SYMBOL: Final = "TPEx"
 _INSTITUTIONAL_COLUMNS: Final = 24
 # Blocks of (buy, sell, net): 外資(不含自營) | 外資自營 | 外資合計 | 投信 | 自營(自行買賣) |
 # 自營(避險) | 自營合計 | then 三大法人合計. Offsets of the BUY cell of the blocks FinMind keeps as
@@ -173,40 +167,6 @@ def _below(total: object, round_lot: object) -> bool:
     return not isinstance(total, int) or not isinstance(round_lot, int) or total < round_lot
 
 
-def parse_index(body: JsonObject, run_date: date_) -> list[Row]:
-    """indexInfo/inx: the `TPEx` open/high/low/close of `run_date` out of its month. The report
-    prints no volume or turnover, which FinMind's own `TPEx` row carries as 0: so does this one."""
-    report = _first_table(body, "inx")
-    if report is None:
-        raise NoDataPublishedError
-    check_response_date(body, run_date, "inx")
-    fields, rows = report
-    day = column_index(fields, "日期")
-    wanted = run_date.strftime("%Y/%m/%d")
-    row = next((r for r in rows if clean_cell(cell(r, day)) == wanted), None)
-    if row is None:
-        raise ExchangeFetchError(f"inx: no row for {run_date.isoformat()}")
-    names = {"open": "開市", "high": "最高", "low": "最低", "close": "收市"}
-    prices = {key: to_number(cell(row, column_index(fields, name))) for key, name in names.items()}
-    if any(p is None or p <= 0 for p in prices.values()):
-        raise ExchangeFetchError(f"inx: unreadable index price on {run_date.isoformat()}")
-    return [
-        {
-            "symbol": _INDEX_SYMBOL,
-            "market": TAIWAN_MARKET,
-            "trade_date": run_date.isoformat(),
-            **prices,
-            "volume": 0,
-            "turnover": 0,
-        }
-    ]
-
-
-def with_index_row(bars: list[Row], index: list[Row]) -> list[Row]:
-    """`bars` plus the index row."""
-    return [*bars, *index]
-
-
 def parse_institutional(body: JsonObject, run_date: date_) -> list[Row]:
     report = _first_table(body, "dailyTrade")
     if report is None:
@@ -279,8 +239,6 @@ def _query(**fixed: str) -> Callable[[date_], dict[str, str]]:
     return build
 
 
-# Applied in order: the index row joins after the all-session volume, which wants every bar to be a
-# security.
 SUPPLEMENTS: Final[dict[Capability, tuple[Supplement, ...]]] = {
     Capability.PRICE_EOD: (
         Supplement(
@@ -291,11 +249,6 @@ SUPPLEMENTS: Final[dict[Capability, tuple[Supplement, ...]]] = {
                 parse_all_session_volume,
             ),
             with_all_session_volume,
-        ),
-        Supplement(
-            Endpoint("inx", f"{_BASE}/indexInfo/inx", _query(), parse_index),
-            with_index_row,
-            index_row=True,
         ),
     )
 }
