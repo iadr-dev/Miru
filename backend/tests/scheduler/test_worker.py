@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 import pytest
+from sqlalchemy import select
 
 from accounts.entitlements import TierLimits
 from accounts.hooks import EntitlementResolver
@@ -15,6 +16,8 @@ from agent.guardrails import REDACTION_NOTICE_EN, REDACTION_NOTICE_ZH, check_out
 from agent.loop import RichCard
 from conversation.models import MessageBlockType
 from conversation.store import SqlAlchemyConversationStore
+from db.models import UsageCounterRow
+from events.kinds import EventKind
 from ingest.leader import AlwaysLeader, NeverLeader
 from orchestrator.models import OrchestratorResult, Routing
 from scheduler.delivery.channels import InAppChannel
@@ -275,11 +278,20 @@ async def _chats_used(session_factory, user_id: str) -> int:
     return (await store.today_counts(user_id=user_id, today=clock.current().date()))["chats"]
 
 
-async def test_a_job_past_its_daily_limit_spends_no_chat_however_often_it_is_polled(
+async def _chat_counter_rows(session_factory, user_id: str) -> list[UsageCounterRow]:
+    async with session_factory() as session:
+        result = await session.execute(
+            select(UsageCounterRow).where(UsageCounterRow.user_id == user_id)
+        )
+        return list(result.scalars())
+
+
+async def test_a_job_past_its_daily_limit_never_touches_the_chat_counter(
     session_factory,
 ) -> None:
-    # Chat-quota model finding F3: the daily-limit skip leaves the job due, so every poll
-    # reserved a chat and kept it, and a few polls emptied the owner's whole allowance.
+    # Chat-quota model finding F3: the daily-limit skip leaves the job due, so it is polled again
+    # every minute until the UTC day ends. Checked before the quota gate, no poll writes the
+    # owner's counter, so a send of their own is never refused while a poll holds a unit.
     user = await insert_user(session_factory, tier=Tier.FREE)
     await _make_job(session_factory, user, daily_limit=0)
     orch = _StubOrchestrator(_CLEAN_ANSWER)
@@ -289,10 +301,12 @@ async def test_a_job_past_its_daily_limit_spends_no_chat_however_often_it_is_pol
         assert await worker.run_due_jobs() == []
 
     assert orch.calls == []
-    assert await _chats_used(session_factory, user) == 0
+    assert await _chat_counter_rows(session_factory, user) == []
 
 
-async def test_a_job_with_an_empty_watchlist_spends_no_chat(session_factory) -> None:
+async def test_a_job_with_an_empty_watchlist_never_touches_the_chat_counter(
+    session_factory,
+) -> None:
     user = await insert_user(session_factory, tier=Tier.FREE)
     async with session_factory() as session:
         job = await SqlAlchemySchedulerStore(session).create_job(
@@ -310,13 +324,16 @@ async def test_a_job_with_an_empty_watchlist_spends_no_chat(session_factory) -> 
     assert await _metered_worker(session_factory, orch).run_job(job) is False
 
     assert orch.calls == []
-    assert await _chats_used(session_factory, user) == 0
+    assert await _chat_counter_rows(session_factory, user) == []
 
 
-async def test_a_job_another_worker_took_spends_no_chat(session_factory) -> None:
+async def test_a_job_another_worker_took_gives_its_chat_back(session_factory) -> None:
     user = await insert_user(session_factory, tier=Tier.FREE)
     job = await _make_job(session_factory, user)
     now = datetime.now(UTC)
+    await SqlAlchemyUsageStore(session_factory).reserve_daily_chat(
+        user_id=user, limit=3, today=now.date()
+    )  # a send of the owner's own, earlier today
     async with session_factory() as session:
         assert await SqlAlchemySchedulerStore(session).claim_job(job_id=job.id, now=now)
         await session.commit()
@@ -325,7 +342,65 @@ async def test_a_job_another_worker_took_spends_no_chat(session_factory) -> None
     assert await _metered_worker(session_factory, orch).run_job(job, now=now) is False
 
     assert orch.calls == []
-    assert await _chats_used(session_factory, user) == 0
+    assert await _chats_used(session_factory, user) == 1
+
+
+class _RecordedEvents:
+    def __init__(self) -> None:
+        self.kinds: list[EventKind] = []
+
+    def publish(self, kind: EventKind, **kwargs: object) -> None:
+        del kwargs
+        self.kinds.append(kind)
+
+
+def _over_quota_worker(session_factory, events: _RecordedEvents) -> SchedulerWorker:
+    from dataclasses import replace  # noqa: PLC0415
+
+    ctx = _ctx(
+        session_factory,
+        orchestrator=_StubOrchestrator(_CLEAN_ANSWER),
+        router=_StubRouter({}),
+        leader=AlwaysLeader(),
+        quota_gate=DenyAllQuotaGate(),
+    )
+    return SchedulerWorker(replace(ctx, event_bus=events))  # type: ignore[arg-type]
+
+
+async def test_an_over_quota_job_past_its_daily_limit_is_reported_as_at_its_limit(
+    session_factory,
+) -> None:
+    # The job's own limit is checked before the quota gate, so the limit is the reason given and
+    # the job is left as it was, exactly like a job at its limit with quota to spare.
+    user = await insert_user(session_factory, tier=Tier.FREE)
+    job = await _make_job(session_factory, user, daily_limit=0)
+    events = _RecordedEvents()
+
+    assert await _over_quota_worker(session_factory, events).run_job(job) is False
+
+    assert events.kinds == [EventKind.SCHEDULE_SKIPPED_LIMIT]
+    async with session_factory() as session:
+        refreshed = await SqlAlchemySchedulerStore(session).get_job(user_id=user, job_id=job.id)
+    assert (refreshed.status, refreshed.status_reason) == (job.status, job.status_reason)
+    assert refreshed.last_run is None
+    assert as_utc(refreshed.next_run) == as_utc(job.next_run)
+
+
+async def test_an_over_quota_job_with_an_empty_watchlist_is_reported_as_empty(
+    session_factory,
+) -> None:
+    user = await insert_user(session_factory, tier=Tier.FREE)
+    await _seed_watchlist(session_factory, user, [])
+    await _watchlist_job(session_factory, user)
+    events = _RecordedEvents()
+
+    assert await _over_quota_worker(session_factory, events).run_due_jobs() == []
+
+    assert events.kinds == [EventKind.SCHEDULE_SKIPPED]
+    async with session_factory() as session:
+        job = (await SqlAlchemySchedulerStore(session).list_jobs(user_id=user))[0]
+    assert job.status is JobStatus.ERROR
+    assert job.status_reason == "watchlist_empty"
 
 
 async def test_a_job_that_runs_spends_one_chat(session_factory) -> None:
