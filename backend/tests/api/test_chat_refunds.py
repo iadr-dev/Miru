@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
+from api import turn_driver
 from api.routers import threads_actions
 from config.settings import Settings
 from conversation.store import SqlAlchemyConversationStore
@@ -155,3 +156,39 @@ def test_a_started_turn_keeps_its_chat(settings: Settings) -> None:
         _answered(client, headers)
 
         assert _chats_used(client, user_id) == 1
+
+
+def test_a_turn_that_fails_before_an_answer_gives_its_chat_back(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def _failing_run(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        raise RuntimeError("the model is down")
+
+    with build_test_client(settings, agent_answer="done") as client:
+        headers, user_id = sign_in(client, settings, tier=Tier.FREE)
+        monkeypatch.setattr(turn_driver, "_run_turn", _failing_run)
+
+        for _ in range(_FREE_CAP + 1):  # more failures than the daily cap allows
+            events = _parse_sse(_query(client, headers).text)
+            assert events[-1]["data"]["status"] == "error"
+
+        assert _chats_used(client, user_id) == 0
+
+
+def test_a_turn_whose_answer_cannot_be_saved_gives_its_chat_back(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def _unsaved(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise RuntimeError("the database went away")
+
+    with build_test_client(settings, agent_answer="done") as client:
+        headers, user_id = sign_in(client, settings, tier=Tier.FREE)
+        monkeypatch.setattr(turn_driver, "_persist_answer", _unsaved)
+
+        for _ in range(_FREE_CAP + 1):
+            events = _parse_sse(_query(client, headers).text)
+            assert events[-1]["data"]["status"] == "error"
+
+        assert _chats_used(client, user_id) == 0

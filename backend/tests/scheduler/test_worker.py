@@ -345,6 +345,19 @@ async def test_a_job_another_worker_took_gives_its_chat_back(session_factory) ->
     assert await _chats_used(session_factory, user) == 1
 
 
+async def test_a_failed_run_gives_its_chat_back(session_factory) -> None:
+    class _Exploding(_StubOrchestrator):
+        async def run_skill(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+            raise RuntimeError("boom")
+
+    user = await insert_user(session_factory, tier=Tier.FREE)
+    job = await _make_job(session_factory, user)
+
+    assert await _metered_worker(session_factory, _Exploding(_CLEAN_ANSWER)).run_job(job) is False
+
+    assert await _chats_used(session_factory, user) == 0
+
+
 class _RecordedEvents:
     def __init__(self) -> None:
         self.kinds: list[EventKind] = []

@@ -383,6 +383,7 @@ class SchedulerWorker:
                 )
                 await session.commit()
                 logger.warning("schedule_job_run_failed", job_id=job.id, error=str(exc))
+                await chat_claim.give_back()
                 return False
 
             thread_id = await self._persist_turn(
