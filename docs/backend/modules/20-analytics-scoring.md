@@ -237,14 +237,14 @@ return or win rate (§5c, §7); they are recorded here with the owner's agreemen
   that the existing chip-flow half shows no rank signal in that sample (20-day mean IC -0.002, t -0.18).
   It is a fact about the shipped factor, not acted on here: chip flow ranks raw net-buy share counts,
   so large, liquid stocks probably dominate the ranking.
-- **Reuse.** The check tool is kept on the unmerged branch `feat/factor-check` (commit `f319361`).
-  It can be rerun when there is more history, or adapted to test another candidate.
+- **Reuse.** The check tool was not merged and is not kept; the setup, criteria and numbers above
+  are the record. Rerunning the check later means rebuilding it from that description.
 
 **Follow-up: chip-flow measurement (2026-11-01).** This tested whether chip flow's missing rank
 signal came from how it was measured. A raw net-share count could rank stock size more than flow.
-The operator tool `python -m analytics.factor_check [--start] [--end] [--step 5] [--horizons 5,20,60]`
-(`analytics/factor_check/`) reads the local Parquet store only. It changes no shipped scoring code.
-The tool is kept on the unmerged branch `feat/chip-flow-check` (commit `1891ae3`); it was not merged.
+A throwaway operator tool (`analytics/factor_check/`, run as `python -m analytics.factor_check`) read
+the local Parquet store only and changed no shipped scoring code. It was not merged and is not kept;
+this paragraph is the record.
 - **Candidates, fixed before the run.** C0 is the shipped `net_buy_20d_trend`: net shares of
   Foreign_Investor + Investment_Trust over the 20 trading days ending t. C1 divides C0 by the
   shares the stock traded in those 20 days. Flow and price volume are both shares (股), so C1 lies
