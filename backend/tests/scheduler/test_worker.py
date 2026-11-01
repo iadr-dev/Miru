@@ -358,6 +358,26 @@ async def test_a_failed_run_gives_its_chat_back(session_factory) -> None:
     assert await _chats_used(session_factory, user) == 0
 
 
+async def test_a_failed_run_gives_its_chat_back_even_when_the_error_status_cannot_be_saved(
+    session_factory, monkeypatch
+) -> None:
+    class _Exploding(_StubOrchestrator):
+        async def run_skill(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+            raise RuntimeError("boom")
+
+    async def _broken_status(*args, **kwargs):  # type: ignore[no-untyped-def]
+        raise RuntimeError("the database went away")
+
+    user = await insert_user(session_factory, tier=Tier.FREE)
+    job = await _make_job(session_factory, user)
+    monkeypatch.setattr(SqlAlchemySchedulerStore, "set_job_status", _broken_status)
+
+    with pytest.raises(RuntimeError, match="the database went away"):
+        await _metered_worker(session_factory, _Exploding(_CLEAN_ANSWER)).run_job(job)
+
+    assert await _chats_used(session_factory, user) == 0
+
+
 class _RecordedEvents:
     def __init__(self) -> None:
         self.kinds: list[EventKind] = []
