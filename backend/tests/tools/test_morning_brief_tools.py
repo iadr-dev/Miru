@@ -192,8 +192,15 @@ async def test_calendar_events_carry_taipei_and_et_times() -> None:
         },
     )
     event = (await _run(_Registry(calendar)))["events_today"][0]  # type: ignore[index]
+    # 14:00 UTC is 10:00 ET in US daylight time and 09:00 ET in standard time, so the expected
+    # clock comes from the zone database, not a fixed offset; Taipei has no daylight time.
+    expected_et = (
+        datetime.fromisoformat(f"{today}T14:00:00+00:00")
+        .astimezone(ZoneInfo("America/New_York"))
+        .strftime("%H:%M")
+    )
     assert event["taipei_time"].endswith("22:00")
-    assert event["et_time"].endswith("10:00")
+    assert event["et_time"].endswith(expected_et)
     assert event["consensus"] == "N/A"
     assert event["prior"] == "54.1"
 
